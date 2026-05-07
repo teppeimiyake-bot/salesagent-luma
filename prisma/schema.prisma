@@ -1,0 +1,496 @@
+// 営業AIエージェントSaaS DB schema
+generator client {
+  provider = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// User（自社の営業担当）
+// ============================================================
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  // パスワード認証は任意化（Googleログインのみのユーザは null）
+  passwordHash String?  @map("password_hash")
+  name         String
+  // NextAuth が使用するプロフィール画像URL（Googleアバターなど）
+  image        String?
+  emailVerified DateTime? @map("email_verified")
+  role         String?  @default("sales")  // sales / manager（チーム上の役職）
+  permission   String   @default("user")   // admin / user / viewer（システム上の権限）
+  avatarColor  String?  @map("avatar_color")
+  avatarUrl    String?  @map("avatar_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  ownedDeals       Deal[]            @relation("DealOwner")
+  ownedDealProducts DealProduct[]    @relation("DealProductOwner")
+  uploadedDocs     Document[]
+  chatMessages     ChatMessage[]
+  goals            Goal[]
+  accounts         Account[]
+  sessions         Session[]
+
+  @@map("users")
+}
+
+// ============================================================
+// NextAuth: OAuth プロバイダ（Google等）の Account 紐付け
+// ============================================================
+model Account {
+  id                String  @id @default(uuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+// ============================================================
+// NextAuth: DBセッション
+// ============================================================
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ============================================================
+// NextAuth: メール検証トークン（将来の magic link 用に確保）
+// ============================================================
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ============================================================
+// プロダクトマスタ（= カテゴリ。管理者が作成 → 商談で選択）
+// 旧: Product.name = プロダクト名 / Product.category = 業界カテゴリ
+// 新: Product.name = カテゴリ名（ユーザー視点。例「映像」「SNS」）
+// 旧 category フィールドはマイグレ後も残置するが UI からは参照しない
+// ============================================================
+model Product {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  category    String?  // 旧フィールド（互換のため残置・UI不参照）
+  description String?  @db.Text
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  plans        ProductPlan[]
+  dealProducts DealProduct[]
+
+  @@map("products")
+}
+
+// ============================================================
+// プロダクトプラン（旧 Product.planNames + Product.basePrice をモデル化）
+// プラン名・ベース価格・並び順を持つ
+// ============================================================
+model ProductPlan {
+  id          String  @id @default(uuid())
+  productId   String  @map("product_id")
+  name        String
+  basePrice   Int?    @map("base_price")
+  description String?
+  sortOrder   Int     @default(0) @map("sort_order")
+  active      Boolean @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, name])
+  @@index([productId])
+  @@map("product_plans")
+}
+
+// ============================================================
+// 顧客企業
+// ============================================================
+model Company {
+  id               String   @id @default(uuid())
+  name             String
+  industry         String?
+  websiteUrl       String?  @map("website_url")
+  websiteSummary   String?  @db.Text @map("website_summary")
+  websiteFetchedAt DateTime? @map("website_fetched_at")
+  note             String?  @db.Text
+  // 企業基本情報
+  address          String?
+  ceoName          String?  @map("ceo_name")
+  establishedYear  Int?     @map("established_year")
+  employeeCount    Int?     @map("employee_count")
+  capital          String?
+  phoneNumber      String?  @map("phone_number")
+  logoColor        String?  @map("logo_color")
+  logoUrl          String?  @map("logo_url") // 企業ロゴ画像URL
+  // ソフト削除：null = 通常 / Date = ゴミ箱送り
+  deletedAt        DateTime? @map("deleted_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  contacts Contact[]
+  deals    Deal[]
+
+  @@index([deletedAt])
+  @@map("companies")
+}
+
+// ============================================================
+// 顧客側担当者（連絡先）
+// ============================================================
+model Contact {
+  id        String   @id @default(uuid())
+  companyId String   @map("company_id")
+  name      String
+  role      String?  // 役職
+  email     String?
+  phone     String?
+  isPrimary Boolean  @default(false) @map("is_primary")
+  isDecisionMaker Boolean @default(false) @map("is_decision_maker")
+  note      String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("contacts")
+}
+
+// ============================================================
+// 商談（= 企業単位 / 1企業=1Deal、内部に複数プロダクト DealProduct を持つ）
+// ============================================================
+model Deal {
+  id             String      @id @default(uuid())
+  companyId      String      @map("company_id")
+  ownerUserId    String?     @map("owner_user_id")  // Deal全体の主担当（DealProduct単位の担当者は別）
+  title          String      // 商談タイトル（自由記述）
+  status         DealStatus  @default(LEAD)
+  // 商談プロセスステージ（リージー独自運用：商談前/商談後/契約フェーズの細粒度ラベル）
+  pipelineStage  String?     @map("pipeline_stage")
+  nextAction     String?     @map("next_action")
+  nextActionAt   DateTime?   @map("next_action_at")
+  // アポ獲得日：商談タイトル「アポ獲得日 + 顧客名 + 担当者名」の自動生成にも使う。
+  appointmentDate DateTime?  @map("appointment_date")
+  expectedCloseDate DateTime? @map("expected_close_date")
+  // 契約日：DealProductが受注ステータスになった時のクロージング日。
+  // KPI実績集計はこの contractDate ベース（×何月度に契約したか）。
+  contractDate   DateTime?   @map("contract_date")
+  // リード獲得経由（LeadSource マスタへの参照）
+  leadSourceId   String?     @map("lead_source_id")
+  // リード獲得時のメモ（どう取得したか/きっかけ/紹介者など）
+  leadSourceMemo String?     @db.Text @map("lead_source_memo")
+  // 案件全体のBANT集約
+  bant           Json?
+  bantUpdatedAt  DateTime?   @map("bant_updated_at")
+  // ソフト削除
+  deletedAt      DateTime?   @map("deleted_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  owner      User?             @relation("DealOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  leadSource LeadSource?       @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
+  products   DealProduct[]
+  meetings   Meeting[]
+  tasks      Task[]
+  aiLogs     AiLog[]
+  roleplays  RoleplaySession[]
+  documents  Document[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([ownerUserId])
+  @@index([deletedAt])
+  @@index([contractDate])
+  @@index([leadSourceId])
+  @@index([appointmentDate])
+  @@map("deals")
+}
+
+// ============================================================
+// 商談プロセスステージマスタ（管理者がCRUD → 商談新規/詳細で選択）
+// Deal.pipelineStage は value 文字列で保管（FKではないため、ステージ削除時もDealデータ保全）
+// ============================================================
+model PipelineStage {
+  id        String   @id @default(uuid())
+  value     String   @unique // DBに保管される内部キー（ラベル兼用）
+  label     String   // UI表示
+  group     String   // before / after / contract
+  badgeBg   String   @map("badge_bg")   // Tailwind class（例 bg-emerald-100）
+  badgeText String   @map("badge_text") // Tailwind class（例 text-emerald-800）
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([group, sortOrder])
+  @@map("pipeline_stages")
+}
+
+// ============================================================
+// リード獲得経由マスタ（管理者が編集 → 商談新規/詳細で選択）
+// ============================================================
+model LeadSource {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  deals Deal[]
+
+  @@map("lead_sources")
+}
+
+// ============================================================
+// DealProduct（1Dealに複数のプロダクト提案を内包）
+// ============================================================
+model DealProduct {
+  id           String   @id @default(uuid())
+  dealId       String   @map("deal_id")
+  productId    String?  @map("product_id")  // Productマスタへの参照（nullable）
+  productName  String   @map("product_name") // キャッシュ表示用
+  planName     String?  @map("plan_name")
+  probability  Int      @default(0)
+  amount       Int?     // 提案金額（円）
+  yomiStatus   String?  @map("yomi_status")  // 受注/Aヨミ/Bヨミ/Cヨミ/ネタ/NG
+  ownerUserId  String?  @map("owner_user_id")  // プロダクトごとに担当者が違う場合
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  deal    Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  owner   User?    @relation("DealProductOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  @@index([dealId])
+  @@index([productId])
+  @@index([ownerUserId])
+  @@map("deal_products")
+}
+
+enum DealStatus {
+  LEAD
+  HEARING
+  PROPOSAL
+  NEGOTIATION
+  CLOSING
+  WON
+  LOST
+}
+
+// ============================================================
+// 商談ミーティング（議事録 = 要約 + 録画文字起こし）
+// ============================================================
+model Meeting {
+  id            String   @id @default(uuid())
+  dealId        String   @map("deal_id")
+  meetingDate   DateTime @default(now()) @map("meeting_date")
+  // 商談回ラベル（「第3回 役員レビュー」など。未指定時は通し番号で自動生成）
+  title         String?
+  // minutes = 商談要約（議事録の本体・人間+AI）
+  minutes       String?  @db.Text
+  // transcript = 録画から自動文字起こし（AI入力源）
+  transcript    String?  @db.Text
+  recordingUrl  String?  @map("recording_url")
+  summary       String?  @db.Text
+  issues        Json?
+  bantBudget    String?  @map("bant_budget")
+  bantAuthority String?  @map("bant_authority")
+  bantNeed      String?  @map("bant_need")
+  bantTimeline  String?  @map("bant_timeline")
+  structured    Json?
+  analysis      Json?
+  topSales      Json?    @map("top_sales")
+  strategy      Json?
+  nextActions   Json?    @map("next_actions")
+  scores        Json?
+  meta          Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@map("meetings")
+}
+
+// ============================================================
+// ToDo
+// ============================================================
+model Task {
+  id              String     @id @default(uuid())
+  dealId          String     @map("deal_id")
+  title           String
+  description     String?    @db.Text
+  status          TaskStatus @default(OPEN)
+  priority        String?
+  impact          String?
+  dueDate         DateTime?  @map("due_date")
+  isAiGenerated   Boolean    @default(false) @map("is_ai_generated")
+  reason          String?    @db.Text
+  expectedOutcome String?    @db.Text @map("expected_outcome")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  completedAt     DateTime?  @map("completed_at")
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([status])
+  @@map("tasks")
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  SKIPPED
+}
+
+// ============================================================
+// 全社共通ドキュメント（提案書・契約書テンプレ）
+// ============================================================
+model Document {
+  id             String   @id @default(uuid())
+  name           String
+  category       String   // proposal / contract / case_study / template / quote / other
+  scope          String   @default("global") // global / deal
+  dealId         String?  @map("deal_id")
+  description    String?  @db.Text
+  // 見積書バージョン（"v1", "v2.1" など。quote 用）
+  version        String?
+  fileUrl        String   @map("file_url")
+  fileSize       Int?     @map("file_size")
+  mimeType       String?  @map("mime_type")
+  uploadedById   String?  @map("uploaded_by_id")
+  // ナレッジ検索用
+  tags           String[] // 業界・課題タグ
+  embedding      Float[]  // OpenAI embeddings (text-embedding-3-small=1536d) — 任意
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  uploadedBy User? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  deal       Deal? @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([category])
+  @@index([scope])
+  @@index([dealId])
+  @@map("documents")
+}
+
+// ============================================================
+// AIエージェントとのチャット履歴
+// ============================================================
+model ChatMessage {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  scope     String   // global / deal:<id>
+  role      String   // user / assistant / system
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, scope])
+  @@map("chat_messages")
+}
+
+// ============================================================
+// AIロープレセッション
+// ============================================================
+model RoleplaySession {
+  id          String   @id @default(uuid())
+  dealId      String   @map("deal_id")
+  level       Int      @default(2) // 1=初級 / 2=中級 / 3=上級
+  personaName String?  @map("persona_name") // 顧客アバター用
+  personaRole String?  @map("persona_role")
+  scenario    String   @db.Text
+  log         Json     // 会話ログ
+  feedback    Json?    // AIによる商談後フィードバック
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@map("roleplay_sessions")
+}
+
+// ============================================================
+// 学習用：AI入出力とユーザー編集差分
+// ============================================================
+model AiLog {
+  id        String   @id @default(uuid())
+  dealId    String   @map("deal_id")
+  step      String
+  input     Json
+  output    Json
+  userEdit  Json?    @map("user_edit")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([step])
+  @@map("ai_logs")
+}
+
+// ============================================================
+// 招待トークン（admin がメール宛にURLを発行 → /register?invite=token から登録）
+// ============================================================
+model Invite {
+  id           String    @id @default(uuid())
+  email        String
+  token        String    @unique
+  name         String?
+  role         String    @default("sales")  // sales / manager
+  permission   String    @default("user")   // admin / user / viewer
+  invitedById  String?   @map("invited_by_id")
+  expiresAt    DateTime  @map("expires_at")
+  used         Boolean   @default(false)
+  usedAt       DateTime? @map("used_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([email])
+  @@index([token])
+  @@map("invites")
+}
+
+// ============================================================
+// 受注目標（個人 / 組織）
+// ============================================================
+model Goal {
+  id           String   @id @default(uuid())
+  ownerUserId  String?  @map("owner_user_id") // null = 組織全体
+  period       String   // 2026-Q2 / 2026-04 などフリーフォーマット
+  targetAmount Int      @map("target_amount")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  owner User? @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId])
+  @@index([period])
+  @@map("goals")
+}

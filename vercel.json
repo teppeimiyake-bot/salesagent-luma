@@ -1,0 +1,29 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["hnd1"],
+  "buildCommand": "prisma generate && next build",
+  "framework": "nextjs",
+  "functions": {
+    "src/app/api/meetings/[id]/analyze/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/companies/[id]/fetch-summary/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/deals/[id]/preparation/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/deals/[id]/summarize-bant/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/deals/[id]/suggest-next-action/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/companies/[id]/fetch-logo/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/meetings/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}
