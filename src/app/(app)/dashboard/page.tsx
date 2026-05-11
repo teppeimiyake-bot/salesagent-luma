@@ -6,11 +6,10 @@ import { AiChat } from "@/components/dashboard/ai-chat";
 import { GoalProgress } from "@/components/dashboard/goal-progress";
 import { NewTaskDialog } from "@/components/todos/new-task-dialog";
 import { getDashboardData, getGoalProgress } from "@/lib/queries";
-import { excludeNGDealsWhere } from "@/lib/deal-status-server";
+import { excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
 import { getSession, hasPermission } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { currentFiscalQuarterPeriod } from "@/lib/config";
-import { DealStatus } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -26,8 +25,9 @@ export default async function DashboardPage() {
     : null;
   const canEdit = hasPermission(me?.permission, "user");
   const userId = session?.userId;
-  // ToDo化対象から外したいDealのフィルタ（NG/日程調整不可/完全失注）
-  const ngExclude = await excludeNGDealsWhere();
+  // ToDo化対象から外したいDealのフィルタ
+  // （受注/失注/NG/日程調整不可/完全失注/完全受注 を全部弾く）
+  const exclude = await excludeDoneAndNGDealsWhere();
   const [{ openTasks, deals, kpi }, personalGoal, teamGoal, dealsWithNextAction] = await Promise.all([
     getDashboardData({ userId }),
     getGoalProgress(PERIOD, userId),
@@ -38,11 +38,10 @@ export default async function DashboardPage() {
             ownerUserId: userId,
             deletedAt: null,
             company: { deletedAt: null },
-            status: { notIn: [DealStatus.WON, DealStatus.LOST] },
             AND: [
               { nextAction: { not: null } },
               { nextAction: { not: "" } },
-              ...ngExclude.AND,
+              ...exclude.AND,
             ],
           },
           include: {

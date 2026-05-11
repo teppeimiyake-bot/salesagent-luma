@@ -62,3 +62,6 @@ next-env.d.ts
 /tmp/
 *.dump
 *.sql.gz
+
+# ===== migration scratch (DB dumps, FK checks etc.) =====
+/scripts/.migration-tmp/

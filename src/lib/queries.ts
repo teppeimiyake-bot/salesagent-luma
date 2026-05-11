@@ -12,7 +12,7 @@ import {
 } from "@/lib/config";
 import { pipelineAmount, wonAmount, type DealProductLite } from "@/lib/deal-aggregations";
 import { isExcludedFromNextAction } from "@/lib/deal-status";
-import { excludeNGDealsWhere } from "@/lib/deal-status-server";
+import { excludeNGDealsWhere, excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
 
 const dealInclude = {
   company: true,
@@ -93,10 +93,20 @@ export async function getDashboardData(opts: DashboardOptions = {}) {
       ...ACTIVE_DEAL_FILTER,
     },
   };
+  // ダッシュボード「今日のあなた」の openTasks は受注/失注/NG 除外
+  // （社長判断 2026-05：ToDo管理は生きている商談だけに絞る）
+  const todoExclude = await excludeDoneAndNGDealsWhere();
+  const openTaskFilter = {
+    deal: {
+      ...(userId ? { ownerUserId: userId } : {}),
+      ...ACTIVE_DEAL_FILTER,
+      AND: [...todoExclude.AND],
+    },
+  };
 
   const [openTasks, deals, doneCount, totalDeals, wonDeals, aiTaskCount, totalTasks] = await Promise.all([
     prisma.task.findMany({
-      where: { status: { in: [TaskStatus.OPEN, TaskStatus.IN_PROGRESS] }, ...taskFilter },
+      where: { status: { in: [TaskStatus.OPEN, TaskStatus.IN_PROGRESS] }, ...openTaskFilter },
       include: { deal: { include: { company: true, owner: true } } },
       orderBy: [{ priority: "desc" }, { dueDate: "asc" }],
       take: 10,

@@ -13,6 +13,8 @@ import { currentFiscalQuarterPeriod } from "@/lib/config";
 import Link from "next/link";
 import { Crown, Users } from "lucide-react";
 import { pipelineAmount as calcPipelineAmount, type DealProductLite } from "@/lib/deal-aggregations";
+import { excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
+import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +32,17 @@ interface MemberRow {
 async function buildRows(
   users: { id: string; name: string; avatarColor: string | null; role: string | null }[],
   period: string,
+  todoExcludeAND: Prisma.DealWhereInput[],
 ): Promise<MemberRow[]> {
   return Promise.all(
     users.map(async (u) => {
       const activeDeal = { deletedAt: null, company: { deletedAt: null } } as const;
+      // ToDo件数用：受注/失注/NG除外（社長判断 2026-05）
+      const todoDealClause = {
+        ownerUserId: u.id,
+        ...activeDeal,
+        AND: [...todoExcludeAND],
+      };
       // u が Deal主担当 または DealProduct担当のいずれかに該当するDealをロード
       const [deals, openTasks, doneTasks, goal] = await Promise.all([
         prisma.deal.findMany({
@@ -51,8 +60,8 @@ async function buildRows(
             },
           },
         }),
-        prisma.task.count({ where: { deal: { ownerUserId: u.id, ...activeDeal }, status: "OPEN" } }),
-        prisma.task.count({ where: { deal: { ownerUserId: u.id, ...activeDeal }, status: "DONE" } }),
+        prisma.task.count({ where: { deal: todoDealClause, status: "OPEN" } }),
+        prisma.task.count({ where: { deal: todoDealClause, status: "DONE" } }),
         getGoalProgress(period, u.id),
       ]);
       const pipeline = deals
@@ -81,9 +90,11 @@ export default async function TeamPage() {
   const users = await getSalesUsers();
   const members = users.filter((u) => u.role === "sales");
   const managers = users.filter((u) => u.role === "manager");
+  // ToDo件数用の除外条件（受注/失注/NG/完全失注/完全受注 を弾く）
+  const todoExclude = await excludeDoneAndNGDealsWhere();
   const [memberRows, managerRows, teamGoal] = await Promise.all([
-    buildRows(members, PERIOD),
-    buildRows(managers, PERIOD),
+    buildRows(members, PERIOD, todoExclude.AND),
+    buildRows(managers, PERIOD, todoExclude.AND),
     getGoalProgress(PERIOD),
   ]);
 

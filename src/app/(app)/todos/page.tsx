@@ -7,8 +7,8 @@ import { NewTaskDialog } from "@/components/todos/new-task-dialog";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { getSalesUsers } from "@/lib/queries";
-import { excludeNGDealsWhere } from "@/lib/deal-status-server";
-import { TaskStatus, DealStatus } from "@prisma/client";
+import { excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
+import { TaskStatus } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -40,28 +40,31 @@ export default async function TodosPage({
 
   // 共通：親Deal/Companyが active であること
   const activeDealClause = { deletedAt: null, company: { deletedAt: null } } as const;
+
+  // ToDo管理から除外（社長判断 2026-05）：
+  //   A. bant.isNG=true
+  //   B. pipelineStage=【商談前】日程調整不可
+  //   C. 完全失注（全DealProductがNG/失注）
+  //   D. Deal.status = WON / LOST
+  //   E. 完全受注（全DealProductが受注/締結済み）
+  const exclude = await excludeDoneAndNGDealsWhere();
   const taskOwnerDealClause = {
     deal: {
       ...(ownerUserId ? { ownerUserId } : {}),
       ...activeDealClause,
+      AND: [...exclude.AND],
     },
   };
 
   // Deal の where：オープン中（受注/失注以外）でnextActionが空でないもの
-  // NG除外（社長判断 2026-05）：
-  //   A. bant.isNG=true
-  //   B. pipelineStage=【商談前】日程調整不可
-  //   C. 完全失注（全DealProductがNG/失注）
-  const ngExclude = await excludeNGDealsWhere();
   const dealNextActionWhere = {
     ...(ownerUserId ? { ownerUserId } : {}),
     ...activeDealClause,
     AND: [
       { nextAction: { not: null } },
       { nextAction: { not: "" } },
-      ...ngExclude.AND,
+      ...exclude.AND,
     ],
-    status: { notIn: [DealStatus.WON, DealStatus.LOST] },
   };
 
   const [users, tasks, openCount, doneCount, allCount, dealsWithNextAction] = await Promise.all([
