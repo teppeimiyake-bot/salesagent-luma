@@ -9,6 +9,26 @@ import type { NextAction } from "@/lib/ai/pipeline";
 
 type Json = Record<string, unknown> | null;
 
+/**
+ * AI生成物の表示を防御的に行うヘルパー。
+ * - 文字列ならそのまま
+ * - null/undefined は ""
+ * - オブジェクト/配列なら整形 JSON 文字列に
+ * いったん AI が想定外のネスト構造（例: closing_plan が phase1/phase2 ネスト）を
+ * 返してきたケースでも React の "Objects are not valid as a React child" を踏まずに
+ * 表示し切るための保険。長期的には pipeline.ts 側で normalize する。
+ */
+function asText(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
+}
+
 export function AiPanel({
   dealId,
   meeting,
@@ -42,19 +62,23 @@ export function AiPanel({
     );
   }
 
-  const issues = (meeting.issues as string[]) ?? [];
+  // AI生成物は型保証が無いので unknown 経由で受けて asText() でレンダリングする
+  const rawIssues = meeting.issues;
+  const issues: unknown[] = Array.isArray(rawIssues) ? rawIssues : [];
   const top = (meeting.topSales as {
-    real_intent: string;
-    decision_structure: string;
-    risks: string[];
-    winning_scenario: string;
+    real_intent?: unknown;
+    decision_structure?: unknown;
+    risks?: unknown;
+    winning_scenario?: unknown;
   } | null) ?? null;
+  const topRisks: unknown[] = Array.isArray(top?.risks) ? (top!.risks as unknown[]) : [];
   const strategy = (meeting.strategy as {
-    strategy: string;
-    differentiation: string;
-    closing_plan: string;
+    strategy?: unknown;
+    differentiation?: unknown;
+    closing_plan?: unknown;
   } | null) ?? null;
-  const nextActions = (meeting.nextActions as { next_actions: NextAction[] } | null)?.next_actions ?? [];
+  const nextActionsRaw = (meeting.nextActions as { next_actions?: unknown } | null)?.next_actions;
+  const nextActions: NextAction[] = Array.isArray(nextActionsRaw) ? (nextActionsRaw as NextAction[]) : [];
   const scores = (meeting.scores as { scores: { actionability: number; specificity: number; impact: number } } | null)?.scores;
   const meta = meeting.meta as { improved?: boolean; fallback?: boolean } | null;
 
@@ -123,7 +147,7 @@ export function AiPanel({
               {issues.map((it, i) => (
                 <li key={i} className="text-sm text-zinc-700 flex gap-2">
                   <span className="text-amber-500">•</span>
-                  <span>{it}</span>
+                  <span className="whitespace-pre-wrap">{asText(it)}</span>
                 </li>
               ))}
             </ul>
@@ -143,22 +167,22 @@ export function AiPanel({
           <CardContent className="space-y-3 text-sm">
             <div>
               <p className="text-xs text-zinc-500 mb-0.5">顧客の本音</p>
-              <p className="text-zinc-800">{top.real_intent}</p>
+              <p className="text-zinc-800 whitespace-pre-wrap">{asText(top.real_intent)}</p>
             </div>
             <div>
               <p className="text-xs text-zinc-500 mb-0.5">意思決定構造</p>
-              <p className="text-zinc-800">{top.decision_structure}</p>
+              <p className="text-zinc-800 whitespace-pre-wrap">{asText(top.decision_structure)}</p>
             </div>
-            {top.risks?.length > 0 && (
+            {topRisks.length > 0 && (
               <div>
                 <p className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
                   <Shield className="h-3 w-3" /> 失注リスク
                 </p>
                 <ul className="space-y-1">
-                  {top.risks.map((r, i) => (
+                  {topRisks.map((r, i) => (
                     <li key={i} className="text-zinc-700 flex gap-2">
                       <span className="text-red-500">•</span>
-                      <span>{r}</span>
+                      <span className="whitespace-pre-wrap">{asText(r)}</span>
                     </li>
                   ))}
                 </ul>
@@ -168,7 +192,7 @@ export function AiPanel({
               <p className="text-xs text-emerald-700 font-medium mb-1 flex items-center gap-1">
                 <Trophy className="h-3 w-3" /> 勝ち筋
               </p>
-              <p className="text-sm text-emerald-900">{top.winning_scenario}</p>
+              <p className="text-sm text-emerald-900 whitespace-pre-wrap">{asText(top.winning_scenario)}</p>
             </div>
           </CardContent>
         </Card>
@@ -183,15 +207,15 @@ export function AiPanel({
           <CardContent className="space-y-2 text-sm">
             <div>
               <p className="text-xs text-zinc-500">戦略</p>
-              <p>{strategy.strategy}</p>
+              <p className="whitespace-pre-wrap">{asText(strategy.strategy)}</p>
             </div>
             <div>
               <p className="text-xs text-zinc-500">差別化</p>
-              <p>{strategy.differentiation}</p>
+              <p className="whitespace-pre-wrap">{asText(strategy.differentiation)}</p>
             </div>
             <div>
               <p className="text-xs text-zinc-500">クロージング</p>
-              <p>{strategy.closing_plan}</p>
+              <p className="whitespace-pre-wrap">{asText(strategy.closing_plan)}</p>
             </div>
           </CardContent>
         </Card>
@@ -234,9 +258,11 @@ export function AiPanel({
                     </Badge>
                     <Badge variant="outline">インパクト {a.impact}</Badge>
                   </div>
-                  <p className="font-medium text-sm">{a.action}</p>
-                  <p className="text-xs text-zinc-500 mt-2">理由: {a.reason}</p>
-                  <p className="text-xs text-zinc-500 mt-1">期待成果: {a.expected_outcome}</p>
+                  <p className="font-medium text-sm whitespace-pre-wrap">{asText(a.action)}</p>
+                  <p className="text-xs text-zinc-500 mt-2 whitespace-pre-wrap">理由: {asText(a.reason)}</p>
+                  <p className="text-xs text-zinc-500 mt-1 whitespace-pre-wrap">
+                    期待成果: {asText(a.expected_outcome)}
+                  </p>
                   <div className="mt-3">
                     {added ? (
                       <span className="text-xs text-orange-600 inline-flex items-center gap-1">

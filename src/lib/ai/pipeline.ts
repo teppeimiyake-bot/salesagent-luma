@@ -241,8 +241,30 @@ ${JSON.stringify(analysis, null, 2)}
 
 JSONのみ出力。`;
   const r = await callClaudeJSON<TopSales>({ system, user, maxTokens: 2000, temperature: 0.4 });
-  if (r && r.real_intent) return r;
+  if (r && r.real_intent) return normalizeTopSales(r);
   return fallbackTopSales(analysis);
+}
+
+/** TopSales も string フィールドに object が混入すると UI が落ちるので正規化。 */
+function normalizeTopSales(t: TopSales): TopSales {
+  const toStr = (v: unknown): string => {
+    if (v == null) return "";
+    if (typeof v === "string") return v;
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    try {
+      return JSON.stringify(v, null, 2);
+    } catch {
+      return String(v);
+    }
+  };
+  const risksRaw = (t as unknown as { risks?: unknown }).risks;
+  const risks: string[] = Array.isArray(risksRaw) ? risksRaw.map(toStr) : [];
+  return {
+    real_intent: toStr(t.real_intent),
+    decision_structure: toStr(t.decision_structure),
+    risks,
+    winning_scenario: toStr(t.winning_scenario),
+  };
 }
 
 // ============================================================
@@ -274,8 +296,32 @@ ${JSON.stringify(topSales, null, 2)}
 
 JSONのみ出力。`;
   const r = await callClaudeJSON<Strategy>({ system, user, maxTokens: 1500 });
-  if (r && r.strategy) return r;
+  if (r && r.strategy) return normalizeStrategy(r);
   return fallbackStrategy(topSales);
+}
+
+/**
+ * Strategy の各フィールドは UI 側で `<p>{...}</p>` 直接レンダリングしているため
+ * 文字列でなければならない。AI（Claude）が closing_plan に { week1: ..., week2: ... }
+ * のようなネストオブジェクトを返してくるケースが本番で観測されたので、
+ * オブジェクト/配列は整形 JSON 文字列に正規化する。
+ */
+function normalizeStrategy(s: Strategy): Strategy {
+  const toStr = (v: unknown): string => {
+    if (v == null) return "";
+    if (typeof v === "string") return v;
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    try {
+      return JSON.stringify(v, null, 2);
+    } catch {
+      return String(v);
+    }
+  };
+  return {
+    strategy: toStr(s.strategy),
+    differentiation: toStr(s.differentiation),
+    closing_plan: toStr(s.closing_plan),
+  };
 }
 
 // ============================================================
@@ -334,8 +380,37 @@ JSONのみ出力。`;
     maxTokens: 2500,
     temperature: 0.4,
   });
-  if (r && Array.isArray(r.next_actions) && r.next_actions.length > 0) return r;
+  if (r && Array.isArray(r.next_actions) && r.next_actions.length > 0) {
+    return { next_actions: r.next_actions.map(normalizeNextAction) };
+  }
   return fallbackNextActions(strategy, topSales);
+}
+
+/** NextAction の各 string フィールドに object が入るケースをガード。 */
+function normalizeNextAction(a: NextAction): NextAction {
+  const toStr = (v: unknown): string => {
+    if (v == null) return "";
+    if (typeof v === "string") return v;
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    try {
+      return JSON.stringify(v, null, 2);
+    } catch {
+      return String(v);
+    }
+  };
+  const prio = (a as unknown as { priority?: unknown }).priority;
+  const imp = (a as unknown as { impact?: unknown }).impact;
+  const safePrio: NextAction["priority"] =
+    prio === "high" || prio === "medium" || prio === "low" ? prio : "medium";
+  const safeImp: NextAction["impact"] =
+    imp === "high" || imp === "medium" || imp === "low" ? imp : "medium";
+  return {
+    action: toStr(a.action),
+    priority: safePrio,
+    impact: safeImp,
+    reason: toStr(a.reason),
+    expected_outcome: toStr(a.expected_outcome),
+  };
 }
 
 // ============================================================
@@ -419,7 +494,9 @@ JSONのみ出力。具体性を最大化せよ。`;
     maxTokens: 2500,
     temperature: 0.5,
   });
-  if (r && Array.isArray(r.next_actions) && r.next_actions.length > 0) return r;
+  if (r && Array.isArray(r.next_actions) && r.next_actions.length > 0) {
+    return { next_actions: r.next_actions.map(normalizeNextAction) };
+  }
   return null;
 }
 

@@ -8,6 +8,18 @@ import type { NextAction } from "@/lib/ai/pipeline";
 
 type Json = Record<string, unknown> | null | unknown;
 
+// AI生成物の表示防御（ai-panel.tsx と同じ意図、循環依存を避けてローカル定義）
+function asText(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
+}
+
 type MeetingItem = {
   id: string;
   title: string | null;
@@ -45,12 +57,18 @@ export function DealOverviewPanel({
   const latest = sortedDesc[0] ?? null;
 
   // 最新MeetingのAI Next Actionから上位2件
-  const latestNext =
-    (latest?.nextActions as { next_actions?: NextAction[] } | null)?.next_actions?.slice(0, 2) ?? [];
+  const rawLatestNext = (latest?.nextActions as { next_actions?: unknown } | null)?.next_actions;
+  let latestNext: NextAction[] = [];
+  if (Array.isArray(rawLatestNext)) {
+    latestNext = (rawLatestNext as NextAction[]).slice(0, 2);
+  }
   const latestTop = latest?.topSales as
-    | { winning_scenario?: string; risks?: string[] }
+    | { winning_scenario?: unknown; risks?: unknown }
     | null
     | undefined;
+  const latestTopRisks: unknown[] = Array.isArray(latestTop?.risks)
+    ? (latestTop!.risks as unknown[])
+    : [];
 
   return (
     <div className="space-y-3">
@@ -106,7 +124,7 @@ export function DealOverviewPanel({
                         優先 {a.priority}
                       </Badge>
                     </div>
-                    <p className="font-medium leading-snug">{a.action}</p>
+                    <p className="font-medium leading-snug whitespace-pre-wrap">{asText(a.action)}</p>
                   </li>
                 ))}
               </ul>
@@ -114,26 +132,26 @@ export function DealOverviewPanel({
           )}
 
           {/* 勝ち筋 / リスク（要約） */}
-          {latestTop?.winning_scenario && (
+          {asText(latestTop?.winning_scenario) && (
             <div className="rounded-md bg-emerald-50 border border-emerald-200 p-2.5">
               <p className="text-xs text-emerald-800 font-semibold mb-1 flex items-center gap-1">
                 <Trophy className="h-3 w-3" /> 勝ち筋
               </p>
-              <p className="text-sm text-emerald-900 leading-snug">
-                {latestTop.winning_scenario}
+              <p className="text-sm text-emerald-900 leading-snug whitespace-pre-wrap">
+                {asText(latestTop?.winning_scenario)}
               </p>
             </div>
           )}
-          {latestTop?.risks && latestTop.risks.length > 0 && (
+          {latestTopRisks.length > 0 && (
             <div className="rounded-md bg-red-50 border border-red-200 p-2.5">
               <p className="text-xs text-red-800 font-semibold mb-1 flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" /> 失注リスク
               </p>
               <ul className="space-y-0.5">
-                {latestTop.risks.slice(0, 2).map((r, i) => (
+                {latestTopRisks.slice(0, 2).map((r, i) => (
                   <li key={i} className="text-sm text-red-900 leading-snug flex gap-1.5">
                     <span>•</span>
-                    <span>{r}</span>
+                    <span className="whitespace-pre-wrap">{asText(r)}</span>
                   </li>
                 ))}
               </ul>
