@@ -594,36 +594,63 @@ function PlanProposalPicker({
             {selected.length === 0 ? "企画提案を選択" : "追加"}
           </button>
           {open && (
-            <>
-              {/* クリック外しでクローズ */}
-              <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-              <div className="absolute left-0 top-full z-40 mt-1 grid w-[34rem] max-w-[90vw] grid-cols-2 gap-1 rounded-md border border-zinc-200 bg-white p-2 shadow-xl">
-                {masters.length === 0 && (
-                  <div className="col-span-2 px-3 py-2 text-sm text-zinc-400">
+            <div
+              className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
+              onClick={() => setOpen(false)}
+            >
+              <div
+                className="w-[36rem] max-w-full rounded-lg border border-zinc-200 bg-white p-4 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-zinc-800">企画提案を選択（複数可）</span>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                    title="閉じる"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {masters.length === 0 ? (
+                  <div className="px-1 py-2 text-sm text-zinc-400">
                     企画提案マスタが未登録です（管理画面で追加）
                   </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                    {masters.map((m) => {
+                      const c = planProposalColorClass(m.color);
+                      const checked = selected.includes(m.name);
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => toggle(m.name)}
+                          className={`flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-zinc-100 ${checked ? "bg-orange-50" : ""}`}
+                        >
+                          <span
+                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${checked ? "border-orange-500 bg-orange-500 text-white" : "border-zinc-300 bg-white"}`}
+                          >
+                            {checked && <Check className="h-3.5 w-3.5" />}
+                          </span>
+                          <span className={`rounded px-2 py-0.5 text-xs ${c.bg} ${c.text}`}>{m.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
-                {masters.map((m) => {
-                  const c = planProposalColorClass(m.color);
-                  const checked = selected.includes(m.name);
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => toggle(m.name)}
-                      className={`flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-zinc-100 ${checked ? "bg-orange-50" : ""}`}
-                    >
-                      <span
-                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${checked ? "border-orange-500 bg-orange-500 text-white" : "border-zinc-300 bg-white"}`}
-                      >
-                        {checked && <Check className="h-3.5 w-3.5" />}
-                      </span>
-                      <span className={`rounded px-2 py-0.5 text-xs ${c.bg} ${c.text}`}>{m.name}</span>
-                    </button>
-                  );
-                })}
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="rounded-md bg-zinc-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
+                  >
+                    完了
+                  </button>
+                </div>
               </div>
-            </>
+            </div>
           )}
         </div>
       )}
