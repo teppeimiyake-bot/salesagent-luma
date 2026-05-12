@@ -3,6 +3,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { YOMI_OPTIONS, yomiColor } from "@/lib/deal-aggregations";
 import { stripYomiPrefix } from "@/lib/yomi-status";
+import { NextActionInput } from "@/components/deals/next-action-input";
 
 type ProductLite = {
   id: string;
@@ -88,11 +89,6 @@ export function DealInlineEdit({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [naText, setNaText] = useState(nextAction ?? "");
-  const [naFocused, setNaFocused] = useState(false);
-  useEffect(() => {
-    if (!naFocused) setNaText(nextAction ?? "");
-  }, [nextAction, naFocused]);
 
   function patchDealProduct(id: string, body: Record<string, unknown>) {
     start(async () => {
@@ -161,24 +157,12 @@ export function DealInlineEdit({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-        <span className="text-[11px] text-zinc-400 shrink-0">Next:</span>
-        <input
-          type="text"
-          value={naText}
-          disabled={pending}
-          placeholder="ネクストアクション"
-          onChange={(e) => setNaText(e.target.value)}
-          onFocus={() => setNaFocused(true)}
-          onBlur={(e) => {
-            setNaFocused(false);
-            const v = e.target.value.trim();
-            const next = v === "" ? null : v;
-            if (next !== (nextAction ?? null)) patchDeal({ nextAction: next });
-          }}
-          className="min-w-[12rem] flex-1 rounded border border-zinc-200 bg-white px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait disabled:bg-zinc-50"
-        />
-        <span className="text-[11px] text-zinc-400 shrink-0">期日:</span>
+      <div className="flex items-start gap-2">
+        <span className="mt-1 text-[11px] text-zinc-400 shrink-0">Next:</span>
+        <div className="flex-1 min-w-[12rem]">
+          <NextActionInput dealId={dealId} value={nextAction} rows={1} />
+        </div>
+        <span className="mt-1 text-[11px] text-zinc-400 shrink-0">期日:</span>
         <input
           type="date"
           value={toDateInputValue(nextActionAt)}
@@ -192,7 +176,7 @@ export function DealInlineEdit({
               if (!Number.isNaN(dt.getTime())) patchDeal({ nextActionAt: dt.toISOString() });
             }
           }}
-          className="rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[11px] tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait disabled:bg-zinc-50"
+          className="mt-0.5 rounded border border-zinc-200 bg-white px-1.5 py-1 text-[11px] tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait disabled:bg-zinc-50"
           title="ネクストアクションの期日を変更"
         />
       </div>

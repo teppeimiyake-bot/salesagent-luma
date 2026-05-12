@@ -15,6 +15,7 @@ import {
 import { DueBadge } from "@/components/ui/due-badge";
 import { YOMI_OPTIONS, yomiColor } from "@/lib/deal-aggregations";
 import { stripYomiPrefix } from "@/lib/yomi-status";
+import { NextActionInput } from "@/components/deals/next-action-input";
 
 type DealProductLite = {
   id: string;
@@ -227,17 +228,24 @@ export function TasksAllList({ tasks }: { tasks: Task[] }) {
               </div>
 
               {isDealNA ? (
-                <Link
-                  href={`/deals/${t.deal.id}`}
-                  className="block group"
-                >
-                  <p
-                    className={`text-base font-medium leading-snug text-zinc-900 group-hover:text-green-700 inline-flex items-center gap-1.5`}
+                <div className="flex items-start gap-1.5">
+                  <div className="flex-1 min-w-0">
+                    <NextActionInput
+                      dealId={t.deal.id}
+                      value={t.title}
+                      rows={2}
+                      placeholder="ネクストアクションを入力…"
+                      className="w-full resize-y rounded border border-transparent bg-transparent px-1.5 py-1 text-base font-medium leading-snug text-zinc-900 hover:border-zinc-200 hover:bg-white focus:border-emerald-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait"
+                    />
+                  </div>
+                  <Link
+                    href={`/deals/${t.deal.id}`}
+                    className="mt-1.5 shrink-0 text-zinc-300 hover:text-green-600"
+                    title="商談詳細を開く"
                   >
-                    {t.title}
-                    <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </p>
-                </Link>
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
               ) : (
                 <p className={`text-base font-medium leading-snug ${done ? "line-through text-zinc-500" : "text-zinc-900"}`}>
                   {t.title}
