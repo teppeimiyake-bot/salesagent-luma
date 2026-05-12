@@ -7,6 +7,7 @@ import { SortFilter } from "@/components/deals/sort-filter";
 import { YomiFilter } from "@/components/deals/yomi-filter";
 import {
   YOMI_FILTER_VALUES,
+  DEFAULT_YOMI_VALUES,
   expandYomiValues,
   type YomiFilterValue,
 } from "@/components/deals/yomi-filter-config";
@@ -51,13 +52,23 @@ export default async function DealsPage({
   const ownerParam = sp.owner ?? "all";
   const productParam = sp.product ?? null;
   const sortParam = sp.sort ?? "next";
-  const yomiParam = sp.yomi ?? "";
-  const yomiSelected = yomiParam
-    .split(",")
-    .map((v) => v.trim())
-    .filter((v): v is YomiFilterValue =>
-      (YOMI_FILTER_VALUES as readonly string[]).includes(v),
-    );
+  // ヨミフィルタ：
+  // - `sp.yomi === undefined`（クエリ無し）→ デフォルト4種（ネタ/Cヨミ/Bヨミ/Aヨミ）
+  // - クエリ有り → 値を解釈（空文字や全て無効値の場合は「全件」=フィルタ無効）
+  // ※「すべて」ボタン（yomi-filter.tsx）は `?yomi=` を削除した URL を生成するため、
+  //   結果としてデフォルト4種へ戻る挙動になる（完全全件ではない）
+  const yomiParamRaw = sp.yomi;
+  let yomiSelected: YomiFilterValue[];
+  if (yomiParamRaw === undefined) {
+    yomiSelected = DEFAULT_YOMI_VALUES;
+  } else {
+    yomiSelected = yomiParamRaw
+      .split(",")
+      .map((v) => v.trim())
+      .filter((v): v is YomiFilterValue =>
+        (YOMI_FILTER_VALUES as readonly string[]).includes(v),
+      );
+  }
   const yomiExpanded = yomiSelected.length > 0 ? expandYomiValues(yomiSelected) : null;
   const probParam = sp.probability ?? "";
   const probSelected = probParam
@@ -195,6 +206,17 @@ export default async function DealsPage({
 
   const products = productGroups.map((p) => ({ name: p.productName, count: p._count._all }));
 
+  // 商談詳細→「商談一覧」戻りリンク用に、現在のフィルタ/並びをクエリ文字列で持ち回す。
+  // `?yomi=` が省略されていてもデフォルト4種を意図したフィルタ状態として明示的にエンコードする。
+  // 受け側 deals/[id]/page.tsx で `from` をそのまま `/deals?<from>` に展開する。
+  const backQueryParams = new URLSearchParams();
+  if (ownerParam !== "all") backQueryParams.set("owner", ownerParam);
+  if (productParam) backQueryParams.set("product", productParam);
+  if (sortParam !== "next") backQueryParams.set("sort", sortParam);
+  if (yomiSelected.length > 0) backQueryParams.set("yomi", yomiSelected.join(","));
+  if (probSelected.length > 0) backQueryParams.set("probability", probSelected.join(","));
+  const linkQuery = backQueryParams.toString();
+
   return (
     <>
       <Header title="商談一覧" subtitle={`${deals.length} 件（企業単位）`} right={<NewDealDialog />} />
@@ -211,6 +233,7 @@ export default async function DealsPage({
           title={`商談 (${deals.length}件)`}
           showAllLink={false}
           canDelete={canEdit}
+          linkQuery={linkQuery}
         />
       </div>
     </>

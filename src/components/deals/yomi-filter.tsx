@@ -5,10 +5,15 @@ import { cn } from "@/lib/utils";
 import { Target } from "lucide-react";
 import {
   YOMI_FILTER_VALUES,
+  DEFAULT_YOMI_VALUES,
   type YomiFilterValue,
 } from "./yomi-filter-config";
 
-export { YOMI_FILTER_VALUES, expandYomiValues } from "./yomi-filter-config";
+export {
+  YOMI_FILTER_VALUES,
+  DEFAULT_YOMI_VALUES,
+  expandYomiValues,
+} from "./yomi-filter-config";
 export type { YomiFilterValue } from "./yomi-filter-config";
 
 const YOMI_TONE: Record<YomiFilterValue, { active: string; idle: string }> = {
@@ -44,6 +49,10 @@ export function YomiFilter({ selected }: { selected: YomiFilterValue[] }) {
 
   function buildHref(next: YomiFilterValue[]) {
     const params = new URLSearchParams(search);
+    // 商談一覧→詳細→戻る挙動のため、戻りリンクが古い from を持ち続けないように落とす
+    params.delete("from");
+    // `yomi` を空配列で指定 = 「すべて」ボタン押下時。
+    // クエリから `yomi` を削除 → サーバ側で DEFAULT_YOMI_VALUES（ネタ/C/B/A）が再適用される。
     if (next.length === 0) params.delete("yomi");
     else params.set("yomi", next.join(","));
     const q = params.toString();
@@ -55,7 +64,12 @@ export function YomiFilter({ selected }: { selected: YomiFilterValue[] }) {
     return [...selected, v];
   }
 
-  const allOff = selected.length === 0;
+  // 「すべて」ボタンは "デフォルト4種に戻す" の意味。
+  // 現在の選択がデフォルト4種と完全一致するとき active 表示にして
+  // 「今はデフォルト状態である」ことを伝える。
+  const isDefaultState =
+    selected.length === DEFAULT_YOMI_VALUES.length &&
+    DEFAULT_YOMI_VALUES.every((v) => selected.includes(v));
 
   return (
     <div className="flex items-center gap-1.5 overflow-x-auto py-1">
@@ -64,9 +78,10 @@ export function YomiFilter({ selected }: { selected: YomiFilterValue[] }) {
       </span>
       <Link
         href={buildHref([])}
+        title="ネタ / Cヨミ / Bヨミ / Aヨミ の4種に戻す"
         className={cn(
           "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors border",
-          allOff
+          isDefaultState
             ? "bg-zinc-900 text-white border-zinc-900"
             : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50",
         )}

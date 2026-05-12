@@ -49,11 +49,18 @@ export function DealsTable({
   title = "進行中の商談",
   showAllLink = true,
   canDelete = false,
+  linkQuery,
 }: {
   deals: DealRow[];
   title?: string;
   showAllLink?: boolean;
   canDelete?: boolean;
+  /**
+   * 商談詳細リンクに付与するクエリ文字列（`from` 用、`?` は含めない）。
+   * 商談一覧から詳細に遷移する際に、戻りボタン用のフィルタ状態を引き継ぐためのもの。
+   * 未指定の場合は通常のリンク（`/deals/{id}`）になる。
+   */
+  linkQuery?: string;
 }) {
   return (
     <Card>
@@ -77,7 +84,11 @@ export function DealsTable({
             return (
               <Link
                 key={d.id}
-                href={`/deals/${d.id}`}
+                href={
+                  linkQuery
+                    ? `/deals/${d.id}?from=${encodeURIComponent(linkQuery)}`
+                    : `/deals/${d.id}`
+                }
                 className="grid grid-cols-12 gap-4 items-center px-5 py-4 hover:bg-emerald-50/30 transition-colors group"
               >
                 {/* 左：企業ロゴ＋名＋プロダクト構成 */}

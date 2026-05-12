@@ -29,8 +29,21 @@ import type { DealStatus } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function DealDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ from?: string }>;
+}) {
   const { id } = await params;
+  const sp = searchParams ? await searchParams : {};
+  // 商談一覧→詳細で渡される ?from=<encoded query>。戻りリンクで `/deals?<from>` に復元する。
+  // 不正値（改行・スペース・URL先頭の `/` 等）が混ざるケースに備え、最低限の正常性チェックを行う。
+  const rawFrom = typeof sp.from === "string" ? sp.from : "";
+  const safeFrom = rawFrom && !rawFrom.includes("\n") && !rawFrom.startsWith("/") ? rawFrom : "";
+  const backHref = safeFrom ? `/deals?${safeFrom}` : "/deals";
+
   const session = await getSession();
   const me = session
     ? await prisma.user.findUnique({
@@ -76,6 +89,23 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   // 最新ミーティング（AI Panel に渡す既存のシグネチャ用）
   const latestMeeting = deal.meetings[0] ?? null;
 
+  // BANT JSON から業界業種・決算月を安全に narrow（DealPlanInfo と同じパターン）
+  // - 業界業種: Notion 由来は ", " 区切り（複数選択）。company.industry を優先し、無ければ bant.industry。
+  // - 決算月: bant.fiscalMonth（例 "3月", "12月", "不明"）。値が無ければ表示しない。
+  const bantObj =
+    deal.bant && typeof deal.bant === "object" && !Array.isArray(deal.bant)
+      ? (deal.bant as Record<string, unknown>)
+      : null;
+  const bantIndustry =
+    bantObj && typeof bantObj.industry === "string" && bantObj.industry.length > 0
+      ? bantObj.industry
+      : null;
+  const industryLabel = deal.company.industry || bantIndustry;
+  const fiscalMonth =
+    bantObj && typeof bantObj.fiscalMonth === "string" && bantObj.fiscalMonth.length > 0
+      ? bantObj.fiscalMonth
+      : null;
+
   return (
     <>
       <Header
@@ -109,14 +139,19 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         }
       />
       <div className="px-8 py-3 border-b border-zinc-200 bg-white flex items-center gap-2 flex-wrap">
-        <Link href="/deals" className="text-sm text-zinc-500 hover:text-emerald-600 inline-flex items-center gap-1">
+        <Link href={backHref} className="text-sm text-zinc-500 hover:text-emerald-600 inline-flex items-center gap-1">
           <ArrowLeft className="h-3.5 w-3.5" /> 商談一覧
         </Link>
         <span className="text-zinc-300">|</span>
         <Badge variant={statusColor(deal.status as DealStatus)}>
           {STATUS_LABEL[deal.status as DealStatus]}
         </Badge>
-        {deal.company.industry && <Badge variant="secondary">{deal.company.industry}</Badge>}
+        {industryLabel && <Badge variant="secondary">{industryLabel}</Badge>}
+        {fiscalMonth && (
+          <Badge variant="outline" className="text-xs">
+            決算月: {fiscalMonth}
+          </Badge>
+        )}
         {deal.nextAction && (
           <span className="text-sm text-zinc-600 ml-2 truncate">
             <span className="font-medium">Next:</span> {deal.nextAction}
