@@ -15,6 +15,7 @@ import { DealDocuments } from "@/components/deals/deal-documents";
 import { DealQuotes } from "@/components/deals/deal-quotes";
 import { MeetingHistory } from "@/components/deals/meeting-history";
 import { BantSummary } from "@/components/deals/bant-summary";
+import { DealPlanInfo } from "@/components/deals/deal-plan-info";
 import { DealOverviewPanel } from "@/components/deals/deal-overview-panel";
 import { AiChat } from "@/components/dashboard/ai-chat";
 import { NewTaskDialog } from "@/components/todos/new-task-dialog";
@@ -169,6 +170,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
               canEdit={canEdit}
             />
             <PreparationPanel dealId={deal.id} status={deal.status} />
+            {/* Notion由来「企画内容」+「ご提案企画書URL」の閲覧表示（Phase 1） */}
+            <DealPlanInfo bant={deal.bant} />
             {/* 案件全体のBANT集約サマリ（商談記録の外で1つに集約） */}
             <BantSummary
               dealId={deal.id}
