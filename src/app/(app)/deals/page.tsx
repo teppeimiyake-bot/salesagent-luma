@@ -233,6 +233,7 @@ export default async function DealsPage({
           title={`商談 (${deals.length}件)`}
           showAllLink={false}
           canDelete={canEdit}
+          editable={canEdit}
           linkQuery={linkQuery}
         />
       </div>

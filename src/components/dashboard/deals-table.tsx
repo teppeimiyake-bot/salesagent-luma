@@ -18,6 +18,7 @@ import {
   type DealProductLite,
 } from "@/lib/deal-aggregations";
 import { leadSourceColor } from "@/lib/lead-source";
+import { DealInlineEdit } from "@/components/deals/deal-inline-edit";
 import type { DealStatus } from "@prisma/client";
 
 type DealRow = {
@@ -49,12 +50,15 @@ export function DealsTable({
   title = "進行中の商談",
   showAllLink = true,
   canDelete = false,
+  editable = false,
   linkQuery,
 }: {
   deals: DealRow[];
   title?: string;
   showAllLink?: boolean;
   canDelete?: boolean;
+  /** true の場合、各行でヨミ・提案金額・ネクストアクション(テキスト/期日)をインライン編集できる */
+  editable?: boolean;
   /**
    * 商談詳細リンクに付与するクエリ文字列（`from` 用、`?` は含めない）。
    * 商談一覧から詳細に遷移する際に、戻りボタン用のフィルタ状態を引き継ぐためのもの。
@@ -158,11 +162,25 @@ export function DealsTable({
                         })()}
                       </div>
                     )}
-                    {d.nextAction && (
-                      <p className="text-xs text-zinc-600 mt-1.5 truncate">
-                        <span className="text-zinc-400">Next: </span>
-                        {d.nextAction}
-                      </p>
+                    {editable ? (
+                      <DealInlineEdit
+                        dealId={d.id}
+                        nextAction={d.nextAction}
+                        nextActionAt={d.nextActionAt}
+                        products={d.products.map((p) => ({
+                          id: p.id,
+                          productName: p.productName,
+                          yomiStatus: p.yomiStatus,
+                          amount: p.amount,
+                        }))}
+                      />
+                    ) : (
+                      d.nextAction && (
+                        <p className="text-xs text-zinc-600 mt-1.5 truncate">
+                          <span className="text-zinc-400">Next: </span>
+                          {d.nextAction}
+                        </p>
+                      )
                     )}
                   </div>
                 </div>
