@@ -34,6 +34,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
   }
 
+  // 外部リンク登録（sourceType='url'）：本体は持たないので外部URLへ 302 リダイレクト
+  if (doc.sourceType === "url") {
+    if (doc.fileUrl && (doc.fileUrl.startsWith("https://") || doc.fileUrl.startsWith("http://"))) {
+      return NextResponse.redirect(doc.fileUrl, 302);
+    }
+    return NextResponse.json({ error: "外部リンクが不正です" }, { status: 404 });
+  }
+
   if (!doc.fileUrl || doc.fileUrl.includes(" ")) {
     // "(リンク未登録)" など、ファイル本体が無いレコード
     return NextResponse.json({ error: "このドキュメントにはファイル本体がありません" }, { status: 404 });

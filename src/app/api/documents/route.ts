@@ -12,6 +12,9 @@ const META_SCHEMA = z.object({
   scope: z.string().optional(),
   dealId: z.string().uuid().optional(),
   version: z.string().optional(),
+  // sourceType='url' のとき：外部URLのみ登録（ファイル本体なし）
+  sourceType: z.enum(["file", "url"]).optional(),
+  url: z.string().url().optional(),
 });
 
 // 契約書のアップロードは admin のみ
@@ -109,6 +112,7 @@ export async function POST(req: Request) {
       data: {
         name,
         category,
+        sourceType: "file",
         scope,
         dealId,
         description: description || null,
@@ -125,15 +129,28 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null);
   const parsed = META_SCHEMA.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "Invalid input", detail: parsed.error.flatten() }, { status: 400 });
   if (ADMIN_ONLY_CATEGORIES.has(parsed.data.category) && !hasPermission(me?.permission, "admin")) {
     return NextResponse.json(
       { error: "Forbidden: contracts can only be uploaded by admin" },
       { status: 403 },
     );
   }
+  const { sourceType: rawSourceType, url, ...rest } = parsed.data;
+  const sourceType = rawSourceType ?? "file";
+  if (sourceType === "url") {
+    // 外部リンク登録：fileUrl に http(s) URL を入れる。ファイル本体は持たない。
+    if (!url || !(url.startsWith("https://") || url.startsWith("http://"))) {
+      return NextResponse.json({ error: "URL（http/https）を入力してください" }, { status: 400 });
+    }
+    const doc = await prisma.document.create({
+      data: { ...rest, sourceType: "url", fileUrl: url, uploadedById: session?.userId ?? null, tags: [] },
+    });
+    return NextResponse.json({ document: doc });
+  }
+  // sourceType='file' だが multipart ではない（=リンク未登録のプレースホルダ作成。従来動作）
   const doc = await prisma.document.create({
-    data: { ...parsed.data, fileUrl: "(リンク未登録)", uploadedById: session?.userId ?? null, tags: [] },
+    data: { ...rest, sourceType: "file", fileUrl: "(リンク未登録)", uploadedById: session?.userId ?? null, tags: [] },
   });
   return NextResponse.json({ document: doc });
 }

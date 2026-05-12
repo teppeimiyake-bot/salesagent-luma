@@ -17,6 +17,7 @@ import {
   Trash2,
   Sparkle,
   GitBranch,
+  Film,
 } from "lucide-react";
 
 const baseGroups = [
@@ -48,6 +49,7 @@ const adminGroup = {
   label: "管理者メニュー",
   items: [
     { href: "/admin/products", label: "カテゴリ", icon: Package, color: "text-rose-500", activeBg: "bg-rose-500" },
+    { href: "/admin/plan-proposals", label: "企画提案", icon: Film, color: "text-orange-500", activeBg: "bg-orange-500" },
     { href: "/admin/lead-sources", label: "リード獲得経由", icon: Sparkle, color: "text-fuchsia-500", activeBg: "bg-fuchsia-500" },
     { href: "/admin/pipeline-stages", label: "商談プロセス", icon: GitBranch, color: "text-violet-500", activeBg: "bg-violet-500" },
     { href: "/admin/users", label: "ユーザー権限", icon: Shield, color: "text-red-500", activeBg: "bg-red-500" },

@@ -253,6 +253,23 @@ model PipelineStage {
 }
 
 // ============================================================
+// 企画提案マスタ（Luma映像案件で提案する企画の型。例「【採用】ドラマ風動画」）
+// 管理者がCRUD・並べ替え → 映像プランの DealProduct でマルチセレクト
+// DealProduct.planProposals は name 文字列の配列で保管（FKではない＝マスタ削除しても商談データ保全）
+// ============================================================
+model PlanProposal {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  color        String   @default("default") // Notion multi_select 色名（blue / brown / orange ...）
+  displayOrder Int      @default(0) @map("display_order")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([displayOrder])
+  @@map("plan_proposals")
+}
+
+// ============================================================
 // リード獲得経由マスタ（管理者が編集 → 商談新規/詳細で選択）
 // ============================================================
 model LeadSource {
@@ -276,6 +293,8 @@ model DealProduct {
   productId    String?  @map("product_id")  // Productマスタへの参照（nullable）
   productName  String   @map("product_name") // キャッシュ表示用
   planName     String?  @map("plan_name")
+  // 映像プランで提案する企画の型（PlanProposal.name の配列。映像カテゴリ以外は空のまま）
+  planProposals String[] @default([]) @map("plan_proposals")
   probability  Int      @default(0)
   amount       Int?     // 提案金額（円）
   yomiStatus   String?  @map("yomi_status")  // 受注/Aヨミ/Bヨミ/Cヨミ/ネタ/NG
@@ -378,6 +397,8 @@ model Document {
   id             String   @id @default(uuid())
   name           String
   category       String   // proposal / contract / case_study / template / quote / other
+  // file = アップロード実体（fileUrl=ストレージURL） / url = 外部リンクのみ（fileUrl=外部URL）
+  sourceType     String   @default("file") @map("source_type")
   scope          String   @default("global") // global / deal
   dealId         String?  @map("deal_id")
   description    String?  @db.Text

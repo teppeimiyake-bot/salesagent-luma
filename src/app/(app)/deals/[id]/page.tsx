@@ -15,7 +15,6 @@ import { DealDocuments } from "@/components/deals/deal-documents";
 import { DealQuotes } from "@/components/deals/deal-quotes";
 import { MeetingHistory } from "@/components/deals/meeting-history";
 import { BantSummary } from "@/components/deals/bant-summary";
-import { DealPlanInfo } from "@/components/deals/deal-plan-info";
 import { DealOverviewPanel } from "@/components/deals/deal-overview-panel";
 import { AiChat } from "@/components/dashboard/ai-chat";
 import { NewTaskDialog } from "@/components/todos/new-task-dialog";
@@ -54,7 +53,7 @@ export default async function DealDetailPage({
   const canEdit = me?.permission === "admin" || me?.permission === "user";
   const isAdmin = me?.permission === "admin";
 
-  const [deal, users, productMasters] = await Promise.all([
+  const [deal, users, productMasters, planProposalMasters] = await Promise.all([
     prisma.deal.findUnique({
       where: { id },
       include: {
@@ -83,6 +82,11 @@ export default async function DealDetailPage({
           select: { id: true, name: true, basePrice: true },
         },
       },
+    }),
+    prisma.planProposal.findMany({
+      where: { active: true },
+      orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, color: true },
     }),
   ]);
   if (!deal || deal.deletedAt || deal.company.deletedAt) notFound();
@@ -168,6 +172,7 @@ export default async function DealDetailPage({
                 productId: p.productId,
                 productName: p.productName,
                 planName: p.planName,
+                planProposals: p.planProposals,
                 probability: p.probability,
                 amount: p.amount,
                 yomiStatus: p.yomiStatus,
@@ -183,6 +188,7 @@ export default async function DealDetailPage({
                 category: p.category,
                 plans: p.plans,
               }))}
+              planProposalMasters={planProposalMasters}
               canEdit={canEdit}
               isAdmin={isAdmin}
             />
@@ -205,8 +211,6 @@ export default async function DealDetailPage({
               canEdit={canEdit}
             />
             <PreparationPanel dealId={deal.id} status={deal.status} />
-            {/* Notion由来「企画内容」+「ご提案企画書URL」の閲覧表示（Phase 1） */}
-            <DealPlanInfo bant={deal.bant} />
             {/* 案件全体のBANT集約サマリ（商談記録の外で1つに集約） */}
             <BantSummary
               dealId={deal.id}
@@ -221,7 +225,7 @@ export default async function DealDetailPage({
             {/* 複数回商談を時系列で記録・編集（BANTは案件全体に集約済のため、各回はメモのみ） */}
             <MeetingHistory dealId={deal.id} meetings={deal.meetings} />
             <DealQuotes dealId={deal.id} canEdit={canEdit} />
-            <DealDocuments dealId={deal.id} />
+            <DealDocuments dealId={deal.id} companyName={deal.company.name} />
             <TasksList tasks={deal.tasks} />
           </div>
 

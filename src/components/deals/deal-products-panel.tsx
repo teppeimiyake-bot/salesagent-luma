@@ -21,7 +21,7 @@ import {
   DialogTrigger,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Plus, Trash2, Package, Layers, X } from "lucide-react";
+import { Plus, Trash2, Package, Layers, X, Film, Check } from "lucide-react";
 import { formatJPY } from "@/lib/utils";
 import { ProbabilityBadge } from "@/components/ui/probability-badge";
 import {
@@ -34,6 +34,7 @@ import {
   type DealProductLite,
 } from "@/lib/deal-aggregations";
 import { stripYomiPrefix } from "@/lib/yomi-status";
+import { planProposalColorClass } from "@/lib/plan-proposal";
 
 type SalesUser = { id: string; name: string; avatarColor: string | null };
 export type ProductPlanMaster = {
@@ -47,12 +48,25 @@ export type ProductMaster = {
   category: string | null;
   plans: ProductPlanMaster[];
 };
+export type PlanProposalMaster = {
+  id: string;
+  name: string;
+  color: string;
+};
+
+/** 映像カテゴリ判定：productName が「映像」or product マスタの category が「映像」 */
+function isVideoProduct(productName: string, products: ProductMaster[], productId: string | null): boolean {
+  if (productName === "映像") return true;
+  const p = products.find((x) => x.id === productId) ?? products.find((x) => x.name === productName);
+  return p?.name === "映像" || p?.category === "映像";
+}
 
 export type DealProductRow = {
   id: string;
   productId: string | null;
   productName: string;
   planName: string | null;
+  planProposals: string[];
   probability: number;
   amount: number | null;
   yomiStatus: string | null;
@@ -67,6 +81,7 @@ export function DealProductsPanel({
   initial,
   users,
   products,
+  planProposalMasters,
   canEdit,
   isAdmin = false,
 }: {
@@ -74,6 +89,7 @@ export function DealProductsPanel({
   initial: DealProductRow[];
   users: SalesUser[];
   products: ProductMaster[];
+  planProposalMasters: PlanProposalMaster[];
   canEdit: boolean;
   isAdmin?: boolean;
 }) {
@@ -145,6 +161,7 @@ export function DealProductsPanel({
                 dealId={dealId}
                 users={users}
                 products={products}
+                planProposalMasters={planProposalMasters}
                 isAdmin={isAdmin}
                 onAdded={(newRow) => {
                   setItems((prev) => [...prev, newRow]);
@@ -203,8 +220,10 @@ export function DealProductsPanel({
                     row={row}
                     users={users}
                     products={products}
+                    planProposalMasters={planProposalMasters}
                     canEdit={canEdit}
                     pending={pending}
+                    colCount={canEdit ? 7 : 6}
                     onPatch={(p, api) => patchRow(row, p, api)}
                     onDelete={() => deleteRow(row)}
                   />
@@ -222,16 +241,20 @@ function ProductRow({
   row,
   users,
   products,
+  planProposalMasters,
   canEdit,
   pending,
+  colCount,
   onPatch,
   onDelete,
 }: {
   row: DealProductRow;
   users: SalesUser[];
   products: ProductMaster[];
+  planProposalMasters: PlanProposalMaster[];
   canEdit: boolean;
   pending: boolean;
+  colCount: number;
   onPatch: (
     payload: Record<string, unknown>,
     apiPayload?: Record<string, unknown>,
@@ -240,7 +263,10 @@ function ProductRow({
 }) {
   const yomiC = yomiColor(row.yomiStatus);
   const product = products.find((p) => p.id === row.productId) ?? products.find((p) => p.name === row.productName);
+  const showPlanProposals =
+    isVideoProduct(row.productName, products, row.productId) || row.planProposals.length > 0;
   return (
+    <>
     <tr className="hover:bg-zinc-50/50">
       <td className="py-2 px-4 align-top" title={row.productName}>
         <div className="flex items-center gap-2 min-w-0">
@@ -471,6 +497,137 @@ function ProductRow({
         </td>
       )}
     </tr>
+    {showPlanProposals && (
+      <tr className="bg-orange-50/30">
+        <td colSpan={colCount} className="px-4 pb-3 pt-1">
+          <div className="flex items-start gap-2">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 shrink-0 mt-1">
+              <Film className="h-3 w-3" />
+              企画提案
+            </span>
+            <div className="flex-1 min-w-0">
+              <PlanProposalPicker
+                selected={row.planProposals}
+                masters={planProposalMasters}
+                canEdit={canEdit}
+                disabled={pending}
+                onChange={(next) =>
+                  onPatch({ planProposals: next }, { planProposals: next })
+                }
+              />
+            </div>
+          </div>
+        </td>
+      </tr>
+    )}
+    </>
+  );
+}
+
+/**
+ * 企画提案マルチセレクト（コンボボックス＋色付きピル）
+ * - PlanProposal マスタから選択肢を取得（props で渡される）
+ * - 複数選択・空OK
+ * - 編集不可（canEdit=false）のときはピル表示のみ
+ */
+function PlanProposalPicker({
+  selected,
+  masters,
+  canEdit,
+  disabled,
+  onChange,
+}: {
+  selected: string[];
+  masters: PlanProposalMaster[];
+  canEdit: boolean;
+  disabled: boolean;
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const colorOf = (name: string) => {
+    const m = masters.find((x) => x.name === name);
+    return planProposalColorClass(m?.color);
+  };
+  function toggle(name: string) {
+    if (selected.includes(name)) {
+      onChange(selected.filter((n) => n !== name));
+    } else {
+      onChange([...selected, name]);
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {selected.length === 0 && !canEdit && (
+        <span className="text-[11px] text-zinc-400 italic">未設定</span>
+      )}
+      {selected.map((name) => {
+        const c = colorOf(name);
+        return (
+          <span
+            key={name}
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${c.bg} ${c.text} ${c.border}`}
+          >
+            {name}
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => toggle(name)}
+                disabled={disabled}
+                className="opacity-60 hover:opacity-100"
+                title="外す"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </span>
+        );
+      })}
+      {canEdit && (
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            disabled={disabled}
+            className="inline-flex items-center gap-1 rounded-md border border-dashed border-orange-300 bg-white px-2 py-0.5 text-xs text-orange-700 hover:bg-orange-50"
+          >
+            <Plus className="h-3 w-3" />
+            {selected.length === 0 ? "企画提案を選択" : "追加"}
+          </button>
+          {open && (
+            <>
+              {/* クリック外しでクローズ */}
+              <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+              <div className="absolute left-0 top-full z-20 mt-1 max-h-72 w-72 overflow-y-auto rounded-md border border-zinc-200 bg-white py-1 shadow-lg">
+                {masters.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-zinc-400">
+                    企画提案マスタが未登録です（管理画面で追加）
+                  </div>
+                )}
+                {masters.map((m) => {
+                  const c = planProposalColorClass(m.color);
+                  const checked = selected.includes(m.name);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => toggle(m.name)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-zinc-50"
+                    >
+                      <span
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? "border-orange-500 bg-orange-500 text-white" : "border-zinc-300"}`}
+                      >
+                        {checked && <Check className="h-3 w-3" />}
+                      </span>
+                      <span className={`rounded px-1.5 py-0.5 ${c.bg} ${c.text}`}>{m.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -478,12 +635,14 @@ function AddProductDialog({
   dealId,
   users,
   products,
+  planProposalMasters,
   isAdmin,
   onAdded,
 }: {
   dealId: string;
   users: SalesUser[];
   products: ProductMaster[];
+  planProposalMasters: PlanProposalMaster[];
   isAdmin: boolean;
   onAdded: (newRow: DealProductRow) => void;
 }) {
@@ -495,6 +654,7 @@ function AddProductDialog({
   const [amount, setAmount] = useState("");
   const [amountTouched, setAmountTouched] = useState(false);
   const [ownerUserId, setOwnerUserId] = useState("");
+  const [planProposals, setPlanProposals] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   // 新規カテゴリ追加（admin限定）
   const [showNewCategory, setShowNewCategory] = useState(false);
@@ -503,6 +663,7 @@ function AddProductDialog({
   const [createError, setCreateError] = useState<string | null>(null);
 
   const product = products.find((p) => p.id === productId);
+  const isVideo = !!product && isVideoProduct(product.name, products, product.id);
 
   function selectPlan(name: string) {
     setPlanName(name);
@@ -547,6 +708,7 @@ function AddProductDialog({
         productId: product.id,
         productName: product.name,
         planName: planName || null,
+        planProposals: isVideo ? planProposals : [],
         probability: YOMI_TO_PROBABILITY[yomiStatus] ?? 0,
         amount: amount ? Number(amount) : null,
         yomiStatus,
@@ -562,6 +724,7 @@ function AddProductDialog({
         productId: dp.productId,
         productName: dp.productName,
         planName: dp.planName,
+        planProposals: dp.planProposals ?? [],
         probability: dp.probability,
         amount: dp.amount,
         yomiStatus: dp.yomiStatus,
@@ -577,6 +740,7 @@ function AddProductDialog({
       setAmount("");
       setAmountTouched(false);
       setOwnerUserId("");
+      setPlanProposals([]);
       onAdded(newRow);
     }
   }
@@ -608,6 +772,7 @@ function AddProductDialog({
                 setPlanName("");
                 setAmount("");
                 setAmountTouched(false);
+                setPlanProposals([]);
               }}
             >
               <SelectTrigger>
@@ -710,6 +875,21 @@ function AddProductDialog({
               </Select>
             </div>
           </div>
+          {isVideo && (
+            <div className="space-y-1 rounded-md border border-orange-200 bg-orange-50/30 p-3">
+              <Label className="text-xs inline-flex items-center gap-1 text-orange-700">
+                <Film className="h-3 w-3" /> 企画提案（映像）
+                <span className="text-[10px] text-zinc-400 font-normal">複数選択・空でもOK</span>
+              </Label>
+              <PlanProposalPicker
+                selected={planProposals}
+                masters={planProposalMasters}
+                canEdit
+                disabled={loading}
+                onChange={setPlanProposals}
+              />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs inline-flex items-center gap-1">
