@@ -61,8 +61,7 @@ async function main() {
   console.log("===== Deal件数 =====");
   console.log("  total active:", totalDeals);
   console.log("  WON:", wonDeals, " LOST:", lostDeals);
-  console.log("  fullyLostDealIds:", todoEx.fullyLostDealIds.length);
-  console.log("  fullyWonDealIds:", todoEx.fullyWonDealIds.length);
+  console.log("  fullyClosedDealIds（受注/NG/失注で全終了）:", todoEx.fullyClosedDealIds.length);
   console.log("");
   console.log("===== OPEN/IN_PROGRESS Task件数（active deal配下） =====");
   console.log("  フィルタなし:                  ", totalTasks);

@@ -63,6 +63,36 @@ export async function getFullyWonDealIds(): Promise<string[]> {
 }
 
 /**
+ * 「完全終了」の Deal ID 一覧を返す。
+ *   完全終了 = 全 DealProduct.yomiStatus が 終了状態（"受注" / "締結済み" / "NG" / "失注"）。
+ *   → 受注のみ・NGのみだけでなく、「映像は受注・SNSはNG」のような受注/NG混在も含む。
+ *   DealProduct が0件の Deal は対象外。yomi が NULL の DealProduct がある Deal も対象外（=未確定扱い）。
+ *
+ * 社長判断 2026-05：もう追いかけることが無い案件（全プロダクトが受注 or NG）は
+ *   ToDo / Next Action から除外する。getFullyWonDealIds() ∪ getFullyLostDealIds() の上位集合。
+ */
+export async function getFullyClosedDealIds(): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT d.id
+    FROM deals d
+    WHERE d.deleted_at IS NULL
+      AND EXISTS (SELECT 1 FROM deal_products dp WHERE dp.deal_id = d.id)
+      AND NOT EXISTS (
+        SELECT 1 FROM deal_products dp
+        WHERE dp.deal_id = d.id
+          AND (
+            dp.yomi_status IS NULL
+            OR (
+              dp.yomi_status !~ '受注' AND dp.yomi_status !~ '締結済み'
+              AND dp.yomi_status !~ 'NG' AND dp.yomi_status !~ '失注'
+            )
+          )
+      )
+  `;
+  return rows.map((r) => r.id);
+}
+
+/**
  * Next Action / ToDo 用「除外条件のセット」を返す（サーバ専用）。
  *
  * 除外対象：
@@ -104,13 +134,13 @@ export async function excludeNGDealsWhere(): Promise<{
  *
  *   A. bant.isNG = true
  *   B. pipelineStage = "【商談前】日程調整不可"
- *   C. 完全失注（全 DealProduct.yomiStatus が NG/失注）
+ *   C. 完全終了（全 DealProduct.yomiStatus が 受注/締結済み/NG/失注）
+ *      └ 受注のみ・NGのみだけでなく、「映像は受注・SNSはNG」等の受注/NG混在も含む
  *   D. Deal.status = WON または LOST（受注済み / 失注済み）
- *   E. 完全受注（全 DealProduct.yomiStatus が 受注/締結済み）
  *
- * 社長判断 2026-05：受注済み・失注済み・NG の商談は ToDo 管理から除外する。
- * これにより、トップ画面・ToDo一覧・チーム画面・商談アクション由来のToDoが
- * すべて「追いかけ対象の生きてる商談」だけに絞られる。
+ * 社長判断 2026-05：受注済み・失注済み・NG の商談（＝もう追いかけることが無い案件）は
+ * ToDo 管理から除外する。これにより、トップ画面・ToDo一覧・チーム画面・商談アクション由来の
+ * ToDoがすべて「追いかけ対象の生きてる商談」だけに絞られる。
  *
  * 既存の `excludeNGDealsWhere()` は KPI集計（nextActionRate等）で
  * 「WON/LOST を含めて判定したい」用途のために残してある。
@@ -125,14 +155,9 @@ export async function excludeNGDealsWhere(): Promise<{
  */
 export async function excludeDoneAndNGDealsWhere(): Promise<{
   AND: Prisma.DealWhereInput[];
-  fullyLostDealIds: string[];
-  fullyWonDealIds: string[];
+  fullyClosedDealIds: string[];
 }> {
-  const [fullyLostDealIds, fullyWonDealIds] = await Promise.all([
-    getFullyLostDealIds(),
-    getFullyWonDealIds(),
-  ]);
-  const excludedIds = [...new Set([...fullyLostDealIds, ...fullyWonDealIds])];
+  const fullyClosedDealIds = await getFullyClosedDealIds();
   return {
     AND: [
       // A. bant.isNG が true で無いこと
@@ -141,12 +166,11 @@ export async function excludeDoneAndNGDealsWhere(): Promise<{
       { NOT: { pipelineStage: "【商談前】日程調整不可" } },
       // D. Deal.status が WON / LOST で無いこと
       { status: { notIn: ["WON", "LOST"] } },
-      // C + E. 完全失注 / 完全受注 で無いこと
-      ...(excludedIds.length > 0
-        ? [{ id: { notIn: excludedIds } } satisfies Prisma.DealWhereInput]
+      // C. 完全終了（全プロダクトが受注/締結済み/NG/失注）で無いこと
+      ...(fullyClosedDealIds.length > 0
+        ? [{ id: { notIn: fullyClosedDealIds } } satisfies Prisma.DealWhereInput]
         : []),
     ],
-    fullyLostDealIds,
-    fullyWonDealIds,
+    fullyClosedDealIds,
   };
 }
