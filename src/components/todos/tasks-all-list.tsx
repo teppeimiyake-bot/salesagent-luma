@@ -1,5 +1,5 @@
 "use client";
-import { useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ type DealProductLite = {
   id: string;
   productName: string;
   yomiStatus: string | null;
+  amount: number | null;
 };
 
 type Task = {
@@ -53,6 +54,47 @@ function yomiSelectOptions(current: string | null): string[] {
   return base;
 }
 
+/** 提案金額のインライン入力（controlled・null許容・blurで確定） */
+function AmountInput({
+  value,
+  disabled,
+  onCommit,
+}: {
+  value: number | null;
+  disabled: boolean;
+  onCommit: (v: number | null) => void;
+}) {
+  const [text, setText] = useState(value == null ? "" : String(value));
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!focused) setText(value == null ? "" : String(value));
+  }, [value, focused]);
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      <span className="text-[11px] text-zinc-400">¥</span>
+      <input
+        type="number"
+        min={0}
+        step={10000}
+        value={text}
+        disabled={disabled}
+        placeholder="—"
+        onChange={(e) => setText(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={(e) => {
+          setFocused(false);
+          const raw = e.target.value.trim();
+          const v = raw === "" ? null : Number(raw);
+          if (Number.isNaN(v as number)) return;
+          if (v !== value) onCommit(v);
+        }}
+        className="w-24 rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-right text-[11px] tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait disabled:bg-zinc-50"
+        title="提案金額（円）を変更"
+      />
+    </span>
+  );
+}
+
 export function TasksAllList({ tasks }: { tasks: Task[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -63,6 +105,17 @@ export function TasksAllList({ tasks }: { tasks: Task[] }) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ yomiStatus: newYomi }),
+      });
+      router.refresh();
+    });
+  }
+
+  function changeAmount(dealProductId: string, amount: number | null) {
+    start(async () => {
+      await fetch(`/api/deal-products/${dealProductId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
       });
       router.refresh();
     });
@@ -200,7 +253,7 @@ export function TasksAllList({ tasks }: { tasks: Task[] }) {
                     const bare = stripYomiPrefix(p.yomiStatus);
                     const c = yomiColor(bare);
                     return (
-                      <span key={p.id} className="inline-flex items-center gap-1">
+                      <span key={p.id} className="inline-flex items-center gap-1.5">
                         <span className="text-[11px] text-zinc-500">{p.productName}</span>
                         <select
                           value={bare ?? ""}
@@ -218,6 +271,11 @@ export function TasksAllList({ tasks }: { tasks: Task[] }) {
                             </option>
                           ))}
                         </select>
+                        <AmountInput
+                          value={p.amount}
+                          disabled={pending}
+                          onCommit={(v) => changeAmount(p.id, v)}
+                        />
                       </span>
                     );
                   })}
