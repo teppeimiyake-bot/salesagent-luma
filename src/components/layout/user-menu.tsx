@@ -59,7 +59,7 @@ export function UserMenu({
           {user.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={user.avatarUrl}
+              src="/api/auth/avatar"
               alt={user.name}
               className="w-8 h-8 rounded-full object-cover border border-zinc-200"
             />
@@ -395,7 +395,7 @@ function AvatarChangeDialog({
             ) : currentUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={currentUrl}
+                src="/api/auth/avatar"
                 alt={userName}
                 className="w-20 h-20 rounded-full object-cover border border-zinc-200"
               />

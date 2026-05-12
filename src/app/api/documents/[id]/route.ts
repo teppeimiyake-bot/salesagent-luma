@@ -24,9 +24,7 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
     );
   }
   await prisma.document.delete({ where: { id } });
-  // ファイル本体も削除（ローカル/Blob 両対応）
-  if (doc.fileUrl && doc.fileUrl !== "(リンク未登録)") {
-    await deleteFile(doc.fileUrl);
-  }
+  // ファイル本体も削除（local / blob 両対応。"(リンク未登録)" 等は storage.deleteFile 内で無視）
+  await deleteFile(doc.fileUrl);
   return NextResponse.json({ ok: true });
 }

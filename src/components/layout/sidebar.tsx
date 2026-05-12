@@ -127,7 +127,7 @@ export function Sidebar({
             {user.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={user.avatarUrl}
+                src="/api/auth/avatar"
                 alt={user.name}
                 className="w-9 h-9 rounded-full object-cover shrink-0 shadow-sm border border-zinc-200"
               />

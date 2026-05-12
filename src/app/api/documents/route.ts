@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getSession, hasPermission } from "@/lib/auth";
-import { putFile } from "@/lib/storage";
+import crypto from "node:crypto";
+import { putFile, StorageConfigError } from "@/lib/storage";
 
 const META_SCHEMA = z.object({
   name: z.string().min(1),
@@ -66,14 +67,44 @@ export async function POST(req: Request) {
       );
     }
 
-    const ext = file.name.includes(".") ? file.name.split(".").pop() ?? "bin" : "bin";
+    const ext = file.name.includes(".") ? file.name.split(".").pop() : "bin";
+    const safe = `${Date.now()}_${crypto.randomBytes(4).toString("hex")}.${ext}`;
     const buf = Buffer.from(await file.arrayBuffer());
-    const stored = await putFile(buf, {
-      dir: "documents",
-      ext,
-      originalName: file.name,
-      contentType: file.type || undefined,
-    });
+    let fileUrl: string;
+    try {
+      ({ url: fileUrl } = await putFile({
+        dir: "documents",
+        filename: safe,
+        buffer: buf,
+        contentType: file.type || undefined,
+      }));
+    } catch (e) {
+      const err = e as Error;
+      // 詳細をログとレスポンス両方に出す（本番デバッグ用。Blob未設定・トークン無効・サイズ超過などを切り分ける）
+      console.error("[api/documents] putFile failed:", {
+        name: err?.name,
+        message: err?.message,
+        stack: err?.stack,
+        blobConfigured: !!process.env.BLOB_READ_WRITE_TOKEN,
+        onVercel: !!process.env.VERCEL,
+      });
+      const base =
+        e instanceof StorageConfigError ? err.message : "ファイルの保存に失敗しました";
+      const detail = e instanceof StorageConfigError ? undefined : `${err?.name ?? "Error"}: ${err?.message ?? "unknown"}`;
+      return NextResponse.json(
+        {
+          error: detail ? `${base}（詳細: ${detail}）` : base,
+          debug: {
+            errorName: err?.name ?? null,
+            errorMessage: err?.message ?? null,
+            blobConfigured: !!process.env.BLOB_READ_WRITE_TOKEN,
+            onVercel: !!process.env.VERCEL,
+          },
+        },
+        { status: 500 },
+      );
+    }
+
     const doc = await prisma.document.create({
       data: {
         name,
@@ -82,8 +113,8 @@ export async function POST(req: Request) {
         dealId,
         description: description || null,
         version,
-        fileUrl: stored.url,
-        fileSize: stored.size,
+        fileUrl,
+        fileSize: buf.length,
         mimeType: file.type || null,
         uploadedById: session?.userId ?? null,
         tags,

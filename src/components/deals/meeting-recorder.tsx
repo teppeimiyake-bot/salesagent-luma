@@ -34,6 +34,18 @@ export function MeetingRecorder({ dealId }: { dealId: string }) {
 
   async function start() {
     setMsg(null);
+    // getUserMedia / MediaRecorder は secure context（HTTPS or localhost）でのみ動く。
+    // 社内利用で http://<LAN IP> 等からアクセスしているとここで落ちるので明示メッセージを出す。
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setMsg(
+        "この環境ではマイク録音が使えません。https:// でアクセスしているか確認してください（http://<IPアドレス> ではブラウザがマイクを許可しません）。",
+      );
+      return;
+    }
+    if (typeof MediaRecorder === "undefined") {
+      setMsg("このブラウザは録音（MediaRecorder）に対応していません。Chrome / Edge をお使いください。");
+      return;
+    }
     try {
       let stream: MediaStream;
       if (mode === "mic") {
@@ -84,25 +96,44 @@ export function MeetingRecorder({ dealId }: { dealId: string }) {
 
   async function upload() {
     setAnalyzing(true);
-    setMsg("録音をアップロード中...");
-    const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-    const file = new File([blob], `recording_${Date.now()}.webm`, { type: "audio/webm" });
-    const fd = new FormData();
-    fd.append("dealId", dealId);
-    fd.append("file", file);
-    const r = await fetch("/api/meetings", { method: "POST", body: fd });
-    const j = await r.json();
-    if (!r.ok || !j.meeting?.id) {
-      setMsg(`アップロード失敗: ${j.error ?? "unknown"}`);
+    try {
+      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      if (blob.size === 0) {
+        setMsg(
+          "録音データが空でした。マイクが許可されていない／無音だった可能性があります。もう一度お試しください。",
+        );
+        setAnalyzing(false);
+        return;
+      }
+      setMsg(`録音をアップロード中...（${(blob.size / 1024).toFixed(0)} KB）`);
+      const file = new File([blob], `recording_${Date.now()}.webm`, { type: "audio/webm" });
+      const fd = new FormData();
+      fd.append("dealId", dealId);
+      fd.append("file", file);
+      const r = await fetch("/api/meetings", { method: "POST", body: fd });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.meeting?.id) {
+        setMsg(`アップロード失敗: ${j?.error ?? `サーバエラー (HTTP ${r.status})`}`);
+        setAnalyzing(false);
+        return;
+      }
+      setMsg("文字起こし＋AI 7段分析を実行中...");
+      const a = await fetch(`/api/meetings/${j.meeting.id}/analyze`, { method: "POST" });
+      if (!a.ok) {
+        const aj = await a.json().catch(() => null);
+        setMsg(`録音は保存しましたが分析に失敗: ${aj?.error ?? `HTTP ${a.status}`}`);
+        setAnalyzing(false);
+        router.refresh();
+        return;
+      }
+      setMsg("✓ 完了");
       setAnalyzing(false);
-      return;
+      router.refresh();
+      setTimeout(() => setMsg(null), 3000);
+    } catch (e) {
+      setMsg(`アップロード中にエラー: ${(e as Error).message}`);
+      setAnalyzing(false);
     }
-    setMsg("Whisper文字起こし＋AI 7段分析を実行中...");
-    await fetch(`/api/meetings/${j.meeting.id}/analyze`, { method: "POST" });
-    setMsg("✓ 完了");
-    setAnalyzing(false);
-    router.refresh();
-    setTimeout(() => setMsg(null), 3000);
   }
 
   function fmtTime(s: number) {

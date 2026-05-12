@@ -1,166 +1,268 @@
 /**
- * ファイルストレージ抽象レイヤー（Vercel Blob / ローカル fallback）
+ * ストレージ抽象化レイヤー（Luma版）
  *
- * - 本番（Vercel）: 環境変数 BLOB_READ_WRITE_TOKEN が設定されていれば
- *   `@vercel/blob` 経由で Vercel Blob に保存。返り値は CDN 公開URL。
- * - ローカル開発: BLOB_READ_WRITE_TOKEN が空なら ./uploads/ に保存。
- *   返り値は `/uploads/<dir>/<filename>` という相対URL（既存DBデータと互換）。
+ * 環境によって保存先を自動切り替え：
+ *   - 本番（BLOB_READ_WRITE_TOKEN がある）→ Vercel Blob（**プライベートアクセス**）
+ *   - dev（トークンなし）→ ローカル ./uploads/<dir>/<filename>
  *
- * これにより、呼出側コードは「文字列URLが返ってくる」とだけ知っていればよい。
- * DBスキーマ（recordingUrl / fileUrl / avatarUrl の VARCHAR）も無変更で動く。
+ * 戻り値 / DB（`fileUrl` / `recordingUrl` / `avatarUrl`）に保存する値（= ストレージキー）：
+ *   - Blob: "<dir>/<filename>"            ← blob の pathname。public URL ではない（プライベートストアなので URL 直アクセスは 401）
+ *   - Local: "/uploads/<dir>/<filename>"  ← ローカル配信ルートのパス
  *
- * フェーズ2-A 追加。
+ * ファイル本体の取得（ダウンロード）は必ずアプリ側プロキシ（/api/.../download など）経由：
+ *   - Blob: get(key, { access: 'private', token }) でストリーム取得
+ *   - Local: ./uploads/<dir>/<filename> を fs.readFile
+ *
+ * 削除：
+ *   - Blob: del(key, { token })（pathname 指定で削除可）
+ *   - Local: 拡張子付きパスを fs.unlink
+ *
+ * 旧データ（public URL "https://...vercel-storage.com/..." が入っているレコード）も
+ * 一応 fetchStored() / deleteFile() で扱えるようにしているが、ストアが private に切り替わったため
+ * これらは認証なしでは取得できない（= 元々壊れている）。新規アップロード分が正しく動けば OK。
  */
-
 import path from "node:path";
 import fs from "node:fs/promises";
 
-/** Vercel Blob モードが有効か（環境変数 BLOB_READ_WRITE_TOKEN の有無で判定）。 */
-export function isBlobEnabled(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
-}
-
 export interface PutOptions {
-  /** 保存先ディレクトリ（先頭・末尾スラッシュ無し）。例: "recordings", "documents", "avatars"。 */
+  /** 保存先サブディレクトリ（"avatars" / "documents" / "recordings"） */
   dir: string;
-  /** 拡張子（先頭ドット無し）。例: "webm", "pdf", "png"。 */
-  ext: string;
-  /** 元ファイル名（任意。Blob モード時のメタデータに使う） */
-  originalName?: string;
-  /** Content-Type（任意） */
+  /** 保存ファイル名（拡張子付き、ユニーク化済み） */
+  filename: string;
+  /** Bufferデータ */
+  buffer: Buffer;
+  /** Content-Type（Blobに渡す） */
   contentType?: string;
-  /**
-   * 公開アクセスにするか。Vercel Blob は現状 "public" のみ正式サポート。
-   * 認証付きアクセスが必要なら署名URL方式に切り替える（将来対応）。
-   */
-  access?: "public";
 }
 
 export interface PutResult {
-  /** クライアントから参照する URL。Blob 時は https://...blob.vercel-storage.com/...、ローカル時は /uploads/<dir>/<file>。 */
+  /** DB保存用のストレージキー（blob: pathname / local: /uploads/...） */
   url: string;
-  /** バイト数 */
-  size: number;
-  /** 内部識別子（Blob 時は pathname、ローカル時は相対パス）。削除時に使用。 */
-  pathname: string;
+  /** ストレージ種別（デバッグ用） */
+  storage: "blob" | "local";
+}
+
+/** BLOB_READ_WRITE_TOKEN を正規化して取得（前後空白・誤って付いた引用符を除去）。 */
+export function blobToken(): string | undefined {
+  const raw = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!raw) return undefined;
+  const t = raw.trim().replace(/^["']|["']$/g, "");
+  return t.length > 0 ? t : undefined;
 }
 
 /**
- * ファイルを保存して公開 URL を返す。
- *
- * - Blob 有効時: `put(pathname, body, { access: "public" })` を呼び、CDN URL を返す
- * - 無効時: ./uploads/<dir>/ にファイル書き出し、`/uploads/<dir>/<filename>` を返す
+ * 本番モード判定。
+ * BLOB_READ_WRITE_TOKEN が設定されていれば Vercel Blob を使う。
+ * VERCEL=1 だけでもトークンが無ければ local fallback（ただし永続化されない）。
  */
-export async function putFile(buf: Buffer, opts: PutOptions): Promise<PutResult> {
-  const safeName = `${Date.now()}_${randomHex(4)}.${opts.ext}`;
-  const pathname = `${opts.dir}/${safeName}`;
+export function isBlobEnabled(): boolean {
+  return !!blobToken();
+}
 
-  if (isBlobEnabled()) {
-    // Vercel Blob 経由
+/** Vercel サーバレス環境で動いているか（ファイルシステムが読み取り専用 = /tmp 以外書けない）。 */
+function isServerlessRuntime(): boolean {
+  return !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+}
+
+/** 呼び出し側で「設定不足によるアップロード不可」を判別できるエラー型。 */
+export class StorageConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StorageConfigError";
+  }
+}
+
+const BLOB_REQUIRED_MESSAGE =
+  "ファイルストレージ（Vercel Blob）が未設定のため、本番環境ではアップロードできません。" +
+  "Vercel ダッシュボード > Storage > Blob を作成し、BLOB_READ_WRITE_TOKEN を環境変数に注入してから再デプロイしてください。";
+
+/** ストレージキーがローカル配信パスか（"/uploads/..."）。 */
+export function isLocalKey(key: string | null | undefined): boolean {
+  return !!key && key.startsWith("/uploads/");
+}
+
+/** ストレージキーが旧 public blob URL か（"https://...vercel-storage.com/..."）。 */
+export function isLegacyBlobUrl(key: string | null | undefined): boolean {
+  return !!key && /^https?:\/\/.+\.vercel-storage\.com\//.test(key);
+}
+
+/**
+ * ファイルを保存し、DB保存用のストレージキーを返す。
+ *
+ * - Blob トークンあり → Vercel Blob（access: 'private'）に保存。返り値 url は **pathname**（"documents/xxx.pdf"）
+ * - Blob トークンなし & ローカル開発 → ./uploads/<dir>/<filename> に保存。返り値 url は "/uploads/<dir>/<filename>"
+ * - Blob トークンなし & Vercel/サーバレス → StorageConfigError を投げる
+ *   （/tmp 以外は読み取り専用で、書けても永続化・配信できないため。
+ *    黙ってフォールバックすると「保存できたように見えて後で消える」最悪のUXになる）
+ */
+export async function putFile(opts: PutOptions): Promise<PutResult> {
+  const { dir, filename, buffer, contentType } = opts;
+
+  const token = blobToken();
+  if (token) {
+    // Vercel Blob（プライベートストア）
     const { put } = await import("@vercel/blob");
-    const blob = await put(pathname, buf, {
-      access: opts.access ?? "public",
-      contentType: opts.contentType,
-      addRandomSuffix: false,
-    });
-    return {
-      url: blob.url,
-      size: buf.byteLength,
-      pathname: blob.pathname,
-    };
+    const key = `${dir}/${filename}`;
+    try {
+      await put(key, buffer, {
+        access: "private",
+        contentType: contentType || "application/octet-stream",
+        // 同名キーが既にあるケースに備えて一応 false（filename側でユニーク化済み）
+        addRandomSuffix: false,
+        token,
+      });
+      // private blob の url（https://...vercel-storage.com/...）は認証なしでは 401 になるため
+      // DB には pathname（= ストレージキー）を保存し、取得は fetchStored() 経由で行う
+      return { url: key, storage: "blob" };
+    } catch (e) {
+      const err = e as Error;
+      // Blob API のエラーをそのまま投げると呼び出し側で詳細表示できる
+      throw new Error(
+        `Vercel Blob への書き込みに失敗しました [${err?.name ?? "Error"}]: ${err?.message ?? "unknown error"}`,
+      );
+    }
   }
 
-  // ローカル fallback
-  const root = process.env.UPLOAD_DIR ?? "./uploads";
-  const dir = path.join(root, opts.dir);
-  await fs.mkdir(dir, { recursive: true });
-  const filepath = path.join(dir, safeName);
-  await fs.writeFile(filepath, buf);
-  return {
-    url: `/uploads/${pathname}`,
-    size: buf.byteLength,
-    pathname: `/uploads/${pathname}`,
-  };
+  if (isServerlessRuntime()) {
+    throw new StorageConfigError(BLOB_REQUIRED_MESSAGE);
+  }
+
+  // ローカル開発：./uploads/<dir>/<filename>
+  const localDir = path.join(process.cwd(), "uploads", dir);
+  try {
+    await fs.mkdir(localDir, { recursive: true });
+    const filepath = path.join(localDir, filename);
+    await fs.writeFile(filepath, buffer);
+  } catch (e) {
+    throw new StorageConfigError(
+      `ローカルストレージへの保存に失敗しました（${localDir}）: ${(e as Error).message}`,
+    );
+  }
+  return { url: `/uploads/${dir}/${filename}`, storage: "local" };
+}
+
+/** 取得結果（プロキシでストリーム返却するための素材）。 */
+export interface FetchedFile {
+  buffer: Buffer;
+  contentType: string | null;
+  /** 取得元（デバッグ用） */
+  source: "blob" | "local";
+}
+
+/**
+ * DB保存済みのストレージキーからファイル本体を取得する（ダウンロードプロキシ用）。
+ *
+ * - "/uploads/..."          → ローカル FS から読む
+ * - "https://...vercel-storage.com/..."（旧 public URL）→ 直 fetch（トークンがあれば Authorization 付き）
+ * - それ以外（= blob pathname）→ get(key, { access: 'private', token })
+ *
+ * 見つからない / 取得失敗時は null（呼び出し側で 404）。
+ */
+export async function fetchStored(key: string | null | undefined): Promise<FetchedFile | null> {
+  if (!key) return null;
+
+  // ローカル配信パス
+  if (isLocalKey(key)) {
+    try {
+      const safe = key
+        .replace(/^\/uploads\//, "")
+        .split("/")
+        .map((p) => p.replace(/\.\.+/g, ""))
+        .join("/");
+      const filepath = path.join(process.cwd(), "uploads", safe);
+      const buffer = await fs.readFile(filepath);
+      return { buffer, contentType: null, source: "local" };
+    } catch {
+      return null;
+    }
+  }
+
+  const token = blobToken();
+
+  // 旧 public blob URL（ストア private 化前に保存されたもの）
+  if (isLegacyBlobUrl(key)) {
+    try {
+      const res = await fetch(key, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
+      if (!res.ok) return null;
+      const buffer = Buffer.from(await res.arrayBuffer());
+      return { buffer, contentType: res.headers.get("content-type"), source: "blob" };
+    } catch {
+      return null;
+    }
+  }
+
+  // blob pathname（"documents/xxx.pdf" 等）→ private get
+  if (!token) return null;
+  try {
+    const { get } = await import("@vercel/blob");
+    const result = await get(key, { access: "private", token, useCache: false });
+    if (!result || result.statusCode !== 200 || !result.stream) return null;
+    const chunks: Uint8Array[] = [];
+    const reader = result.stream.getReader();
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
+    }
+    const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+    return { buffer, contentType: result.blob?.contentType ?? null, source: "blob" };
+  } catch {
+    return null;
+  }
 }
 
 /**
  * 保存済みファイルを削除する。
- * - Blob モード: URL ベースで `del(url)`
- * - ローカル: `/uploads/...` 形式の URL or pathname を fs.unlink
- *
- * 失敗時はログ出力のみで例外は飛ばさない（呼出側の主処理を妨げないため）。
+ * key が "/uploads/..." ならローカル削除、"https://...vercel-storage.com/..." または blob pathname なら Blob削除。
+ * 失敗しても例外は投げず警告のみ（レアケースで他要因と分かるため）。
  */
-export async function deleteFile(urlOrPathname: string): Promise<void> {
+export async function deleteFile(key: string | null | undefined): Promise<void> {
+  if (!key) return;
+  // 旧仕様の "(リンク未登録)" 等は無視
+  if (!isLocalKey(key) && !isLegacyBlobUrl(key) && key.includes(" ")) return;
   try {
-    if (urlOrPathname.startsWith("https://") || urlOrPathname.startsWith("http://")) {
-      // Blob URL
-      if (isBlobEnabled()) {
-        const { del } = await import("@vercel/blob");
-        await del(urlOrPathname);
-      } else {
-        console.warn("[storage] cannot delete remote URL without BLOB_READ_WRITE_TOKEN:", urlOrPathname);
-      }
-      return;
-    }
-    if (urlOrPathname.startsWith("/uploads/")) {
-      // ローカル相対 URL
-      const rel = urlOrPathname.replace(/^\/uploads\//, "");
-      const root = process.env.UPLOAD_DIR ?? "./uploads";
-      const filepath = path.join(root, rel);
+    if (isLocalKey(key)) {
+      const safe = key
+        .replace(/^\/uploads\//, "")
+        .split("/")
+        .map((p) => p.replace(/\.\.+/g, ""))
+        .join("/");
+      const filepath = path.join(process.cwd(), "uploads", safe);
       await fs.unlink(filepath).catch(() => {});
       return;
     }
-    console.warn("[storage] unrecognized URL/pathname for delete:", urlOrPathname);
+    // Blob削除（public URL でも pathname でも del() は受け付ける）
+    const token = blobToken();
+    if (!token) return;
+    const { del } = await import("@vercel/blob");
+    await del(key, { token });
   } catch (e) {
-    console.warn("[storage] delete failed:", e);
+    console.warn("[storage.deleteFile] failed:", key, e);
   }
 }
 
 /**
- * 文字起こし用に「ローカルファイルパス」を取得する（Gemini transcribeFile が
- * fs.readFile を期待しているため）。
- *
- * - ローカル URL `/uploads/...`: 物理パスに変換して返す
- * - Blob URL: Buffer をダウンロードして一時ファイルに書き、そのパスを返す
- *
- * 戻り値: { localPath, cleanup }（cleanup は一時ファイル削除関数。dev 時は no-op）
+ * 一時ファイルとして OS の tmp に書き出し、パスを返す。
+ * Whisper / Gemini など「ローカルファイルパス」を要求するライブラリ向け。
+ * 呼び出し側で削除する責任を持つ（cleanupTempFile を使う）。
  */
-export async function materializeForRead(
-  url: string,
-): Promise<{ localPath: string; cleanup: () => Promise<void> }> {
-  if (url.startsWith("/uploads/")) {
-    const rel = url.replace(/^\/uploads\//, "");
-    const root = process.env.UPLOAD_DIR ?? "./uploads";
-    return {
-      localPath: path.join(root, rel),
-      cleanup: async () => {},
-    };
-  }
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Failed to download: ${res.status}`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    const tmpDir = process.env.TMPDIR ?? process.env.TEMP ?? "/tmp";
-    const ext = path.extname(new URL(url).pathname) || ".bin";
-    const tmpPath = path.join(tmpDir, `blob_${Date.now()}_${randomHex(4)}${ext}`);
-    await fs.writeFile(tmpPath, buf);
-    return {
-      localPath: tmpPath,
-      cleanup: async () => {
-        await fs.unlink(tmpPath).catch(() => {});
-      },
-    };
-  }
-  throw new Error(`Unknown URL scheme: ${url}`);
+export async function writeTempFile(
+  filename: string,
+  buffer: Buffer,
+): Promise<string> {
+  const os = await import("node:os");
+  const tmpDir = path.join(os.tmpdir(), "salesagent-luma");
+  await fs.mkdir(tmpDir, { recursive: true });
+  const filepath = path.join(tmpDir, `${Date.now()}_${filename}`);
+  await fs.writeFile(filepath, buffer);
+  return filepath;
 }
 
-function randomHex(bytes: number): string {
-  // 簡易ランダム（crypto への依存を分離するため）
-  // 既存コードと衝突しない長さなので Math.random で十分
-  let out = "";
-  const chars = "0123456789abcdef";
-  for (let i = 0; i < bytes * 2; i++) {
-    out += chars[Math.floor(Math.random() * 16)];
+export async function cleanupTempFile(filepath: string): Promise<void> {
+  try {
+    await fs.unlink(filepath);
+  } catch {
+    /* ignore */
   }
-  return out;
 }

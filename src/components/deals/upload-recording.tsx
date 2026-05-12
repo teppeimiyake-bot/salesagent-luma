@@ -25,16 +25,24 @@ export function UploadRecording({ dealId }: { dealId: string }) {
         fd.append("dealId", dealId);
         fd.append("file", file);
         const res = await fetch("/api/meetings", { method: "POST", body: fd });
-        const j = await res.json();
-        meetingId = j.meeting?.id;
+        const j = await res.json().catch(() => null);
+        if (!res.ok) {
+          setMsg(`保存に失敗しました: ${j?.error ?? `HTTP ${res.status}`}`);
+          return;
+        }
+        meetingId = j?.meeting?.id ?? null;
       } else if (mode === "text" && text.trim()) {
         const res = await fetch("/api/meetings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ dealId, transcript: text }),
         });
-        const j = await res.json();
-        meetingId = j.meeting?.id;
+        const j = await res.json().catch(() => null);
+        if (!res.ok) {
+          setMsg(`保存に失敗しました: ${j?.error ?? `HTTP ${res.status}`}`);
+          return;
+        }
+        meetingId = j?.meeting?.id ?? null;
       }
       if (!meetingId) {
         setMsg("保存に失敗しました");
@@ -44,9 +52,10 @@ export function UploadRecording({ dealId }: { dealId: string }) {
       setAnalyzing(true);
       setMsg("AIが7段推論で分析中...（30秒〜90秒）");
       const a = await fetch(`/api/meetings/${meetingId}/analyze`, { method: "POST" });
-      const aj = await a.json();
+      const aj = await a.json().catch(() => null);
       if (!a.ok) {
-        setMsg(`分析失敗: ${aj.error ?? "unknown"}`);
+        setMsg(`保存はできましたが分析に失敗: ${aj?.error ?? `HTTP ${a.status}`}`);
+        router.refresh();
         return;
       }
       setMsg("✓ 完了。ページを更新します");
