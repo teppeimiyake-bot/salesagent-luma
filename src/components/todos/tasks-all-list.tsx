@@ -13,6 +13,14 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { DueBadge } from "@/components/ui/due-badge";
+import { YOMI_OPTIONS, yomiColor } from "@/lib/deal-aggregations";
+import { stripYomiPrefix } from "@/lib/yomi-status";
+
+type DealProductLite = {
+  id: string;
+  productName: string;
+  yomiStatus: string | null;
+};
 
 type Task = {
   id: string;
@@ -29,14 +37,36 @@ type Task = {
     title: string;
     /** 主要プロダクト名（カンマ区切り、最大3件 + "他N件"）。省略時は表示なし */
     productSummary?: string | null;
+    /** この商談の DealProduct 一覧（ヨミをインラインで変更するため）。省略時は表示なし */
+    products?: DealProductLite[];
     company: { name: string };
     owner: { id: string; name: string; avatarColor: string | null } | null;
   };
 };
 
+/** native <select> の選択肢用にヨミの候補リストを組み立てる（現在値が候補外なら先頭に足す） */
+function yomiSelectOptions(current: string | null): string[] {
+  const base = [...YOMI_OPTIONS];
+  if (current && !base.includes(current as (typeof YOMI_OPTIONS)[number])) {
+    return [current, ...base];
+  }
+  return base;
+}
+
 export function TasksAllList({ tasks }: { tasks: Task[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+
+  function changeYomi(dealProductId: string, newYomi: string | null) {
+    start(async () => {
+      await fetch(`/api/deal-products/${dealProductId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ yomiStatus: newYomi }),
+      });
+      router.refresh();
+    });
+  }
 
   function complete(id: string) {
     start(async () => {
@@ -162,6 +192,36 @@ export function TasksAllList({ tasks }: { tasks: Task[] }) {
               )}
               {t.reason && (
                 <p className="text-sm text-zinc-500 mt-1.5">理由: {t.reason}</p>
+              )}
+
+              {t.deal.products && t.deal.products.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  {t.deal.products.map((p) => {
+                    const bare = stripYomiPrefix(p.yomiStatus);
+                    const c = yomiColor(bare);
+                    return (
+                      <span key={p.id} className="inline-flex items-center gap-1">
+                        <span className="text-[11px] text-zinc-500">{p.productName}</span>
+                        <select
+                          value={bare ?? ""}
+                          onChange={(e) =>
+                            changeYomi(p.id, e.target.value === "" ? null : e.target.value)
+                          }
+                          disabled={pending}
+                          title={`${p.productName} のヨミを変更`}
+                          className={`cursor-pointer rounded-full border px-1.5 py-0.5 text-[11px] font-semibold ${c.bg} ${c.text} ${c.border} focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait`}
+                        >
+                          <option value="">-</option>
+                          {yomiSelectOptions(bare).map((y) => (
+                            <option key={y} value={y}>
+                              {y}
+                            </option>
+                          ))}
+                        </select>
+                      </span>
+                    );
+                  })}
+                </div>
               )}
             </div>
 

@@ -79,7 +79,10 @@ export default async function TodosPage({
           include: {
             company: true,
             owner: { select: { id: true, name: true, avatarColor: true } },
-            products: { select: { productName: true, amount: true }, orderBy: { amount: "desc" } },
+            products: {
+              select: { id: true, productName: true, yomiStatus: true, amount: true },
+              orderBy: { amount: "desc" },
+            },
           },
         },
       },
@@ -104,7 +107,10 @@ export default async function TodosPage({
       include: {
         company: true,
         owner: { select: { id: true, name: true, avatarColor: true } },
-        products: { select: { productName: true, amount: true }, orderBy: { amount: "desc" } },
+        products: {
+          select: { id: true, productName: true, yomiStatus: true, amount: true },
+          orderBy: { amount: "desc" },
+        },
       },
       orderBy: [{ nextActionAt: "asc" }],
     }),
@@ -130,6 +136,11 @@ export default async function TodosPage({
       id: t.deal.id,
       title: t.deal.title,
       productSummary: summarizeProducts(t.deal.products),
+      products: t.deal.products.map((p) => ({
+        id: p.id,
+        productName: p.productName,
+        yomiStatus: p.yomiStatus,
+      })),
       company: { name: t.deal.company.name },
       owner: t.deal.owner,
     },
@@ -150,6 +161,11 @@ export default async function TodosPage({
           id: d.id,
           title: d.title,
           productSummary: summarizeProducts(d.products),
+          products: d.products.map((p) => ({
+            id: p.id,
+            productName: p.productName,
+            yomiStatus: p.yomiStatus,
+          })),
           company: { name: d.company.name },
           owner: d.owner,
         },
