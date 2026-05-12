@@ -56,13 +56,15 @@ export default async function TodosPage({
     },
   };
 
-  // Deal の where：オープン中（受注/失注以外）でnextActionが空でないもの
+  // Deal の where：オープン中（受注/失注以外）で nextAction が空でなく、かつ期日(nextActionAt)が設定済みのもの
+  //   （社長判断 2026-05：期日未設定の案件は一旦ToDoから除外する）
   const dealNextActionWhere = {
     ...(ownerUserId ? { ownerUserId } : {}),
     ...activeDealClause,
     AND: [
       { nextAction: { not: null } },
       { nextAction: { not: "" } },
+      { nextActionAt: { not: null } },
       ...exclude.AND,
     ],
   };
