@@ -3,11 +3,7 @@ import Link from "next/link";
 import { useSearchParams, usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Target } from "lucide-react";
-import {
-  YOMI_FILTER_VALUES,
-  DEFAULT_YOMI_VALUES,
-  type YomiFilterValue,
-} from "./yomi-filter-config";
+import { YOMI_FILTER_VALUES, type YomiFilterValue } from "./yomi-filter-config";
 
 export {
   YOMI_FILTER_VALUES,
@@ -16,6 +12,11 @@ export {
 } from "./yomi-filter-config";
 export type { YomiFilterValue } from "./yomi-filter-config";
 
+/**
+ * バッジ配色。deal-aggregations.ts の yomiColor() と同系統に揃える。
+ *  受注=emerald(濃) / A+ヨミ=emerald(淡) / Aヨミ=sky / Bヨミ=amber /
+ *  Cヨミ=orange / ネタ=zinc / NG=red
+ */
 const YOMI_TONE: Record<YomiFilterValue, { active: string; idle: string }> = {
   NG: {
     active: "bg-red-600 text-white border-red-600",
@@ -37,6 +38,10 @@ const YOMI_TONE: Record<YomiFilterValue, { active: string; idle: string }> = {
     active: "bg-sky-600 text-white border-sky-600",
     idle: "bg-white text-sky-700 border-sky-200 hover:bg-sky-50",
   },
+  "A+ヨミ": {
+    active: "bg-emerald-500 text-white border-emerald-500",
+    idle: "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50",
+  },
   受注: {
     active: "bg-emerald-600 text-white border-emerald-600",
     idle: "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50",
@@ -51,8 +56,8 @@ export function YomiFilter({ selected }: { selected: YomiFilterValue[] }) {
     const params = new URLSearchParams(search);
     // 商談一覧→詳細→戻る挙動のため、戻りリンクが古い from を持ち続けないように落とす
     params.delete("from");
-    // `yomi` を空配列で指定 = 「すべて」ボタン押下時。
-    // クエリから `yomi` を削除 → サーバ側で DEFAULT_YOMI_VALUES（ネタ/C/B/A）が再適用される。
+    // `yomi` を空配列で指定 = クエリから `yomi` を削除 →
+    // サーバ側で DEFAULT_YOMI_VALUES（A+ヨミ/Aヨミ/Bヨミ/Cヨミ の4種）が再適用される。
     if (next.length === 0) params.delete("yomi");
     else params.set("yomi", next.join(","));
     const q = params.toString();
@@ -64,12 +69,8 @@ export function YomiFilter({ selected }: { selected: YomiFilterValue[] }) {
     return [...selected, v];
   }
 
-  // 「すべて」ボタンは "デフォルト4種に戻す" の意味。
-  // 現在の選択がデフォルト4種と完全一致するとき active 表示にして
-  // 「今はデフォルト状態である」ことを伝える。
-  const isDefaultState =
-    selected.length === DEFAULT_YOMI_VALUES.length &&
-    DEFAULT_YOMI_VALUES.every((v) => selected.includes(v));
+  // 「すべて」= 7区分を全選択（NG/ネタ/C/B/A/A+/受注）。手動で全部見たい時用。
+  const isAllSelected = selected.length === YOMI_FILTER_VALUES.length;
 
   return (
     <div className="flex items-center gap-1.5 overflow-x-auto py-1">
@@ -77,11 +78,11 @@ export function YomiFilter({ selected }: { selected: YomiFilterValue[] }) {
         <Target className="h-3 w-3" /> ヨミ:
       </span>
       <Link
-        href={buildHref([])}
-        title="ネタ / Cヨミ / Bヨミ / Aヨミ の4種に戻す"
+        href={buildHref([...YOMI_FILTER_VALUES])}
+        title="NG / ネタ / Cヨミ / Bヨミ / Aヨミ / A+ヨミ / 受注 を全部表示"
         className={cn(
           "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors border",
-          isDefaultState
+          isAllSelected
             ? "bg-zinc-900 text-white border-zinc-900"
             : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50",
         )}

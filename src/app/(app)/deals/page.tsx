@@ -53,10 +53,11 @@ export default async function DealsPage({
   const productParam = sp.product ?? null;
   const sortParam = sp.sort ?? "next";
   // ヨミフィルタ：
-  // - `sp.yomi === undefined`（クエリ無し）→ デフォルト4種（ネタ/Cヨミ/Bヨミ/Aヨミ）
+  // - `sp.yomi === undefined`（クエリ無し）→ デフォルト = DEFAULT_YOMI_VALUES
+  //   （A+ヨミ/Aヨミ/Bヨミ/Cヨミ の4種。ネタ/NG/受注は受注確度フォーカス運用のため初期非表示）
   // - クエリ有り → 値を解釈（空文字や全て無効値の場合は「全件」=フィルタ無効）
-  // ※「すべて」ボタン（yomi-filter.tsx）は `?yomi=` を削除した URL を生成するため、
-  //   結果としてデフォルト4種へ戻る挙動になる（完全全件ではない）
+  // ※ ヨミは7段階の独立区分（受注/A+ヨミ/Aヨミ/Bヨミ/Cヨミ/ネタ/NG）。各バッジは個別にトグルする
+  // ※「すべて」ボタンは NG/ネタ/C/B/A/A+/受注 を全選択した URL を生成する（手動全件表示）
   const yomiParamRaw = sp.yomi;
   let yomiSelected: YomiFilterValue[];
   if (yomiParamRaw === undefined) {
