@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { DealStatus } from "@prisma/client";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
 import { syncDealAppointmentDateToNotion } from "@/lib/notion-sync";
+import { buildDealTitle } from "@/lib/deal-title";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -92,10 +93,56 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { bant: _bantIgnored, ...rest } = data;
   void _bantIgnored;
 
+  // 商談日(appointmentDate)または担当者(ownerUserId)が変更された場合、
+  // タイトル「商談日 + 会社名 + 担当者名」を自動で再生成して追従させる。
+  // - クライアントから明示的に title が送られた場合はそれを優先（手動編集を尊重）
+  // - 既存の Deal を読み、変更後の値でタイトルを組み立てる
+  let titlePatch: { title?: string } = {};
+  const appointmentChanged = data.appointmentDate !== undefined;
+  const ownerChanged = data.ownerUserId !== undefined;
+  if (data.title === undefined && (appointmentChanged || ownerChanged)) {
+    const current = await prisma.deal.findUnique({
+      where: { id },
+      select: {
+        appointmentDate: true,
+        ownerUserId: true,
+        company: { select: { name: true } },
+        owner: { select: { name: true } },
+      },
+    });
+    if (current) {
+      // 変更後の appointmentDate（未指定なら現状維持）
+      const nextAppointment = appointmentChanged
+        ? data.appointmentDate
+          ? new Date(data.appointmentDate)
+          : null
+        : current.appointmentDate;
+      // 変更後の owner 名（owner 変更時のみ引き直し）
+      let nextOwnerName: string | null = current.owner?.name ?? null;
+      if (ownerChanged) {
+        nextOwnerName = data.ownerUserId
+          ? (
+              await prisma.user.findUnique({
+                where: { id: data.ownerUserId },
+                select: { name: true },
+              })
+            )?.name ?? null
+          : null;
+      }
+      const newTitle = buildDealTitle({
+        appointmentDate: nextAppointment,
+        companyName: current.company?.name,
+        ownerName: nextOwnerName,
+      });
+      if (newTitle) titlePatch = { title: newTitle };
+    }
+  }
+
   const deal = await prisma.deal.update({
     where: { id },
     data: {
       ...rest,
+      ...titlePatch,
       nextActionAt:
         data.nextActionAt === undefined
           ? undefined

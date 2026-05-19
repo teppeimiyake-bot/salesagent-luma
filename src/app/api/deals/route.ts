@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { DealStatus } from "@prisma/client";
 import { probabilityToYomi } from "@/lib/deal-aggregations";
+import { buildDealTitle } from "@/lib/deal-title";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -42,7 +43,9 @@ export async function GET(req: Request) {
 
 const createSchema = z.object({
   companyId: z.string().uuid(),
-  title: z.string().min(1),
+  // title はサーバー側で「商談日 + 会社名 + 担当者名」から自動生成する。
+  // クライアントから送られても無視（フォールバックとしてのみ参照）。
+  title: z.string().min(1).optional(),
   status: z.nativeEnum(DealStatus).optional(),
   pipelineStage: z.string().optional(),
   ownerUserId: z.string().uuid().nullable().optional(),
@@ -79,9 +82,33 @@ export async function POST(req: Request) {
   const data = parsed.data;
   const { initialProduct, ...dealData } = data;
 
+  // タイトルを「商談日 + 会社名 + 担当者名」で自動生成する。
+  // 会社名・担当者名は最新のマスタから引く（クライアント送信値に依存しない）。
+  const [company, owner] = await Promise.all([
+    prisma.company.findUnique({
+      where: { id: dealData.companyId },
+      select: { name: true },
+    }),
+    dealData.ownerUserId
+      ? prisma.user.findUnique({
+          where: { id: dealData.ownerUserId },
+          select: { name: true },
+        })
+      : Promise.resolve(null),
+  ]);
+  const generatedTitle = buildDealTitle({
+    appointmentDate: dealData.appointmentDate ?? null,
+    companyName: company?.name,
+    ownerName: owner?.name,
+  });
+  // 生成できなければクライアント送信 title、それも無ければ会社名 → "新規商談"
+  const finalTitle =
+    generatedTitle ?? dealData.title ?? company?.name ?? "新規商談";
+
   const deal = await prisma.deal.create({
     data: {
       ...dealData,
+      title: finalTitle,
       nextActionAt: dealData.nextActionAt ? new Date(dealData.nextActionAt) : undefined,
       appointmentDate: dealData.appointmentDate ? new Date(dealData.appointmentDate) : undefined,
       expectedCloseDate: dealData.expectedCloseDate ? new Date(dealData.expectedCloseDate) : undefined,
