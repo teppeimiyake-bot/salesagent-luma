@@ -10,7 +10,7 @@ import {
   getFiscalYear,
   getFiscalMonthIndex,
 } from "@/lib/config";
-import { pipelineAmount, wonAmount, type DealProductLite } from "@/lib/deal-aggregations";
+import { totalProposedAmount, wonAmount, type DealProductLite } from "@/lib/deal-aggregations";
 import { isExcludedFromNextAction } from "@/lib/deal-status";
 import { excludeNGDealsWhere, excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
 
@@ -136,9 +136,10 @@ export async function getDashboardData(opts: DashboardOptions = {}) {
       products: { select: { amount: true, probability: true, yomiStatus: true } },
     },
   });
-  const pipelineAmt = allDeals
+  // 進行中商談の提案金額合計（DealProduct.amount の単純合計。確度重み付けはしない）
+  const proposedAmt = allDeals
     .filter((d) => d.status !== DealStatus.WON && d.status !== DealStatus.LOST)
-    .reduce((sum, d) => sum + pipelineAmount(d.products as DealProductLite[]), 0);
+    .reduce((sum, d) => sum + totalProposedAmount(d.products as DealProductLite[]), 0);
   // 受注額（実績）：受注計上日ベース。Deal.contractDate が入っており、
   //                 yomiStatus="受注" の DealProduct の amount合計
   const won = allDeals
@@ -161,7 +162,7 @@ export async function getDashboardData(opts: DashboardOptions = {}) {
       todoCompletionRate: totalTasks === 0 ? 0 : doneCount / totalTasks,
       nextActionRate,
       aiTaskRatio: totalTasks === 0 ? 0 : aiTaskCount / totalTasks,
-      pipelineAmount: pipelineAmt,
+      proposedAmount: proposedAmt,
       wonAmount: won,
       totalDeals,
       wonDeals,

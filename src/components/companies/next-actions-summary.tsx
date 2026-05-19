@@ -2,11 +2,11 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Zap, ArrowRight } from "lucide-react";
-import { ProbabilityBadge } from "@/components/ui/probability-badge";
 import { DueBadge } from "@/components/ui/due-badge";
 import { STATUS_LABEL, statusColor } from "@/lib/deal-status";
 import {
-  weightedProbability,
+  representativeYomi,
+  yomiColor,
   type DealProductLite,
 } from "@/lib/deal-aggregations";
 import { isExcludedFromNextAction } from "@/lib/deal-status";
@@ -51,7 +51,8 @@ export function NextActionsSummary({ deals }: { deals: Deal[] }) {
       </CardHeader>
       <CardContent className="space-y-2.5">
         {withNext.map((d) => {
-          const probability = weightedProbability(d.products);
+          const repYomi = representativeYomi(d.products);
+          const repYomiC = yomiColor(repYomi);
           const productNames = d.products.slice(0, 3).map((p) => p.productName);
           const restCount = Math.max(0, d.products.length - 3);
           return (
@@ -61,10 +62,16 @@ export function NextActionsSummary({ deals }: { deals: Deal[] }) {
               className="block rounded-lg border border-zinc-200 bg-white p-4 hover:border-amber-300 hover:shadow-sm transition-all group"
             >
               <div className="flex items-start gap-3">
-                <ProbabilityBadge value={probability} size="md" showBar={false} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <Badge variant={statusColor(d.status)}>{STATUS_LABEL[d.status]}</Badge>
+                    {repYomi && (
+                      <span
+                        className={`inline-flex items-center text-[11px] font-semibold border rounded-full px-2 py-0.5 ${repYomiC.bg} ${repYomiC.text} ${repYomiC.border}`}
+                      >
+                        {repYomi}
+                      </span>
+                    )}
                     <span className="font-bold text-base text-zinc-900 truncate">{d.title}</span>
                   </div>
                   <div className="flex items-center gap-1 flex-wrap mb-1">

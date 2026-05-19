@@ -30,7 +30,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
 制約：
 - 抽象禁止。「動詞＋目的語＋期限」を含む
 - 「フォロー」「検討」「強化」など曖昧な動詞は禁止
-- 確度を上げる方向（決裁者巻き込み・失注リスク潰し・タイミング握り）を優先
+- ヨミを上げる方向（決裁者巻き込み・失注リスク潰し・タイミング握り）を優先
 - 期限は今日〜2週間以内
 
 JSON厳密：
@@ -44,7 +44,7 @@ JSON厳密：
   const productSummary = deal.products
     .map(
       (p) =>
-        `  - ${p.productName}${p.planName ? `（${p.planName}）` : ""} / ヨミ=${p.yomiStatus ?? "-"} / 確度${p.probability}% / 金額${p.amount?.toLocaleString() ?? "未設定"}円`,
+        `  - ${p.productName}${p.planName ? `（${p.planName}）` : ""} / ヨミ=${p.yomiStatus ?? "-"} / 金額${p.amount?.toLocaleString() ?? "未設定"}円`,
     )
     .join("\n");
   const totalAmount = deal.products.reduce((s, p) => s + (p.amount ?? 0), 0);

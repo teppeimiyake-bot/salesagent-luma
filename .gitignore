@@ -68,3 +68,5 @@ next-env.d.ts
 
 # ===== script backups (PII) =====
 scripts/.backup/
+
+.vercel

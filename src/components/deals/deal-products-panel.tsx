@@ -23,13 +23,10 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Trash2, Package, Layers, X, Film, Check } from "lucide-react";
 import { formatJPY } from "@/lib/utils";
-import { ProbabilityBadge } from "@/components/ui/probability-badge";
 import {
   YOMI_OPTIONS,
   YOMI_TO_PROBABILITY,
-  pipelineAmount,
   totalProposedAmount,
-  weightedProbability,
   yomiColor,
   type DealProductLite,
 } from "@/lib/deal-aggregations";
@@ -106,8 +103,6 @@ export function DealProductsPanel({
     }));
     return {
       totalAmount: totalProposedAmount(lite),
-      pipeline: pipelineAmount(lite),
-      probability: weightedProbability(lite),
     };
   })();
 
@@ -177,20 +172,10 @@ export function DealProductsPanel({
         {items.length > 0 && (
           <div className="px-5 py-3 border-b border-zinc-200 bg-gradient-to-r from-orange-50/50 to-amber-50/30 flex flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex items-baseline gap-2">
-              <span className="text-xs text-zinc-500 font-medium">見込み金額</span>
+              <span className="text-xs text-zinc-500 font-medium">提案金額合計</span>
               <span className="font-bold text-xl tabular-nums text-orange-700">
-                {formatJPY(aggregates.pipeline)}
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-xs text-zinc-500 font-medium">提案合計</span>
-              <span className="font-semibold text-base tabular-nums text-zinc-800">
                 {formatJPY(aggregates.totalAmount)}
               </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-500 font-medium">代表確度</span>
-              <ProbabilityBadge value={aggregates.probability} size="sm" />
             </div>
           </div>
         )}
@@ -201,13 +186,12 @@ export function DealProductsPanel({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm table-fixed min-w-[920px]">
+            <table className="w-full text-sm table-fixed min-w-[820px]">
               <thead>
                 <tr className="text-[11px] text-zinc-500 border-b border-zinc-200">
                   <th className="text-left font-medium py-2 px-4 w-[200px]">プロダクト</th>
                   <th className="text-left font-medium py-2 px-2 w-[160px]">プラン</th>
                   <th className="text-left font-medium py-2 px-2 w-[110px]">ヨミ</th>
-                  <th className="text-right font-medium py-2 px-2 w-[90px]">確度</th>
                   <th className="text-right font-medium py-2 px-2 w-[140px]">提案金額</th>
                   <th className="text-left font-medium py-2 px-2 w-[150px]">担当</th>
                   {canEdit && <th className="w-[40px]" />}
@@ -223,7 +207,7 @@ export function DealProductsPanel({
                     planProposalMasters={planProposalMasters}
                     canEdit={canEdit}
                     pending={pending}
-                    colCount={canEdit ? 7 : 6}
+                    colCount={canEdit ? 6 : 5}
                     onPatch={(p, api) => patchRow(row, p, api)}
                     onDelete={() => deleteRow(row)}
                   />
@@ -414,19 +398,6 @@ function ProductRow({
           </span>
         ) : (
           <span className="text-zinc-400 text-xs">-</span>
-        )}
-      </td>
-      <td className="py-2 px-2 text-right">
-        {canEdit ? (
-          <ProbabilityInput
-            value={row.probability}
-            disabled={pending}
-            onCommit={(v) => {
-              if (v !== row.probability) onPatch({ probability: v });
-            }}
-          />
-        ) : (
-          <span className="font-semibold tabular-nums">{row.probability}%</span>
         )}
       </td>
       <td className="py-2 px-2 text-right">
@@ -965,46 +936,6 @@ function AddProductDialog({
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * 確度入力（controlled）：
- * - 親(row.probability)が変わったら DOM 値も追従（ヨミ変更による自動同期で重要）
- * - 編集中は編集中の値を保持（フォーカス中の変更は奪わない）
- */
-function ProbabilityInput({
-  value,
-  disabled,
-  onCommit,
-}: {
-  value: number;
-  disabled: boolean;
-  onCommit: (v: number) => void;
-}) {
-  const [text, setText] = useState(String(value));
-  const [focused, setFocused] = useState(false);
-  useEffect(() => {
-    if (!focused) setText(String(value));
-  }, [value, focused]);
-  return (
-    <Input
-      type="number"
-      min={0}
-      max={100}
-      step={5}
-      value={text}
-      disabled={disabled}
-      onChange={(e) => setText(e.target.value)}
-      onFocus={() => setFocused(true)}
-      onBlur={(e) => {
-        setFocused(false);
-        const v = Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0)));
-        setText(String(v));
-        onCommit(v);
-      }}
-      className="h-8 w-20 text-right tabular-nums font-semibold ml-auto"
-    />
   );
 }
 

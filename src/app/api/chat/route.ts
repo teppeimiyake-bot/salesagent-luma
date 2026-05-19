@@ -51,21 +51,17 @@ export async function POST(req: Request) {
       const productLines = deal.products
         .map(
           (p) =>
-            `  - ${p.productName}${p.planName ? `（${p.planName}）` : ""}: ヨミ=${p.yomiStatus ?? "-"}, 確度${p.probability}%, 金額${p.amount ?? "未設定"}`,
+            `  - ${p.productName}${p.planName ? `（${p.planName}）` : ""}: ヨミ=${p.yomiStatus ?? "-"}, 金額${p.amount ?? "未設定"}`,
         )
         .join("\n");
       const totalAmount = deal.products.reduce((s, p) => s + (p.amount ?? 0), 0);
-      const pipelineAmount = deal.products.reduce(
-        (s, p) => s + (p.amount ?? 0) * (p.probability / 100),
-        0,
-      );
       contextBlock = `# 案件コンテキスト
 企業: ${deal.company.name}
 タイトル: ${deal.title}
 ステータス: ${deal.status}
 プロダクト構成（${deal.products.length}件）:
 ${productLines}
-合計提案金額: ${totalAmount}円 / 見込み金額: ${Math.round(pipelineAmount)}円
+提案金額合計: ${totalAmount}円
 次回アクション: ${deal.nextAction ?? "未設定"}
 最新議事録要約: ${deal.meetings[0]?.minutes ?? "なし"}`;
     }
@@ -84,7 +80,9 @@ ${productLines}
     });
     contextBlock = `# あなたの担当案件\n${myDeals
       .map((d) => {
-        const products = d.products.map((p) => `${p.productName}(${p.probability}%)`).join("/");
+        const products = d.products
+          .map((p) => `${p.productName}(${p.yomiStatus ?? "-"})`)
+          .join("/");
         return `- ${d.company.name} / [${products}]（次: ${d.nextAction ?? "未"})`;
       })
       .join("\n")}`;

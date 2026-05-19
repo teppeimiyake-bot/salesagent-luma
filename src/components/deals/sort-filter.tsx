@@ -2,14 +2,12 @@
 import Link from "next/link";
 import { useSearchParams, usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { ArrowUpDown, TrendingUp, Calendar, Clock, FileSignature } from "lucide-react";
+import { ArrowUpDown, TrendingUp, Calendar, Clock, FileSignature, BarChart3 } from "lucide-react";
 
 const SORTS = [
   { value: "next", label: "次回アクション順", icon: Clock },
-  { value: "probability_desc", label: "確度の高い順", icon: TrendingUp },
-  { value: "probability_asc", label: "確度の低い順", icon: TrendingUp },
+  { value: "yomi_desc", label: "ヨミ順", icon: BarChart3 },
   { value: "close_asc", label: "契約想定日順", icon: FileSignature },
-  { value: "amount_desc", label: "見込み金額順", icon: TrendingUp },
   { value: "total_desc", label: "提案金額合計順", icon: TrendingUp },
   { value: "updated_desc", label: "更新日（新しい順）", icon: Calendar },
 ];

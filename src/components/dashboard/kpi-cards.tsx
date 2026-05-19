@@ -10,7 +10,7 @@ export function KpiCards({
     todoCompletionRate: number;
     nextActionRate: number;
     aiTaskRatio: number;
-    pipelineAmount: number;
+    proposedAmount: number;
     wonAmount: number;
     totalDeals: number;
     wonDeals: number;
@@ -46,9 +46,9 @@ export function KpiCards({
       color: "text-green-600 bg-green-50",
     },
     {
-      label: "パイプライン",
-      value: formatJPY(Math.round(kpi.pipelineAmount)),
-      sub: "見込み金額（受注確度ベース）",
+      label: "提案金額合計",
+      value: formatJPY(kpi.proposedAmount),
+      sub: "進行中商談の提案金額合計",
       icon: TrendingUp,
       color: "text-sky-600 bg-sky-50",
     },

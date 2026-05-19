@@ -37,7 +37,7 @@ type Company = {
 };
 
 type Stats = {
-  pipelineAmount: number;
+  proposedAmount: number;
   wonAmount: number;
   activeDeals: number;
   contacts: number;
@@ -113,7 +113,7 @@ export function CompanyHero({ company, stats }: { company: Company; stats: Stats
           <h1 className="text-3xl font-bold tracking-tight truncate">{company.name}</h1>
           <p className="text-base text-white/90 mt-1">{company.industry || "業種未設定"}</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
-            <Stat icon={Wallet} label="見込み金額" value={formatJPY(Math.round(stats.pipelineAmount))} />
+            <Stat icon={Wallet} label="提案金額合計" value={formatJPY(stats.proposedAmount)} />
             <Stat icon={Building2} label="進行商談" value={`${stats.activeDeals} 件`} />
             <Stat icon={Users} label="連絡先" value={`${stats.contacts} 名`} />
             <Stat icon={Wallet} label="累計受注" value={formatJPY(stats.wonAmount)} highlight />

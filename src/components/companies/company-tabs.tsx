@@ -27,12 +27,10 @@ import {
 } from "lucide-react";
 import { formatJPY, formatDate } from "@/lib/utils";
 import { STATUS_LABEL, statusColor } from "@/lib/deal-status";
-import { ProbabilityBadge } from "@/components/ui/probability-badge";
 import { NewDealDialog } from "@/components/deals/new-deal-dialog";
 import {
-  pipelineAmount as calcPipelineAmount,
   totalProposedAmount,
-  weightedProbability,
+  representativeYomi,
   yomiColor,
   type DealProductLite,
 } from "@/lib/deal-aggregations";
@@ -119,7 +117,8 @@ export function CompanyTabs({
         </div>
         {company.deals.map((d) => {
           const totalAmt = totalProposedAmount(d.products);
-          const probability = weightedProbability(d.products);
+          const repYomi = representativeYomi(d.products);
+          const repYomiC = yomiColor(repYomi);
           const productNames = d.products.slice(0, 3).map((p) => p.productName);
           const restCount = Math.max(0, d.products.length - 3);
           return (
@@ -159,11 +158,19 @@ export function CompanyTabs({
                       )}
                     </div>
                     <div className="col-span-6 md:col-span-2">
-                      <p className="text-xs text-zinc-500 mb-0.5">提案額合計</p>
+                      <p className="text-xs text-zinc-500 mb-0.5">提案金額合計</p>
                       <p className="text-lg font-bold tabular-nums">{formatJPY(totalAmt)}</p>
                     </div>
                     <div className="col-span-6 md:col-span-2 flex justify-center">
-                      <ProbabilityBadge value={probability} size="md" />
+                      {repYomi ? (
+                        <span
+                          className={`inline-flex items-center text-xs font-semibold border rounded-full px-2.5 py-1 ${repYomiC.bg} ${repYomiC.text} ${repYomiC.border}`}
+                        >
+                          {repYomi}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-zinc-400">ヨミ未設定</span>
+                      )}
                     </div>
                     <div className="hidden md:flex col-span-1 justify-center">
                       {d.owner && (
@@ -194,7 +201,7 @@ export function CompanyTabs({
       {/* 提案内容（DealProduct単位で1カードずつ表示） */}
       <TabsContent value="proposals" className="space-y-3 mt-4">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-zinc-600">提案中のプロダクト一覧（見込み金額表示）</p>
+          <p className="text-sm text-zinc-600">提案中のプロダクト一覧（提案金額・ヨミ表示）</p>
           <NewDealDialog defaultCompanyId={company.id} />
         </div>
         {(() => {
@@ -225,28 +232,21 @@ export function CompanyTabs({
                               {p.planName}
                             </Badge>
                           )}
-                          {p.yomiStatus && (
-                            <span
-                              className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${yc.bg} ${yc.text} ${yc.border} ml-1`}
-                              title={p.yomiStatus}
-                            >
-                              {stripYomiPrefix(p.yomiStatus)}
-                            </span>
-                          )}
                         </div>
-                        <ProbabilityBadge value={p.probability} size="lg" />
+                        {p.yomiStatus ? (
+                          <span
+                            className={`inline-flex items-center shrink-0 px-3 py-1 rounded-full text-sm font-bold border ${yc.bg} ${yc.text} ${yc.border}`}
+                            title={p.yomiStatus}
+                          >
+                            {stripYomiPrefix(p.yomiStatus)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-zinc-400 shrink-0">ヨミ未設定</span>
+                        )}
                       </div>
-                      <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-zinc-100">
-                        <div>
-                          <p className="text-xs text-zinc-500">提案額</p>
-                          <p className="text-xl font-bold tabular-nums">{formatJPY(p.amount)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-zinc-500">見込み金額</p>
-                          <p className="text-xl font-bold tabular-nums text-emerald-700">
-                            {formatJPY(calcPipelineAmount([p]))}
-                          </p>
-                        </div>
+                      <div className="mt-4 pt-4 border-t border-zinc-100">
+                        <p className="text-xs text-zinc-500">提案金額</p>
+                        <p className="text-xl font-bold tabular-nums">{formatJPY(p.amount)}</p>
                       </div>
                       <Link
                         href={`/deals/${p.dealId}`}

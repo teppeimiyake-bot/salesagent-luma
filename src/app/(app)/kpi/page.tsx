@@ -18,7 +18,7 @@ import { getFiscalYear, fyDisplayLabel } from "@/lib/config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle } from "lucide-react";
-import { weightedProbability, type DealProductLite } from "@/lib/deal-aggregations";
+import { representativeYomi, dealYomiRank, type DealProductLite } from "@/lib/deal-aggregations";
 
 export const dynamic = "force-dynamic";
 
@@ -58,18 +58,21 @@ export default async function KpiPage({
   ]);
   const fullyLostSet = new Set(fullyLostDealIds);
 
-  // 確度60%以上 かつ Next Action未設定の Deal をアラート対象に
+  // ヨミがAヨミ以上（受注に近い）かつ Next Action未設定の Deal をアラート対象に
+  // ヨミランク：受注7 / A+ヨミ6 / Aヨミ5 / Bヨミ4 / Cヨミ3 / ネタ2 / NG1
   // NG/日程調整不可/完全失注は除外（社長判断 2026-05）
+  const HIGH_YOMI_RANK = 5; // Aヨミ以上
   const alerts = deals
     .map((d) => ({
       ...d,
-      _probability: weightedProbability(d.products as DealProductLite[]),
+      _yomi: representativeYomi(d.products as DealProductLite[]),
+      _yomiRank: dealYomiRank(d.products as DealProductLite[]),
       _productNames: d.products.map((p) => p.productName).slice(0, 3),
       _restCount: Math.max(0, d.products.length - 3),
     }))
     .filter(
       (d) =>
-        d._probability >= 60 &&
+        d._yomiRank >= HIGH_YOMI_RANK &&
         !d.nextAction &&
         !isExcludedFromNextAction(d, fullyLostSet),
     );
@@ -110,7 +113,7 @@ export default async function KpiPage({
           <CardContent>
             {alerts.length === 0 ? (
               <p className="text-sm text-zinc-500">
-                受注確度の高い商談は全てNext Actionが定義されています。
+                ヨミの高い商談は全てNext Actionが定義されています。
               </p>
             ) : (
               <ul className="divide-y divide-zinc-100">
@@ -120,7 +123,7 @@ export default async function KpiPage({
                       {d.company.name} / {d._productNames.join(", ")}
                       {d._restCount > 0 && ` 他${d._restCount}件`}
                     </span>
-                    <Badge variant="danger">確度{d._probability}% / Next未設定</Badge>
+                    <Badge variant="danger">{d._yomi ?? "ヨミ未設定"} / Next未設定</Badge>
                   </li>
                 ))}
               </ul>

@@ -12,7 +12,7 @@ import { NewMemberDialog } from "@/components/team/new-member-dialog";
 import { currentFiscalQuarterPeriod } from "@/lib/config";
 import Link from "next/link";
 import { Crown, Users } from "lucide-react";
-import { pipelineAmount as calcPipelineAmount, type DealProductLite } from "@/lib/deal-aggregations";
+import { totalProposedAmount, type DealProductLite } from "@/lib/deal-aggregations";
 import { excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
 import type { Prisma } from "@prisma/client";
 
@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 interface MemberRow {
   user: { id: string; name: string; avatarColor: string | null; role: string | null };
   deals: number;
-  pipeline: number;
+  proposed: number;
   won: number;
   winRate: number;
   openTasks: number;
@@ -56,7 +56,7 @@ async function buildRows(
           select: {
             status: true,
             products: {
-              select: { productName: true, amount: true, probability: true, ownerUserId: true },
+              select: { productName: true, amount: true, ownerUserId: true },
             },
           },
         }),
@@ -64,14 +64,14 @@ async function buildRows(
         prisma.task.count({ where: { deal: todoDealClause, status: "DONE" } }),
         getGoalProgress(period, u.id),
       ]);
-      const pipeline = deals
+      const proposed = deals
         .filter((d) => d.status !== "WON" && d.status !== "LOST")
-        .reduce((s, d) => s + calcPipelineAmount(d.products as DealProductLite[]), 0);
+        .reduce((s, d) => s + totalProposedAmount(d.products as DealProductLite[]), 0);
       const won = deals
         .filter((d) => d.status === "WON")
         .reduce((s, d) => s + d.products.reduce((ss, p) => ss + (p.amount ?? 0), 0), 0);
       const winRate = deals.length === 0 ? 0 : deals.filter((d) => d.status === "WON").length / deals.length;
-      return { user: u, deals: deals.length, pipeline, won, winRate, openTasks, doneTasks, goal };
+      return { user: u, deals: deals.length, proposed, won, winRate, openTasks, doneTasks, goal };
     }),
   );
 }
@@ -192,8 +192,8 @@ function MemberGrid({ rows, isManager = false }: { rows: MemberRow[]; isManager?
                 <p className="text-base font-bold">{(r.winRate * 100).toFixed(0)}%</p>
               </div>
               <div>
-                <p className="text-[10px] text-zinc-500">パイプ</p>
-                <p className="text-base font-bold tabular-nums">{formatJPY(Math.round(r.pipeline))}</p>
+                <p className="text-[10px] text-zinc-500">提案額</p>
+                <p className="text-base font-bold tabular-nums">{formatJPY(r.proposed)}</p>
               </div>
             </div>
             <div className="flex justify-between items-center pt-2 border-t border-zinc-100">

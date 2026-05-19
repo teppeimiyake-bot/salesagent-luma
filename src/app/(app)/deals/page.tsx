@@ -11,19 +11,12 @@ import {
   expandYomiValues,
   type YomiFilterValue,
 } from "@/components/deals/yomi-filter-config";
-import { ProbabilityFilter } from "@/components/deals/probability-filter";
-import {
-  expandProbabilityBuckets,
-  isProbabilityBucketValue,
-  type ProbabilityBucketValue,
-} from "@/components/deals/probability-filter-config";
 import { prisma } from "@/lib/db";
 import { getSalesUsers } from "@/lib/queries";
 import { getSession, hasPermission } from "@/lib/auth";
 import {
-  pipelineAmount,
   totalProposedAmount,
-  weightedProbability,
+  dealYomiRank,
   type DealProductLite,
 } from "@/lib/deal-aggregations";
 
@@ -37,7 +30,6 @@ export default async function DealsPage({
     product?: string;
     sort?: string;
     yomi?: string;
-    probability?: string;
   }>;
 }) {
   const session = await getSession();
@@ -71,12 +63,6 @@ export default async function DealsPage({
       );
   }
   const yomiExpanded = yomiSelected.length > 0 ? expandYomiValues(yomiSelected) : null;
-  const probParam = sp.probability ?? "";
-  const probSelected = probParam
-    .split(",")
-    .map((v) => v.trim())
-    .filter((v): v is ProbabilityBucketValue => isProbabilityBucketValue(v));
-  const probRanges = probSelected.length > 0 ? expandProbabilityBuckets(probSelected) : null;
   const ownerUserId =
     ownerParam === "me"
       ? session?.userId
@@ -87,8 +73,7 @@ export default async function DealsPage({
   // owner: Deal.ownerUserId または DealProduct.ownerUserId のどちらかに一致
   // product: DealProduct.productName に一致するものが少なくとも1件
   // yomi: DealProduct.yomiStatus が指定されたヨミ値（接頭辞展開後）のいずれかに一致
-  // probability: DealProduct.probability が指定されたバケット範囲のいずれかに該当する1件以上
-  //       product / yomi / probability は AND（同一 DealProduct で全条件を満たす必要は無く、
+  //       product / yomi は AND（同一 DealProduct で全条件を満たす必要は無く、
   //       それぞれ「少なくとも1件」存在すればよい運用とする）
   const productConditions: Array<{
     products: { some: Record<string, unknown> };
@@ -98,18 +83,6 @@ export default async function DealsPage({
   }
   if (yomiExpanded) {
     productConditions.push({ products: { some: { yomiStatus: { in: yomiExpanded } } } });
-  }
-  if (probRanges) {
-    // バケット間は OR（products.some に対するOR配列）。バケット内は gte/lte の AND。
-    productConditions.push({
-      products: {
-        some: {
-          OR: probRanges.map((r) => ({
-            probability: { gte: r.gte, lte: r.lte },
-          })),
-        },
-      },
-    });
   }
 
   const where = {
@@ -162,18 +135,12 @@ export default async function DealsPage({
   // メモリ上でソート（集計値ベース）
   const sortedDeals = [...deals];
   switch (sortParam) {
-    case "probability_desc":
+    case "yomi_desc":
+      // ヨミ順：受注 > A+ヨミ > Aヨミ > Bヨミ > Cヨミ > ネタ > NG（降順）
       sortedDeals.sort(
         (a, b) =>
-          weightedProbability(b.products as DealProductLite[]) -
-          weightedProbability(a.products as DealProductLite[]),
-      );
-      break;
-    case "probability_asc":
-      sortedDeals.sort(
-        (a, b) =>
-          weightedProbability(a.products as DealProductLite[]) -
-          weightedProbability(b.products as DealProductLite[]),
+          dealYomiRank(b.products as DealProductLite[]) -
+          dealYomiRank(a.products as DealProductLite[]),
       );
       break;
     case "close_asc":
@@ -182,13 +149,6 @@ export default async function DealsPage({
         const bx = b.expectedCloseDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
         return ax - bx;
       });
-      break;
-    case "amount_desc":
-      sortedDeals.sort(
-        (a, b) =>
-          pipelineAmount(b.products as DealProductLite[]) -
-          pipelineAmount(a.products as DealProductLite[]),
-      );
       break;
     case "total_desc":
       sortedDeals.sort(
@@ -215,7 +175,6 @@ export default async function DealsPage({
   if (productParam) backQueryParams.set("product", productParam);
   if (sortParam !== "next") backQueryParams.set("sort", sortParam);
   if (yomiSelected.length > 0) backQueryParams.set("yomi", yomiSelected.join(","));
-  if (probSelected.length > 0) backQueryParams.set("probability", probSelected.join(","));
   const linkQuery = backQueryParams.toString();
 
   return (
@@ -225,7 +184,6 @@ export default async function DealsPage({
         <OwnerTabs users={users} currentUserId={session?.userId ?? ""} selected={ownerParam} />
         <ProductFilter products={products} selected={productParam} />
         <YomiFilter selected={yomiSelected} />
-        <ProbabilityFilter selected={probSelected} />
         <SortFilter selected={sortParam} />
       </div>
       <div className="flex-1 overflow-y-auto p-6 bg-zinc-50">

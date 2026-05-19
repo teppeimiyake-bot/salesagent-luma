@@ -8,7 +8,7 @@ import { DeleteButton } from "@/components/shared/delete-button";
 import { prisma } from "@/lib/db";
 import { getSession, hasPermission } from "@/lib/auth";
 import { ArrowLeft } from "lucide-react";
-import { pipelineAmount as calcPipelineAmount } from "@/lib/deal-aggregations";
+import { totalProposedAmount } from "@/lib/deal-aggregations";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +46,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
 
   const active = company.deals.filter((d) => d.status !== "WON" && d.status !== "LOST");
   const allActiveProducts = active.flatMap((d) => d.products);
-  const pipelineAmount = calcPipelineAmount(allActiveProducts);
+  const proposedAmount = totalProposedAmount(allActiveProducts);
   // 累計受注：受注計上日ベース（contractDate が入っており、yomiStatus="受注" のDealProductのみ）
   const wonAmount = company.deals
     .filter((d) => d.contractDate != null)
@@ -88,7 +88,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
         <CompanyHero
           company={company}
           stats={{
-            pipelineAmount,
+            proposedAmount,
             wonAmount,
             activeDeals: active.length,
             contacts: company.contacts.length,

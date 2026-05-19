@@ -8,7 +8,7 @@ import { formatJPY } from "@/lib/utils";
 import { CompanyLogo } from "@/components/ui/company-logo";
 import { DeleteButton } from "@/components/shared/delete-button";
 import { getSession, hasPermission } from "@/lib/auth";
-import { pipelineAmount as calcPipelineAmount, topProductLabels } from "@/lib/deal-aggregations";
+import { totalProposedAmount, topProductLabels } from "@/lib/deal-aggregations";
 
 export const dynamic = "force-dynamic";
 
@@ -55,16 +55,16 @@ export default async function CompaniesPage() {
               <div className="col-span-2">所在地</div>
               <div className="col-span-1 text-right">商談</div>
               <div className="col-span-1 text-right">連絡先</div>
-              <div className="col-span-3 text-right">見込み金額（パイプライン）</div>
+              <div className="col-span-3 text-right">提案金額合計</div>
               <div className="col-span-1"></div>
             </div>
 
             <div className="divide-y divide-zinc-100">
               {companies.map((c) => {
                 const active = c.deals.filter((d) => d.status !== "WON" && d.status !== "LOST");
-                // 全アクティブDealのDealProductをまとめてパイプライン計算
+                // 全アクティブDealのDealProductをまとめて提案金額合計を計算
                 const allProducts = active.flatMap((d) => d.products);
-                const pipelineAmount = calcPipelineAmount(allProducts);
+                const proposedAmount = totalProposedAmount(allProducts);
                 const { primary, rest } = topProductLabels(allProducts, 2);
                 return (
                   <Link
@@ -140,14 +140,14 @@ export default async function CompaniesPage() {
                       </div>
                     </div>
 
-                    {/* パイプライン金額 */}
+                    {/* 提案金額合計 */}
                     <div className="hidden md:block col-span-3 text-right">
-                      {pipelineAmount > 0 ? (
+                      {proposedAmount > 0 ? (
                         <>
                           <p className="text-xl font-bold tabular-nums text-emerald-700">
-                            {formatJPY(Math.round(pipelineAmount))}
+                            {formatJPY(proposedAmount)}
                           </p>
-                          <p className="text-[10px] text-zinc-400">見込み金額</p>
+                          <p className="text-[10px] text-zinc-400">進行中の提案金額合計</p>
                         </>
                       ) : (
                         <span className="text-sm text-zinc-400">—</span>

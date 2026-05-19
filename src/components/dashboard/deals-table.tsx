@@ -1,24 +1,23 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, Layers, FileSignature, Calendar, Sparkle } from "lucide-react";
+import { ChevronRight, Layers, FileSignature, Calendar, Sparkle, ArrowRight, AlertTriangle } from "lucide-react";
 import { formatJPY } from "@/lib/utils";
 import { STATUS_LABEL, statusColor } from "@/lib/deal-status";
-import { ProbabilityBadge } from "@/components/ui/probability-badge";
 import { DueBadge } from "@/components/ui/due-badge";
 import { CompanyLogo } from "@/components/ui/company-logo";
 import { OwnerBadge } from "@/components/ui/owner-badge";
 import { DeleteButton } from "@/components/shared/delete-button";
 import {
-  pipelineAmount,
   totalProposedAmount,
   topProductLabels,
-  weightedProbability,
+  representativeYomi,
   yomiColor,
   type DealProductLite,
 } from "@/lib/deal-aggregations";
 import { leadSourceColor } from "@/lib/lead-source";
-import { DealInlineEdit } from "@/components/deals/deal-inline-edit";
+import { DealInlineEdit, DealNextActionEdit } from "@/components/deals/deal-inline-edit";
+import { dueState } from "@/lib/due-date";
 import type { DealStatus } from "@prisma/client";
 
 type DealRow = {
@@ -82,8 +81,8 @@ export function DealsTable({
         <div className="divide-y divide-zinc-100">
           {deals.map((d) => {
             const totalAmt = totalProposedAmount(d.products);
-            const pipeline = pipelineAmount(d.products);
-            const probability = weightedProbability(d.products);
+            const repYomi = representativeYomi(d.products);
+            const repYomiColor = yomiColor(repYomi);
             const { primary, rest } = topProductLabels(d.products, 2);
             return (
               <Link
@@ -93,7 +92,7 @@ export function DealsTable({
                     ? `/deals/${d.id}?from=${encodeURIComponent(linkQuery)}`
                     : `/deals/${d.id}`
                 }
-                className="grid grid-cols-12 gap-4 items-center px-5 py-4 hover:bg-emerald-50/30 transition-colors group"
+                className="grid grid-cols-12 gap-x-4 gap-y-2 items-center px-5 py-3 hover:bg-emerald-50/30 transition-colors group"
               >
                 {/* 左：企業ロゴ＋名＋プロダクト構成 */}
                 <div className="col-span-12 md:col-span-4 min-w-0 flex items-start gap-3">
@@ -162,11 +161,9 @@ export function DealsTable({
                         })()}
                       </div>
                     )}
-                    {editable ? (
+                    {editable && (
                       <DealInlineEdit
                         dealId={d.id}
-                        nextAction={d.nextAction}
-                        nextActionAt={d.nextActionAt}
                         products={d.products.map((p) => ({
                           id: p.id,
                           productName: p.productName,
@@ -174,36 +171,84 @@ export function DealsTable({
                           amount: p.amount,
                         }))}
                       />
-                    ) : (
-                      d.nextAction && (
-                        <p className="text-xs text-zinc-600 mt-1.5 truncate">
-                          <span className="text-zinc-400">Next: </span>
-                          {d.nextAction}
-                        </p>
-                      )
                     )}
                   </div>
                 </div>
 
-                {/* 中央：見込み金額＋提案合計 */}
-                <div className="col-span-4 md:col-span-2 text-right md:text-left">
-                  <p className="text-xs text-zinc-500 mb-0.5">見込み金額</p>
+                {/* 中央：提案金額＋ヨミ */}
+                <div className="col-span-6 md:col-span-3 text-right md:text-left">
+                  <p className="text-xs text-zinc-500 mb-0.5">提案金額</p>
                   <p className="font-bold text-lg tabular-nums text-emerald-700">
-                    {formatJPY(pipeline)}
+                    {formatJPY(totalAmt)}
                   </p>
-                  <p className="text-[10px] text-zinc-500 tabular-nums">
-                    提案計 {formatJPY(totalAmt)}
-                  </p>
+                  <div className="mt-1 flex justify-end md:justify-start">
+                    {repYomi ? (
+                      <span
+                        className={`inline-flex items-center text-[11px] font-semibold border rounded-full px-2 py-0.5 ${repYomiColor.bg} ${repYomiColor.text} ${repYomiColor.border}`}
+                      >
+                        {repYomi}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-zinc-400">ヨミ未設定</span>
+                    )}
+                  </div>
                 </div>
 
-                {/* 代表確度（加重平均・強調） */}
-                <div className="col-span-4 md:col-span-2 flex justify-center">
-                  <ProbabilityBadge value={probability} size="md" />
-                </div>
-
-                {/* 期日 */}
-                <div className="col-span-4 md:col-span-2 flex justify-end md:justify-start">
-                  <DueBadge date={d.nextActionAt} size="sm" />
+                {/* 右側：ネクストアクション＋期日（編集可ユーザーはインライン編集、それ以外は表示専用コンパクト版） */}
+                <div className="col-span-12 md:col-span-3 min-w-0">
+                  {editable ? (
+                    <DealNextActionEdit
+                      dealId={d.id}
+                      nextAction={d.nextAction}
+                      nextActionAt={d.nextActionAt}
+                    />
+                  ) : (
+                    (() => {
+                      const state = dueState(d.nextActionAt);
+                      const overdue = state === "overdue";
+                      const today = state === "today";
+                      return (
+                        <>
+                          <div className="flex items-center justify-between gap-2 mb-0.5">
+                            <p className="text-xs text-zinc-500">ネクストアクション</p>
+                            {overdue && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 border border-red-300 rounded px-1.5 py-0.5">
+                                <AlertTriangle className="h-3 w-3" />
+                                期限超過
+                              </span>
+                            )}
+                            {today && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+                                <AlertTriangle className="h-3 w-3" />
+                                本日期日
+                              </span>
+                            )}
+                          </div>
+                          {d.nextAction ? (
+                            <p
+                              className={`text-sm font-medium flex items-start gap-1 rounded px-1.5 py-1 ${
+                                overdue
+                                  ? "text-zinc-800 bg-red-50 border border-red-200"
+                                  : "text-zinc-800"
+                              }`}
+                            >
+                              <ArrowRight
+                                className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${
+                                  overdue ? "text-red-500" : "text-amber-500"
+                                }`}
+                              />
+                              <span className="line-clamp-3">{d.nextAction}</span>
+                            </p>
+                          ) : (
+                            <p className="text-sm text-zinc-400">未設定</p>
+                          )}
+                          <div className="mt-1">
+                            <DueBadge date={d.nextActionAt} size="sm" />
+                          </div>
+                        </>
+                      );
+                    })()
+                  )}
                 </div>
 
                 {/* 担当者 + 削除 + chevron */}

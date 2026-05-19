@@ -81,7 +81,7 @@ JSON厳密：
     const productSummary = deal.products
       .map(
         (p) =>
-          `  - ${p.productName}${p.planName ? `（${p.planName}）` : ""} / ヨミ=${p.yomiStatus ?? "-"} / 確度${p.probability}% / 金額${p.amount?.toLocaleString() ?? "未設定"}円`,
+          `  - ${p.productName}${p.planName ? `（${p.planName}）` : ""} / ヨミ=${p.yomiStatus ?? "-"} / 金額${p.amount?.toLocaleString() ?? "未設定"}円`,
       )
       .join("\n");
     const totalAmount = deal.products.reduce((s, p) => s + (p.amount ?? 0), 0);

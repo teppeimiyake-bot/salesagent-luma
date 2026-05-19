@@ -6,6 +6,7 @@ import { Search, Building2, Briefcase, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CompanyLogo } from "@/components/ui/company-logo";
 import { STATUS_LABEL, statusColor } from "@/lib/deal-status";
+import { representativeYomi, yomiColor } from "@/lib/deal-aggregations";
 import type { DealStatus } from "@prisma/client";
 
 type SearchResult = {
@@ -146,19 +147,8 @@ export function GlobalSearch() {
                   商談 ({data.deals.length})
                 </div>
                 {data.deals.map((d) => {
-                  // 加重平均
-                  const totalAmt = d.products.reduce((s, p) => s + (p.amount ?? 0), 0);
-                  const probability =
-                    totalAmt === 0
-                      ? d.products.length === 0
-                        ? 0
-                        : Math.round(
-                            d.products.reduce((s, p) => s + p.probability, 0) / d.products.length,
-                          )
-                      : Math.round(
-                          d.products.reduce((s, p) => s + (p.amount ?? 0) * p.probability, 0) /
-                            totalAmt,
-                        );
+                  const repYomi = representativeYomi(d.products);
+                  const repYomiC = yomiColor(repYomi);
                   const productSummary =
                     d.products.length === 0
                       ? d.title
@@ -181,9 +171,13 @@ export function GlobalSearch() {
                       <Badge variant={statusColor(d.status)} className="text-[10px]">
                         {STATUS_LABEL[d.status]}
                       </Badge>
-                      <span className="text-xs font-bold text-orange-700 tabular-nums">
-                        {probability}%
-                      </span>
+                      {repYomi && (
+                        <span
+                          className={`inline-flex items-center text-[10px] font-bold border rounded-full px-1.5 py-0.5 ${repYomiC.bg} ${repYomiC.text} ${repYomiC.border}`}
+                        >
+                          {repYomi}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}

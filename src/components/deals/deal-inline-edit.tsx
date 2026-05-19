@@ -1,9 +1,16 @@
 "use client";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { AlertTriangle } from "lucide-react";
 import { YOMI_OPTIONS, yomiColor } from "@/lib/deal-aggregations";
 import { stripYomiPrefix } from "@/lib/yomi-status";
 import { NextActionInput } from "@/components/deals/next-action-input";
+import { DueBadge } from "@/components/ui/due-badge";
+import { dueState } from "@/lib/due-date";
+
+// 期日判定 dueState() は純粋ユーティリティ（@/lib/due-date）へ移動した。
+// 後方互換のため、このモジュールからも引き続き利用できるよう re-export しておく。
+export { dueState };
 
 type ProductLite = {
   id: string;
@@ -72,19 +79,18 @@ function AmountInput({
 }
 
 /**
- * 商談一覧の行内でヨミ・提案金額・ネクストアクション(テキスト/期日)をインライン編集する。
+ * 商談一覧の行内でヨミ・提案金額をインライン編集する。
  * 行全体が <Link> なので、このコンポーネント内のクリックは preventDefault + stopPropagation で
  * リンク遷移を抑止する。
+ *
+ * ネクストアクション(テキスト/期日)の編集は `DealNextActionEdit` に分離した
+ * （カード内の重複表示解消・レイアウト整理のため）。
  */
 export function DealInlineEdit({
   dealId,
-  nextAction,
-  nextActionAt,
   products,
 }: {
   dealId: string;
-  nextAction: string | null;
-  nextActionAt: Date | string | null;
   products: ProductLite[];
 }) {
   const router = useRouter();
@@ -100,6 +106,73 @@ export function DealInlineEdit({
       router.refresh();
     });
   }
+
+  if (products.length === 0) return null;
+
+  return (
+    <div
+      className="mt-2"
+      onClick={(e) => {
+        // 行全体の <Link> 遷移を抑止
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        {products.map((p) => {
+          const bare = stripYomiPrefix(p.yomiStatus);
+          const c = yomiColor(bare);
+          return (
+            <span key={p.id} className="inline-flex items-center gap-1.5">
+              <span className="text-[11px] text-zinc-500">{p.productName}</span>
+              <select
+                value={bare ?? ""}
+                onChange={(e) =>
+                  patchDealProduct(p.id, {
+                    yomiStatus: e.target.value === "" ? null : e.target.value,
+                  })
+                }
+                disabled={pending}
+                title={`${p.productName} のヨミを変更`}
+                className={`cursor-pointer rounded-full border px-1.5 py-0.5 text-[11px] font-semibold ${c.bg} ${c.text} ${c.border} focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait`}
+              >
+                <option value="">-</option>
+                {yomiSelectOptions(bare).map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+              <AmountInput
+                value={p.amount}
+                disabled={pending}
+                onCommit={(v) => patchDealProduct(p.id, { amount: v })}
+              />
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 商談一覧の行内でネクストアクション(テキスト/期日)をインライン編集する。
+ * カード中央〜右側エリアに配置する想定。
+ * 行全体が <Link> なので、クリックは preventDefault + stopPropagation でリンク遷移を抑止する。
+ */
+export function DealNextActionEdit({
+  dealId,
+  nextAction,
+  nextActionAt,
+}: {
+  dealId: string;
+  nextAction: string | null;
+  nextActionAt: Date | string | null;
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+
   function patchDeal(body: Record<string, unknown>) {
     start(async () => {
       await fetch(`/api/deals/${dealId}`, {
@@ -111,58 +184,49 @@ export function DealInlineEdit({
     });
   }
 
+  const state = dueState(nextActionAt);
+  const overdue = state === "overdue";
+  const today = state === "today";
+
   return (
     <div
-      className="mt-2 space-y-1.5"
       onClick={(e) => {
         // 行全体の <Link> 遷移を抑止
         e.preventDefault();
         e.stopPropagation();
       }}
     >
-      {products.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          {products.map((p) => {
-            const bare = stripYomiPrefix(p.yomiStatus);
-            const c = yomiColor(bare);
-            return (
-              <span key={p.id} className="inline-flex items-center gap-1.5">
-                <span className="text-[11px] text-zinc-500">{p.productName}</span>
-                <select
-                  value={bare ?? ""}
-                  onChange={(e) =>
-                    patchDealProduct(p.id, {
-                      yomiStatus: e.target.value === "" ? null : e.target.value,
-                    })
-                  }
-                  disabled={pending}
-                  title={`${p.productName} のヨミを変更`}
-                  className={`cursor-pointer rounded-full border px-1.5 py-0.5 text-[11px] font-semibold ${c.bg} ${c.text} ${c.border} focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait`}
-                >
-                  <option value="">-</option>
-                  {yomiSelectOptions(bare).map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-                <AmountInput
-                  value={p.amount}
-                  disabled={pending}
-                  onCommit={(v) => patchDealProduct(p.id, { amount: v })}
-                />
-              </span>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="flex items-start gap-2">
-        <span className="mt-1 text-[11px] text-zinc-400 shrink-0">Next:</span>
-        <div className="flex-1 min-w-[12rem]">
-          <NextActionInput dealId={dealId} value={nextAction} rows={1} />
-        </div>
-        <span className="mt-1 text-[11px] text-zinc-400 shrink-0">期日:</span>
+      <div className="flex items-center justify-between gap-2 mb-0.5">
+        <p className="text-xs text-zinc-500">ネクストアクション</p>
+        {overdue && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 border border-red-300 rounded px-1.5 py-0.5">
+            <AlertTriangle className="h-3 w-3" />
+            期限超過
+          </span>
+        )}
+        {today && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+            <AlertTriangle className="h-3 w-3" />
+            本日期日
+          </span>
+        )}
+      </div>
+      {/* テキスト欄：複数行で全文が読める高さを確保 */}
+      <NextActionInput
+        dealId={dealId}
+        value={nextAction}
+        rows={3}
+        className={
+          "w-full resize-y rounded border bg-white px-2 py-1 text-sm leading-snug focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait disabled:bg-zinc-50 " +
+          (overdue
+            ? "border-red-300 ring-1 ring-red-200"
+            : today
+              ? "border-red-200"
+              : "border-zinc-200")
+        }
+      />
+      {/* 期日：入力欄＋超過アラート付きバッジ */}
+      <div className="mt-1.5 flex items-center gap-2 flex-wrap">
         <input
           type="date"
           value={toDateInputValue(nextActionAt)}
@@ -176,9 +240,13 @@ export function DealInlineEdit({
               if (!Number.isNaN(dt.getTime())) patchDeal({ nextActionAt: dt.toISOString() });
             }
           }}
-          className="mt-0.5 rounded border border-zinc-200 bg-white px-1.5 py-1 text-[11px] tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait disabled:bg-zinc-50"
+          className={
+            "shrink-0 rounded border bg-white px-1.5 py-1 text-[11px] tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait disabled:bg-zinc-50 " +
+            (overdue ? "border-red-300 text-red-700 font-semibold" : "border-zinc-200")
+          }
           title="ネクストアクションの期日を変更"
         />
+        {nextActionAt && <DueBadge date={nextActionAt} size="sm" />}
       </div>
     </div>
   );

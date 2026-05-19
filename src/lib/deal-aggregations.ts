@@ -7,7 +7,12 @@ export type DealProductLite = {
   id?: string;
   productName: string;
   planName?: string | null;
-  probability: number;
+  /**
+   * probability列はDB残置（社長判断 A案 2026-05）。
+   * UI/集計では使わないが、ヨミ↔probability の内部整合・Notion同期のため列自体は維持。
+   * 集計ヘルパー（totalProposedAmount / representativeYomi 等）は probability を参照しないので optional。
+   */
+  probability?: number;
   amount: number | null;
   yomiStatus?: string | null;
 };
@@ -17,36 +22,6 @@ export type DealProductLite = {
  */
 export function totalProposedAmount(items: DealProductLite[]): number {
   return items.reduce((sum, p) => sum + (p.amount ?? 0), 0);
-}
-
-/**
- * 見込み金額（重み付き合計）= sum(amount * probability/100)
- */
-export function pipelineAmount(items: DealProductLite[]): number {
-  return items.reduce(
-    (sum, p) => sum + (p.amount ?? 0) * ((p.probability ?? 0) / 100),
-    0,
-  );
-}
-
-/**
- * 代表確度（金額重み付き加重平均）
- *  - 全DealProductのamountが0/null → 単純平均（amountで重み付けできないため）
- *  - 全DealProductのprobabilityも0で空っぽ → 0
- */
-export function weightedProbability(items: DealProductLite[]): number {
-  if (items.length === 0) return 0;
-  const totalAmt = items.reduce((s, p) => s + (p.amount ?? 0), 0);
-  if (totalAmt === 0) {
-    // 単純平均
-    const sumProb = items.reduce((s, p) => s + (p.probability ?? 0), 0);
-    return Math.round(sumProb / items.length);
-  }
-  const weighted = items.reduce(
-    (s, p) => s + (p.amount ?? 0) * (p.probability ?? 0),
-    0,
-  );
-  return Math.round(weighted / totalAmt);
 }
 
 /**
@@ -102,6 +77,7 @@ export type Yomi = (typeof YOMI_OPTIONS)[number];
 
 /**
  * probability から Yomi の逆引き（ぴったり一致 or 近似）
+ * probability列はDB残置（社長判断 A案 2026-05）。ヨミ↔probability の内部整合維持に使う。
  */
 export function probabilityToYomi(prob: number): Yomi {
   if (prob >= 100) return "受注";
@@ -114,7 +90,66 @@ export function probabilityToYomi(prob: number): Yomi {
 }
 
 /**
- * Yomi バッジ色（ProbabilityBadge と整合）
+ * ヨミの並び順ランク（社長判断 2026-05）
+ *   受注 > A+ヨミ > Aヨミ > Bヨミ > Cヨミ > ネタ > NG
+ * 値が大きいほど受注に近い。降順ソートで「受注が先頭」になる。
+ * カテゴリ接頭辞（【映像】等）が付いていても判定できるよう stripYomiPrefix 相当の処理を内蔵。
+ */
+const YOMI_RANK: Record<string, number> = {
+  受注: 7,
+  "A+ヨミ": 6,
+  Aヨミ: 5,
+  Bヨミ: 4,
+  Cヨミ: 3,
+  ネタ: 2,
+  NG: 1,
+};
+
+/** 接頭辞（【映像】【SNS】【CATV】）を外した素のヨミを返す */
+function bareYomi(yomi: string | null | undefined): string {
+  if (!yomi) return "";
+  const m = /^【[^】]+】(.+)$/.exec(yomi);
+  return m ? m[1] : yomi;
+}
+
+/**
+ * 単一ヨミ文字列の並び順ランク（不明・null は 0 = 最下位）
+ */
+export function yomiRank(yomi: string | null | undefined): number {
+  const bare = bareYomi(yomi);
+  if (bare === "締結済み") return YOMI_RANK["受注"];
+  return YOMI_RANK[bare] ?? 0;
+}
+
+/**
+ * 代表ヨミ：Deal配下の DealProduct のうち最も受注に近いヨミを返す。
+ * 「代表確度」の置き換え。一覧でのヨミ表示・ヨミ順ソートに使う。
+ *  - DealProduct が0件 → null
+ *  - すべて未設定 → null
+ */
+export function representativeYomi(items: DealProductLite[]): string | null {
+  let best: { yomi: string; rank: number } | null = null;
+  for (const p of items) {
+    if (!p.yomiStatus) continue;
+    const rank = yomiRank(p.yomiStatus);
+    if (rank === 0) continue;
+    if (!best || rank > best.rank) {
+      best = { yomi: bareYomi(p.yomiStatus), rank };
+    }
+  }
+  return best?.yomi ?? null;
+}
+
+/**
+ * Deal の代表ヨミランク（ヨミ順ソート用）。
+ * representativeYomi が null（ヨミ未設定の商談）の場合は 0 = 最下位。
+ */
+export function dealYomiRank(items: DealProductLite[]): number {
+  return yomiRank(representativeYomi(items));
+}
+
+/**
+ * Yomi バッジ色（ヨミ7段階の表示色）
  */
 export function yomiColor(yomi: string | null | undefined): {
   bg: string;
