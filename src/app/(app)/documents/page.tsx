@@ -4,15 +4,23 @@ import { Badge } from "@/components/ui/badge";
 import { DocumentList } from "@/components/documents/document-list";
 import { DocumentsTabs } from "@/components/documents/documents-tabs";
 import { KnowledgeSearch } from "@/components/documents/knowledge-search";
+import {
+  IndividualProposalSearch,
+  type IndividualProposal,
+} from "@/components/documents/individual-proposal-search";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { buildIndustryOptions } from "@/lib/industry";
 
 export const dynamic = "force-dynamic";
 
-// 3カテゴリ分類ルール
+type TabKey = "knowledge" | "contract" | "proposal" | "plan";
+
+// カテゴリ分類ルール
 // knowledge = 導入事例 / テンプレ / その他（社内ナレッジ全般）
 // contract  = 契約書（admin のみアップロード可）
-// proposal  = 提案書
+// proposal  = 提案書（全社共通）
+// plan      = 企画書（= 商談ごとの個別提案書を横断検索）
 const TAB_FILTERS: Record<"knowledge" | "contract" | "proposal", (cat: string) => boolean> = {
   knowledge: (c) => c === "case_study" || c === "template" || c === "other" || c === "knowledge",
   contract: (c) => c === "contract",
@@ -34,33 +42,93 @@ export default async function DocumentsPage({
     : null;
   const permission = me?.permission ?? "viewer";
 
-  const tab = (["knowledge", "contract", "proposal"] as const).includes(
-    (sp.tab ?? "knowledge") as "knowledge" | "contract" | "proposal",
+  const tab: TabKey = (["knowledge", "contract", "proposal", "plan"] as const).includes(
+    (sp.tab ?? "knowledge") as TabKey,
   )
-    ? ((sp.tab ?? "knowledge") as "knowledge" | "contract" | "proposal")
+    ? ((sp.tab ?? "knowledge") as TabKey)
     : "knowledge";
 
+  // 全社共通ドキュメント（ナレッジ / 契約書 / 提案書タブ用）
   const docs = await prisma.document.findMany({
     where: { scope: "global" },
     orderBy: [{ category: "asc" }, { createdAt: "desc" }],
     include: { uploadedBy: { select: { id: true, name: true } } },
   });
 
-  const filtered = docs.filter((d) => TAB_FILTERS[tab](d.category));
-  const counts = {
+  // 企画書タブ＝個別提案書：商談ごとに登録された提案書ドキュメント（scope=deal / category=proposal）
+  // 業界・社名は商談の顧客企業から、プロダクト（企画提案）は商談のプロダクト構成から取得
+  const planDocs = await prisma.document.findMany({
+    where: {
+      scope: "deal",
+      category: "proposal",
+      deal: { is: { deletedAt: null } },
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
+      uploadedBy: { select: { name: true } },
+      deal: {
+        select: {
+          id: true,
+          title: true,
+          company: { select: { name: true, industry: true } },
+          products: { select: { productName: true, planProposals: true } },
+        },
+      },
+    },
+  });
+
+  const proposals: IndividualProposal[] = planDocs
+    .filter((d) => d.deal !== null)
+    .map((d) => {
+      const deal = d.deal!;
+      return {
+        id: d.id,
+        name: d.name,
+        description: d.description,
+        fileUrl: d.fileUrl,
+        sourceType: d.sourceType,
+        version: d.version,
+        createdAt: d.createdAt.toISOString(),
+        uploadedByName: d.uploadedBy?.name ?? null,
+        dealId: deal.id,
+        dealTitle: deal.title,
+        companyName: deal.company.name,
+        industry: deal.company.industry,
+        products: Array.from(
+          new Set(deal.products.map((p) => p.productName).filter(Boolean)),
+        ),
+        planProposals: Array.from(
+          new Set(deal.products.flatMap((p) => p.planProposals).filter(Boolean)),
+        ),
+      };
+    });
+
+  // フィルター選択肢（実データに存在するものだけ）
+  // industry は「,」区切りで複数業界を持ちうる。「,」で分割した個別業界をチップにする
+  // （「・」は1業界名の一部なので分割しない）。件数降順→五十音順で並べる。
+  const industries = buildIndustryOptions(proposals.map((p) => p.industry));
+  const productOptions = Array.from(
+    new Set(proposals.flatMap((p) => [...p.products, ...p.planProposals])),
+  ).sort((a, b) => a.localeCompare(b, "ja"));
+
+  const filtered = (tab === "plan" ? [] : docs).filter((d) =>
+    tab === "plan" ? false : TAB_FILTERS[tab](d.category),
+  );
+  const counts: Record<TabKey, number> = {
     knowledge: docs.filter((d) => TAB_FILTERS.knowledge(d.category)).length,
     contract: docs.filter((d) => TAB_FILTERS.contract(d.category)).length,
     proposal: docs.filter((d) => TAB_FILTERS.proposal(d.category)).length,
+    plan: proposals.length,
   };
 
   return (
     <>
       <Header
         title="ナレッジ・契約書・提案書"
-        subtitle={`全社共通 ${docs.length} 件`}
+        subtitle={`全社共通 ${docs.length} 件 ／ 個別提案書 ${proposals.length} 件`}
       />
       <div className="flex-1 overflow-y-auto p-6 bg-zinc-50 space-y-5">
-        <KnowledgeSearch />
+        {tab !== "plan" && <KnowledgeSearch />}
         <DocumentsTabs tab={tab} counts={counts} permission={permission} />
 
         {/* 選択中タブのドキュメント一覧 */}
@@ -75,6 +143,13 @@ export default async function DocumentsPage({
         )}
         {tab === "proposal" && (
           <ProposalSection docs={filtered} permission={permission} />
+        )}
+        {tab === "plan" && (
+          <IndividualProposalSearch
+            proposals={proposals}
+            industries={industries}
+            products={productOptions}
+          />
         )}
       </div>
     </>
