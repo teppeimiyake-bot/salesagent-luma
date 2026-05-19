@@ -249,6 +249,87 @@ export async function getSalesUsers() {
 }
 
 /**
+ * 指定 period の「目標金額」を返す。
+ *
+ * 設計（2026-05 社長指示）：
+ *   月次目標（YYYY-MM）がマスタ（唯一の入力源）。
+ *   四半期目標・年間KGI は DBにレコードを持たず、その期間に属する
+ *   月次目標の合計として自動算出する（二重管理を避ける）。
+ *
+ * - period が月次（YYYY-MM）       → Goal レコードを直接参照
+ * - period が会計四半期（FYxxxx-Qn）→ 属する3ヶ月の月次目標を合算
+ * - period が会計年度（FYxxxx）     → 属する12ヶ月の月次目標を合算
+ * - 後方互換：暦年「2026」「2026-Qn」も月次合算で算出
+ */
+export async function getGoalTargetAmount(
+  period: string,
+  userId?: string,
+): Promise<number> {
+  // 月次：レコード直参照
+  if (/^\d{4}-\d{2}$/.test(period)) {
+    const goal = await prisma.goal.findFirst({
+      where: { period, ownerUserId: userId ?? null },
+    });
+    return goal?.targetAmount ?? 0;
+  }
+  // 四半期/年度/暦年系：構成月の月次目標を合算
+  const months = periodToMonthPeriods(period);
+  if (months.length === 0) {
+    // 想定外フォーマットは旧来どおりレコード直参照（フォールバック）
+    const goal = await prisma.goal.findFirst({
+      where: { period, ownerUserId: userId ?? null },
+    });
+    return goal?.targetAmount ?? 0;
+  }
+  const goals = await prisma.goal.findMany({
+    where: { period: { in: months }, ownerUserId: userId ?? null },
+    select: { targetAmount: true },
+  });
+  return goals.reduce((s, g) => s + g.targetAmount, 0);
+}
+
+/**
+ * 集計期間ラベル → 構成する月次 period（YYYY-MM）配列
+ * 月次以外（四半期・年度・暦年・暦年四半期）を月次の集合に展開する。
+ * 月次ラベル・未対応ラベルは空配列を返す。
+ */
+export function periodToMonthPeriods(period: string): string[] {
+  // 会計年度（FY2026）→ 構成12ヶ月
+  const fyOnly = /^FY(\d{4})$/i.exec(period);
+  if (fyOnly) {
+    const fy = Number(fyOnly[1]);
+    return Array.from({ length: 12 }, (_, i) => {
+      const { year, month } = getFiscalMonth(fy, i);
+      return monthPeriodLabel(year, month);
+    });
+  }
+  // 会計四半期（FY2026-Q1）→ 構成3ヶ月
+  const fyQuarter = /^FY(\d{4})-Q([1-4])$/i.exec(period);
+  if (fyQuarter) {
+    const fy = Number(fyQuarter[1]);
+    const q = Number(fyQuarter[2]);
+    return getFiscalQuarterMonths(fy, q - 1).map((m) =>
+      monthPeriodLabel(m.year, m.month),
+    );
+  }
+  // 後方互換：暦年「2026」→ 1〜12月
+  const yearOnly = /^(\d{4})$/.exec(period);
+  if (yearOnly) {
+    const y = Number(yearOnly[1]);
+    return Array.from({ length: 12 }, (_, i) => monthPeriodLabel(y, i + 1));
+  }
+  // 後方互換：暦年四半期「2026-Q1」→ 3ヶ月
+  const quarter = /^(\d{4})-Q([1-4])$/i.exec(period);
+  if (quarter) {
+    const y = Number(quarter[1]);
+    const q = Number(quarter[2]);
+    const startMonth = (q - 1) * 3 + 1;
+    return [0, 1, 2].map((i) => monthPeriodLabel(y, startMonth + i));
+  }
+  return [];
+}
+
+/**
  * 目標 vs 実績
  * 集計基準：契約日（Deal.contractDate）が指定期間内 かつ
  *           DealProduct.yomiStatus = "受注" の DealProduct.amount 合計
@@ -256,11 +337,11 @@ export async function getSalesUsers() {
  * - Deal.status は問わない（契約日が入っているDealは契約済みと判定）
  * - WON / LOST / 任意ステータスでも、contractDate と yomiStatus="受注" のDealProductがあれば実績に乗る
  * - 期間指定が無い場合は全期間（contractDate not null のものすべて）
+ *
+ * 目標金額は getGoalTargetAmount に委譲（四半期/年間は月次目標の合算）。
  */
 export async function getGoalProgress(period: string, userId?: string) {
-  const goal = await prisma.goal.findFirst({
-    where: { period, ownerUserId: userId ?? null },
-  });
+  const targetAmount = await getGoalTargetAmount(period, userId);
   const where = {
     ...(userId ? { ownerUserId: userId } : {}),
     ...ACTIVE_DEAL_FILTER,
@@ -287,9 +368,9 @@ export async function getGoalProgress(period: string, userId?: string) {
     0,
   );
   return {
-    targetAmount: goal?.targetAmount ?? 0,
+    targetAmount,
     wonAmount: wonAmt,
-    rate: goal?.targetAmount ? wonAmt / goal.targetAmount : 0,
+    rate: targetAmount ? wonAmt / targetAmount : 0,
     period,
   };
 }

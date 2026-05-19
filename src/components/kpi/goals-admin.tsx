@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -16,20 +15,17 @@ import {
 } from "@/components/ui/select";
 import {
   Target,
-  Plus,
-  Trash2,
   Save,
   Crown,
   CalendarRange,
-  CalendarDays,
-  Calendar as CalendarIcon,
+  Lock,
+  Info,
 } from "lucide-react";
 import { formatJPY } from "@/lib/utils";
 import {
-  fyPeriodLabel,
-  fyQuarterPeriodLabel,
   monthPeriodLabel,
   getFiscalMonth,
+  getFiscalQuarterMonths,
 } from "@/lib/config";
 
 type Goal = {
@@ -37,12 +33,16 @@ type Goal = {
   ownerUserId: string | null;
   period: string;
   targetAmount: number;
-  owner?: { id: string; name: string; avatarColor: string | null } | null;
 };
 type SalesUser = { id: string; name: string; avatarColor: string | null };
 
-type PeriodTab = "year" | "quarter" | "month";
-
+/**
+ * KPI目標管理（admin専用）
+ *
+ * 設計（2026-05 社長指示）：
+ *   月次目標がマスタ（入力源）。adminは各月の目標金額を入力する。
+ *   四半期目標・年間KGI は月次目標の合計として自動算出（読み取り専用）。
+ */
 export function GoalsAdmin({
   year, // 会計年度（FY2026 → 2026）
   users,
@@ -55,12 +55,10 @@ export function GoalsAdmin({
   const [loading, setLoading] = useState(true);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<PeriodTab>("year");
 
-  // 新規追加フォーム
-  const [newOwner, setNewOwner] = useState<string>("__org__");
-  const [newPeriod, setNewPeriod] = useState<string>(fyPeriodLabel(year));
-  const [newAmount, setNewAmount] = useState<string>("");
+  // 編集対象（組織全体 or 個人）
+  const [owner, setOwner] = useState<string>("__org__");
+  const ownerUserId = owner === "__org__" ? null : owner;
 
   async function load() {
     setLoading(true);
@@ -73,73 +71,64 @@ export function GoalsAdmin({
     load();
   }, []);
 
-  // タブ切替時に新規追加フォームの期間プレースホルダ更新
-  useEffect(() => {
-    if (tab === "year") setNewPeriod(fyPeriodLabel(year));
-    else if (tab === "quarter") setNewPeriod(fyQuarterPeriodLabel(year, 1));
-    else {
-      const { year: y, month } = getFiscalMonth(year, 0);
-      setNewPeriod(monthPeriodLabel(y, month));
+  // FY内の12ヶ月（暦月 YYYY-MM）と表示ラベル
+  const months = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, i) => {
+        const { year: y, month } = getFiscalMonth(year, i);
+        return { period: monthPeriodLabel(y, month), label: `${month}月`, y, month };
+      }),
+    [year],
+  );
+
+  // 現在の編集対象（owner）の月次目標 period → 金額 マップ
+  const monthAmounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const g of goals) {
+      if ((g.ownerUserId ?? null) !== ownerUserId) continue;
+      if (/^\d{4}-\d{2}$/.test(g.period)) map.set(g.period, g.targetAmount);
     }
-  }, [tab, year]);
+    return map;
+  }, [goals, ownerUserId]);
 
-  function upsert(payload: { period: string; targetAmount: number; ownerUserId: string | null }) {
+  function upsertMonth(period: string, targetAmount: number) {
     setError(null);
-    start(async () => {
-      const r = await fetch(`/api/goals`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const j = await r.json();
-      if (!r.ok) {
-        setError(j.error ?? "保存に失敗しました");
-        return;
-      }
-      await load();
-      router.refresh();
-    });
-  }
-
-  function remove(id: string) {
-    if (!confirm("この目標を削除しますか？")) return;
-    start(async () => {
-      const r = await fetch(`/api/goals?id=${id}`, { method: "DELETE" });
-      if (!r.ok) {
+    return new Promise<void>((resolve) => {
+      start(async () => {
+        const r = await fetch(`/api/goals`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ period, targetAmount, ownerUserId }),
+        });
         const j = await r.json().catch(() => ({}));
-        setError(j.error ?? "削除に失敗しました");
-        return;
-      }
-      await load();
-      router.refresh();
+        if (!r.ok) {
+          setError(j.error ?? "保存に失敗しました");
+          resolve();
+          return;
+        }
+        await load();
+        router.refresh();
+        resolve();
+      });
     });
   }
 
-  function submitNew(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newPeriod.trim() || !newAmount) return;
-    upsert({
-      period: newPeriod.trim(),
-      targetAmount: Math.round(Number(newAmount)),
-      ownerUserId: newOwner === "__org__" ? null : newOwner,
+  // 四半期合計（FY内 Q1〜Q4）
+  const quarters = useMemo(() => {
+    return [0, 1, 2, 3].map((qi) => {
+      const qMonths = getFiscalQuarterMonths(year, qi).map((m) =>
+        monthPeriodLabel(m.year, m.month),
+      );
+      const total = qMonths.reduce((s, p) => s + (monthAmounts.get(p) ?? 0), 0);
+      return { label: `Q${qi + 1}`, total };
     });
-    setNewAmount("");
-  }
+  }, [year, monthAmounts]);
 
-  // タブごとに目標を分類
-  const filtered = useMemo(() => {
-    return goals.filter((g) => classifyPeriod(g.period) === tab);
-  }, [goals, tab]);
-
-  // クイック追加：会計年度/会計四半期/会計年度内の各月の候補を提示
-  const quickAddCandidates = useMemo(() => {
-    if (tab === "year") return [fyPeriodLabel(year)];
-    if (tab === "quarter") return [1, 2, 3, 4].map((q) => fyQuarterPeriodLabel(year, q));
-    return Array.from({ length: 12 }, (_, i) => {
-      const { year: y, month } = getFiscalMonth(year, i);
-      return monthPeriodLabel(y, month);
-    });
-  }, [tab, year]);
+  // 年間KGI = 12ヶ月合計
+  const yearTotal = useMemo(
+    () => months.reduce((s, m) => s + (monthAmounts.get(m.period) ?? 0), 0),
+    [months, monthAmounts],
+  );
 
   return (
     <Card className="border-rose-200 bg-gradient-to-br from-rose-50/40 via-white to-pink-50/30">
@@ -153,217 +142,167 @@ export function GoalsAdmin({
             管理者専用
           </Badge>
           <span className="text-xs text-zinc-500 ml-auto">
-            年間KGI / 四半期KPI / 月次KPI を個人・組織別に設定
+            月次目標を入力 → 四半期・年間KGIを自動算出
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Tabs value={tab} onValueChange={(v) => setTab(v as PeriodTab)}>
-          <TabsList className="grid grid-cols-3 max-w-md">
-            <TabsTrigger value="year">
-              <Crown className="h-3.5 w-3.5 mr-1" />
-              年間KGI
-            </TabsTrigger>
-            <TabsTrigger value="quarter">
-              <CalendarRange className="h-3.5 w-3.5 mr-1" />
-              四半期
-            </TabsTrigger>
-            <TabsTrigger value="month">
-              <CalendarDays className="h-3.5 w-3.5 mr-1" />
-              月次
-            </TabsTrigger>
-          </TabsList>
-          {(["year", "quarter", "month"] as const).map((t) => (
-            <TabsContent key={t} value={t} className="space-y-4 mt-4">
-              {/* 新規追加 */}
-              <form
-                onSubmit={submitNew}
-                className="grid grid-cols-1 md:grid-cols-12 gap-2 p-4 rounded-lg border border-rose-200 bg-rose-50/30"
-              >
-                <div className="md:col-span-3 space-y-1">
-                  <Label className="text-xs">対象</Label>
-                  <Select value={newOwner} onValueChange={setNewOwner}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__org__">
-                        <span className="inline-flex items-center gap-1.5">
-                          <Crown className="h-3 w-3 text-rose-500" />
-                          組織全体
-                        </span>
-                      </SelectItem>
-                      {users.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="md:col-span-3 space-y-1">
-                  <Label className="text-xs">
-                    期間（{t === "year" ? "例: FY2026" : t === "quarter" ? "例: FY2026-Q2" : "例: 2026-06"}）
-                  </Label>
-                  <Select value={newPeriod} onValueChange={setNewPeriod}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {quickAddCandidates.map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="md:col-span-4 space-y-1">
-                  <Label className="text-xs">目標金額（円）</Label>
-                  <Input
-                    type="number"
-                    value={newAmount}
-                    onChange={(e) => setNewAmount(e.target.value)}
-                    placeholder={
-                      t === "year"
-                        ? "例: 200000000"
-                        : t === "quarter"
-                          ? "例: 50000000"
-                          : "例: 15000000"
-                    }
-                    min={0}
-                  />
-                </div>
-                <div className="md:col-span-2 flex items-end">
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="sm"
-                    disabled={pending || !newAmount || !newPeriod.trim()}
-                    className="w-full"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    追加 / 更新
-                  </Button>
-                </div>
-              </form>
+        {/* 仕様ノート */}
+        <div className="rounded-lg border border-sky-200 bg-sky-50/60 px-4 py-2.5 text-xs text-sky-800 flex items-start gap-2">
+          <Info className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            <strong className="font-bold">月次目標がマスタ</strong>です。各月の目標金額を入力すると、
+            <strong className="font-bold">四半期目標</strong>（3ヶ月合計）と
+            <strong className="font-bold">年間KGI</strong>（12ヶ月合計）が自動算出されます。
+            四半期・年間は編集できません。
+          </span>
+        </div>
 
-              {error && (
-                <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded">{error}</p>
-              )}
+        {/* 編集対象セレクタ */}
+        <div className="flex items-end gap-3 flex-wrap">
+          <div className="space-y-1">
+            <Label className="text-xs">編集対象</Label>
+            <Select value={owner} onValueChange={setOwner}>
+              <SelectTrigger className="h-9 w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__org__">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Crown className="h-3 w-3 text-rose-500" />
+                    組織全体
+                  </span>
+                </SelectItem>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <span className="text-xs text-zinc-500 pb-2">
+            会計年度 FY{year}（{months[0]?.label}〜{months[11]?.label}）
+          </span>
+        </div>
 
-              {/* 既存目標一覧 */}
-              {loading ? (
-                <p className="text-sm text-zinc-500 text-center py-4">読み込み中...</p>
-              ) : filtered.length === 0 ? (
-                <p className="text-sm text-zinc-500 text-center py-4">
-                  この粒度（{t === "year" ? "年間" : t === "quarter" ? "四半期" : "月次"}）の目標はまだ設定されていません。
+        {error && (
+          <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded">{error}</p>
+        )}
+
+        {/* ============ 月次目標 入力グリッド ============ */}
+        {loading ? (
+          <p className="text-sm text-zinc-500 text-center py-4">読み込み中...</p>
+        ) : (
+          <div className="rounded-lg border border-rose-200 bg-white overflow-hidden">
+            <div className="px-4 py-2 bg-rose-50/60 border-b border-rose-100 text-xs font-semibold text-rose-700 flex items-center gap-1.5">
+              <CalendarRange className="h-3.5 w-3.5" />
+              月次目標（入力）
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-zinc-100">
+              {months.map((m) => (
+                <MonthInput
+                  key={m.period}
+                  label={m.label}
+                  period={m.period}
+                  amount={monthAmounts.get(m.period) ?? 0}
+                  onSave={(v) => upsertMonth(m.period, v)}
+                  pending={pending}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ============ 自動算出：四半期目標 ============ */}
+        <div className="rounded-lg border border-orange-200 bg-orange-50/30 overflow-hidden">
+          <div className="px-4 py-2 bg-orange-50/70 border-b border-orange-100 text-xs font-semibold text-orange-700 flex items-center gap-1.5">
+            <Lock className="h-3.5 w-3.5" />
+            四半期目標（自動算出・編集不可）
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-zinc-100">
+            {quarters.map((q) => (
+              <div key={q.label} className="bg-white px-4 py-3">
+                <p className="text-xs font-semibold text-zinc-600">{q.label}</p>
+                <p className="mt-0.5 text-lg font-bold tabular-nums text-orange-700">
+                  {formatJPY(q.total)}
                 </p>
-              ) : (
-                <ul className="divide-y divide-zinc-100 border border-zinc-200 rounded-lg bg-white">
-                  {filtered.map((g) => (
-                    <GoalRow
-                      key={g.id}
-                      goal={g}
-                      onSave={(targetAmount) =>
-                        upsert({
-                          period: g.period,
-                          targetAmount,
-                          ownerUserId: g.ownerUserId,
-                        })
-                      }
-                      onRemove={() => remove(g.id)}
-                      pending={pending}
-                    />
-                  ))}
-                </ul>
-              )}
-            </TabsContent>
-          ))}
-        </Tabs>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ============ 自動算出：年間KGI ============ */}
+        <div className="rounded-lg border border-rose-300 bg-gradient-to-br from-rose-50 to-pink-50/50 px-5 py-4 flex items-center gap-3 flex-wrap">
+          <div className="rounded-lg bg-gradient-to-br from-rose-500 to-pink-500 text-white p-1.5 shadow-sm">
+            <Crown className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-xs text-rose-700 font-semibold flex items-center gap-1">
+              年間KGI（自動算出・編集不可）
+              <Lock className="h-3 w-3" />
+            </p>
+            <p className="text-2xl font-bold tabular-nums text-rose-700 leading-tight">
+              {formatJPY(yearTotal)}
+            </p>
+          </div>
+          <span className="text-[11px] text-zinc-500 ml-auto">
+            = FY{year} の12ヶ月分の月次目標合計
+          </span>
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-function classifyPeriod(period: string): PeriodTab | "other" {
-  if (/^FY\d{4}$/i.test(period)) return "year";
-  if (/^FY\d{4}-Q[1-4]$/i.test(period)) return "quarter";
-  if (/^\d{4}-\d{2}$/.test(period)) return "month";
-  // 後方互換
-  if (/^\d{4}$/.test(period)) return "year";
-  if (/^\d{4}-Q[1-4]$/i.test(period)) return "quarter";
-  return "other";
-}
-
-function GoalRow({
-  goal,
+function MonthInput({
+  label,
+  period,
+  amount,
   onSave,
-  onRemove,
   pending,
 }: {
-  goal: Goal;
-  onSave: (n: number) => void;
-  onRemove: () => void;
+  label: string;
+  period: string;
+  amount: number;
+  onSave: (n: number) => Promise<void>;
   pending: boolean;
 }) {
-  const [amount, setAmount] = useState<string>(String(goal.targetAmount));
-  const dirty = Number(amount) !== goal.targetAmount;
-  const isOrg = !goal.ownerUserId;
-  const cls = classifyPeriod(goal.period);
+  const [value, setValue] = useState<string>(amount ? String(amount) : "");
+  // 親state（goals再読込）が変わったら同期
+  useEffect(() => {
+    setValue(amount ? String(amount) : "");
+  }, [amount]);
+
+  const parsed = value.trim() === "" ? 0 : Math.round(Number(value));
+  const valid = !Number.isNaN(parsed) && parsed >= 0;
+  const dirty = valid && parsed !== amount;
 
   return (
-    <li className="px-4 py-3 flex items-center gap-3 flex-wrap">
-      {isOrg ? (
-        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-rose-700">
-          <Crown className="h-3.5 w-3.5" /> 組織全体
-        </span>
-      ) : (
-        <span className="inline-flex items-center gap-2 text-sm">
-          <span
-            className="w-6 h-6 rounded-full text-white text-[10px] font-bold flex items-center justify-center"
-            style={{ background: goal.owner?.avatarColor ?? "#6366f1" }}
-          >
-            {goal.owner?.name.charAt(0) ?? "?"}
-          </span>
-          <span className="font-semibold">{goal.owner?.name ?? "(削除済)"}</span>
-        </span>
-      )}
-      <Badge
-        variant={cls === "year" ? "danger" : cls === "quarter" ? "info" : "secondary"}
-        className="inline-flex items-center gap-1"
-      >
-        {cls === "year" && <Crown className="h-3 w-3" />}
-        {cls === "quarter" && <CalendarRange className="h-3 w-3" />}
-        {cls === "month" && <CalendarIcon className="h-3 w-3" />}
-        {goal.period}
-      </Badge>
-      <span className="ml-auto text-xs text-zinc-500">現在: {formatJPY(goal.targetAmount)}</span>
+    <div className="bg-white px-4 py-2.5">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-semibold text-zinc-700">{label}</span>
+        <span className="text-[10px] text-zinc-400">{period}</span>
+      </div>
       <div className="flex items-center gap-1.5">
         <Input
           type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          className="h-8 w-36 text-right tabular-nums"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="0"
+          min={0}
+          className="h-8 text-right tabular-nums"
         />
         <Button
           size="sm"
           variant={dirty ? "primary" : "outline"}
           disabled={!dirty || pending}
-          onClick={() => onSave(Math.round(Number(amount)))}
+          onClick={() => dirty && onSave(parsed)}
+          title="保存"
         >
           <Save className="h-3 w-3" />
-          保存
         </Button>
-        <button
-          onClick={onRemove}
-          disabled={pending}
-          className="text-zinc-300 hover:text-red-500 px-1"
-          title="削除"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
       </div>
-    </li>
+    </div>
   );
 }
