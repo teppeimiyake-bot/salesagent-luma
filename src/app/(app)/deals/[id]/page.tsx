@@ -12,6 +12,7 @@ import { DealProductsPanel } from "@/components/deals/deal-products-panel";
 import { RoleplayPanel } from "@/components/deals/roleplay-panel";
 import { PreparationPanel } from "@/components/deals/preparation-panel";
 import { DealDocuments } from "@/components/deals/deal-documents";
+import { DealContracts } from "@/components/deals/deal-contracts";
 import { DealQuotes } from "@/components/deals/deal-quotes";
 import { MeetingHistory } from "@/components/deals/meeting-history";
 import { BantSummary } from "@/components/deals/bant-summary";
@@ -226,6 +227,8 @@ export default async function DealDetailPage({
             <MeetingHistory dealId={deal.id} meetings={deal.meetings} />
             <DealQuotes dealId={deal.id} canEdit={canEdit} />
             <DealDocuments dealId={deal.id} companyName={deal.company.name} />
+            {/* 見積もりセクションの下：商談ごとの個別契約書（全商談で常時表示） */}
+            <DealContracts dealId={deal.id} companyName={deal.company.name} />
             <TasksList tasks={deal.tasks} />
           </div>
 

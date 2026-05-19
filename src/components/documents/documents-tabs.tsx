@@ -2,10 +2,10 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { DocumentUploadDialog } from "@/components/documents/document-upload-dialog";
-import { BookOpen, FileSignature, FileText, FolderSearch } from "lucide-react";
+import { BookOpen, FileSignature, FileText, FolderSearch, FileCheck2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type Tab = "knowledge" | "contract" | "proposal" | "plan";
+type Tab = "knowledge" | "contract" | "proposal" | "plan" | "deal-contract";
 
 const TABS: { key: Tab; label: string; icon: typeof BookOpen; color: string; activeBg: string }[] = [
   {
@@ -36,6 +36,13 @@ const TABS: { key: Tab; label: string; icon: typeof BookOpen; color: string; act
     color: "text-indigo-600",
     activeBg: "bg-gradient-to-br from-indigo-500 to-violet-500",
   },
+  {
+    key: "deal-contract",
+    label: "個別契約書",
+    icon: FileCheck2,
+    color: "text-red-600",
+    activeBg: "bg-gradient-to-br from-red-500 to-rose-500",
+  },
 ];
 
 export function DocumentsTabs({
@@ -48,9 +55,10 @@ export function DocumentsTabs({
   permission: string;
 }) {
   // タブごとにアップロード可能か / 既定カテゴリを決定
-  // plan（企画書）タブは横断検索専用 → アップロードボタンは出さない（提案書は商談詳細から登録）
+  // plan（企画書）/ deal-contract（個別契約書）タブは横断検索専用
+  //  → アップロードボタンは出さない（提案書・個別契約書は商談詳細から登録）
   const canUploadCurrent =
-    tab === "plan"
+    tab === "plan" || tab === "deal-contract"
       ? false
       : tab === "contract"
         ? permission === "admin"
@@ -60,6 +68,7 @@ export function DocumentsTabs({
     contract: "contract",
     proposal: "proposal",
     plan: "proposal",
+    "deal-contract": "contract",
   };
   // contractタブは contract のみ、それ以外は通常の選択肢を許す
   const allowedCategories: Record<Tab, string[]> = {
@@ -67,6 +76,7 @@ export function DocumentsTabs({
     contract: ["contract"],
     proposal: ["proposal"],
     plan: ["proposal"],
+    "deal-contract": ["contract"],
   };
 
   return (
@@ -115,6 +125,11 @@ export function DocumentsTabs({
       {tab === "plan" && (
         <p className="text-xs text-zinc-500">
           提案書の登録は各商談詳細から（ここは横断検索専用）
+        </p>
+      )}
+      {tab === "deal-contract" && (
+        <p className="text-xs text-zinc-500">
+          個別契約書の登録は各商談詳細から（ここは受注企業の横断検索専用）
         </p>
       )}
     </div>
