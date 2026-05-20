@@ -197,9 +197,6 @@ model Deal {
   nextActionAt   DateTime?   @map("next_action_at")
   // アポ獲得日：商談タイトル「アポ獲得日 + 顧客名 + 担当者名」の自動生成にも使う。
   appointmentDate DateTime?  @map("appointment_date")
-  // 商談予定日：アポ獲得後、実際に商談（打ち合わせ）を行う予定日。
-  // appointmentDate（=アポ獲得日）とは別軸。ms管理タブのインライン編集対象。
-  meetingScheduledAt DateTime? @map("meeting_scheduled_at")
   expectedCloseDate DateTime? @map("expected_close_date")
   // 契約日：DealProductが受注ステータスになった時のクロージング日。
   // KPI実績集計はこの contractDate ベース（×何月度に契約したか）。

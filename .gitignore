@@ -31,18 +31,6 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# ===== local dev logs / import logs (scratch) =====
-devserver*.log
-import-local.log
-import-prod-*.log
-
-# ===== investigation / scratch scripts (not for production) =====
-/scripts/_archive/
-/scripts/investigate-*.ts
-
-# ===== local planning docs =====
-/docs/plan-*.md
-
 # ===== env files (NEVER commit; use .env.example as template) =====
 .env
 .env.*

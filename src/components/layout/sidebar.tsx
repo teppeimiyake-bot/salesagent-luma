@@ -18,7 +18,6 @@ import {
   Sparkle,
   GitBranch,
   Film,
-  PhoneCall,
 } from "lucide-react";
 
 const baseGroups = [
@@ -28,7 +27,6 @@ const baseGroups = [
       { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard, color: "text-orange-500", activeBg: "bg-orange-500" },
       { href: "/todos", label: "ToDo", icon: CheckSquare, color: "text-orange-500", activeBg: "bg-orange-500" },
       { href: "/deals", label: "商談", icon: Briefcase, color: "text-amber-500", activeBg: "bg-amber-500" },
-      { href: "/ms", label: "ms管理", icon: PhoneCall, color: "text-amber-600", activeBg: "bg-amber-600" },
       { href: "/companies", label: "企業", icon: Building2, color: "text-yellow-600", activeBg: "bg-yellow-600" },
     ],
   },
