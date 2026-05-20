@@ -14,7 +14,7 @@ import { currentFiscalQuarterPeriod } from "@/lib/config";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  // 現在の会計四半期（1月始まり）
+  // 現在の会計四半期（Lumaは6月始まり＝5月決算）
   const PERIOD = currentFiscalQuarterPeriod();
   const session = await getSession();
   const me = session
