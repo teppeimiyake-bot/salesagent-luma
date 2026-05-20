@@ -4,7 +4,6 @@ import { KpiCharts } from "@/components/kpi/charts";
 import { KpiHierarchyView } from "@/components/kpi/hierarchy-view";
 import { GoalsAdmin } from "@/components/kpi/goals-admin";
 import { OwnerTabs } from "@/components/deals/owner-tabs";
-import { YearTabs } from "@/components/kpi/year-tabs";
 import {
   getDashboardData,
   getKpiTimeseries,
@@ -88,9 +87,8 @@ export default async function KpiPage({
             : `個人パフォーマンス｜${fyDisplayLabel(year)}`
         }
       />
-      <div className="px-8 py-3 border-b border-zinc-200 bg-white space-y-2">
+      <div className="px-8 py-3 border-b border-zinc-200 bg-white">
         <OwnerTabs users={users} currentUserId={session?.userId ?? ""} selected={ownerParam} />
-        <YearTabs currentFy={getFiscalYear()} selectedYear={year} />
       </div>
       <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-zinc-50">
         {/* 年間KGI / 四半期KPI / 月次KPI を一画面で俯瞰 */}
