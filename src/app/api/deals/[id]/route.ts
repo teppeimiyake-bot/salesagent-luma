@@ -60,6 +60,7 @@ const updateSchema = z.object({
   nextAction: z.string().nullable().optional(),
   nextActionAt: z.string().datetime().nullable().optional(),
   appointmentDate: z.string().datetime().nullable().optional(),
+  meetingScheduledAt: z.string().datetime().nullable().optional(),
   expectedCloseDate: z.string().datetime().nullable().optional(),
   contractDate: z.string().datetime().nullable().optional(),
   ownerUserId: z.string().uuid().nullable().optional(),
@@ -154,6 +155,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           ? undefined
           : data.appointmentDate
             ? new Date(data.appointmentDate)
+            : null,
+      meetingScheduledAt:
+        data.meetingScheduledAt === undefined
+          ? undefined
+          : data.meetingScheduledAt
+            ? new Date(data.meetingScheduledAt)
             : null,
       expectedCloseDate:
         data.expectedCloseDate === undefined
