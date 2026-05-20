@@ -8,7 +8,12 @@ import { DeleteButton } from "@/components/shared/delete-button";
 import { prisma } from "@/lib/db";
 import { getSession, hasPermission } from "@/lib/auth";
 import { ArrowLeft } from "lucide-react";
-import { totalProposedAmount } from "@/lib/deal-aggregations";
+import {
+  totalProposedAmount,
+  wonAmount as sumWonAmount,
+  isWonDeal,
+  type DealProductLite,
+} from "@/lib/deal-aggregations";
 
 export const dynamic = "force-dynamic";
 
@@ -44,15 +49,17 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
   });
   if (!company || company.deletedAt) notFound();
 
-  const active = company.deals.filter((d) => d.status !== "WON" && d.status !== "LOST");
+  // 受注判定は yomiStatus ベース（Deal.status は Notion取込で LEAD固定のため使えない。2026-05 不具合修正）
+  const active = company.deals.filter((d) => !isWonDeal(d.products as DealProductLite[]));
   const allActiveProducts = active.flatMap((d) => d.products);
   const proposedAmount = totalProposedAmount(allActiveProducts);
-  // 累計受注：受注計上日ベース（contractDate が入っており、yomiStatus="受注" のDealProductのみ）
+  // 累計受注：yomiStatus が 受注/締結済み（接頭辞付き含む）の DealProduct.amount 合計
   const wonAmount = company.deals
-    .filter((d) => d.contractDate != null)
     .flatMap((d) => d.products)
-    .filter((p) => p.yomiStatus === "受注")
-    .reduce((s, p) => s + (p.amount ?? 0), 0);
+    .reduce(
+      (s, p) => s + sumWonAmount([p as DealProductLite]),
+      0,
+    );
 
   return (
     <>

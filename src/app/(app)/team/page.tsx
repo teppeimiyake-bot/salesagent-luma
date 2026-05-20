@@ -12,7 +12,7 @@ import { NewMemberDialog } from "@/components/team/new-member-dialog";
 import { currentFiscalQuarterPeriod } from "@/lib/config";
 import Link from "next/link";
 import { Crown, Users } from "lucide-react";
-import { totalProposedAmount, type DealProductLite } from "@/lib/deal-aggregations";
+import { totalProposedAmount, wonAmount, isWonDeal, type DealProductLite } from "@/lib/deal-aggregations";
 import { excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
 import type { Prisma } from "@prisma/client";
 
@@ -56,7 +56,7 @@ async function buildRows(
           select: {
             status: true,
             products: {
-              select: { productName: true, amount: true, ownerUserId: true },
+              select: { productName: true, amount: true, ownerUserId: true, yomiStatus: true },
             },
           },
         }),
@@ -64,13 +64,13 @@ async function buildRows(
         prisma.task.count({ where: { deal: todoDealClause, status: "DONE" } }),
         getGoalProgress(period, u.id),
       ]);
+      // 受注判定は yomiStatus ベース（Deal.status は Notion取込で LEAD固定のため使えない。2026-05 不具合修正）
       const proposed = deals
-        .filter((d) => d.status !== "WON" && d.status !== "LOST")
+        .filter((d) => !isWonDeal(d.products as DealProductLite[]))
         .reduce((s, d) => s + totalProposedAmount(d.products as DealProductLite[]), 0);
-      const won = deals
-        .filter((d) => d.status === "WON")
-        .reduce((s, d) => s + d.products.reduce((ss, p) => ss + (p.amount ?? 0), 0), 0);
-      const winRate = deals.length === 0 ? 0 : deals.filter((d) => d.status === "WON").length / deals.length;
+      const won = deals.reduce((s, d) => s + wonAmount(d.products as DealProductLite[]), 0);
+      const wonCount = deals.filter((d) => isWonDeal(d.products as DealProductLite[])).length;
+      const winRate = deals.length === 0 ? 0 : wonCount / deals.length;
       return { user: u, deals: deals.length, proposed, won, winRate, openTasks, doneTasks, goal };
     }),
   );

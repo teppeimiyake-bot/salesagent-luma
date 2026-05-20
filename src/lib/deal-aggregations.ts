@@ -2,6 +2,7 @@
  * Deal × DealProduct の共通集計ヘルパー。
  * UI / API / KPI で重複しないよう、ここに集約する。
  */
+import { isWonYomi } from "@/lib/yomi-status";
 
 export type DealProductLite = {
   id?: string;
@@ -25,12 +26,35 @@ export function totalProposedAmount(items: DealProductLite[]): number {
 }
 
 /**
- * 受注済み金額の合計（yomiStatus が "受注" の DealProduct.amount の和）
+ * DealProduct 単体が「受注」か判定。
+ * Luma の実データは Notion由来で yomiStatus にカテゴリ接頭辞が付く（"【映像】受注" 等）ほか、
+ * アライアンスは "締結済み" を使う。よって完全一致 "受注" では取りこぼす。
+ * → isWonYomi()（接頭辞除去 + 受注/締結済み の部分一致）で判定する。
+ */
+export function isWonProduct(p: DealProductLite): boolean {
+  return isWonYomi(p.yomiStatus);
+}
+
+/**
+ * Deal が「受注」か判定。
+ * 配下 DealProduct のいずれかが受注（isWonProduct）なら受注扱い。
+ *
+ * 背景（2026-05 受注率0%不具合の修正）：
+ *   Notion取込（import-luma-yomi.ts）は Deal.status / Deal.contractDate を設定しないため、
+ *   Deal.status はずっと既定値 LEAD のまま。受注の唯一の事実は DealProduct.yomiStatus。
+ *   よって受注判定・受注率・受注金額はすべて yomiStatus ベースに統一する。
+ */
+export function isWonDeal(items: DealProductLite[]): boolean {
+  return items.some(isWonProduct);
+}
+
+/**
+ * 受注済み金額の合計（yomiStatus が 受注/締結済み の DealProduct.amount の和）
  * KPI（受注実績）に使う
  */
 export function wonAmount(items: DealProductLite[]): number {
   return items
-    .filter((p) => p.yomiStatus === "受注")
+    .filter(isWonProduct)
     .reduce((s, p) => s + (p.amount ?? 0), 0);
 }
 

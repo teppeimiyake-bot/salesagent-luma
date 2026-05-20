@@ -10,7 +10,7 @@ import {
   getFiscalYear,
   getFiscalMonthIndex,
 } from "@/lib/config";
-import { totalProposedAmount, wonAmount, type DealProductLite } from "@/lib/deal-aggregations";
+import { totalProposedAmount, wonAmount, isWonDeal, type DealProductLite } from "@/lib/deal-aggregations";
 import { isExcludedFromNextAction } from "@/lib/deal-status";
 import { excludeNGDealsWhere, excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
 
@@ -104,7 +104,7 @@ export async function getDashboardData(opts: DashboardOptions = {}) {
     },
   };
 
-  const [openTasks, deals, doneCount, totalDeals, wonDeals, aiTaskCount, totalTasks] = await Promise.all([
+  const [openTasks, deals, doneCount, totalDeals, aiTaskCount, totalTasks] = await Promise.all([
     prisma.task.findMany({
       where: { status: { in: [TaskStatus.OPEN, TaskStatus.IN_PROGRESS] }, ...openTaskFilter },
       include: { deal: { include: { company: true, owner: true } } },
@@ -119,7 +119,6 @@ export async function getDashboardData(opts: DashboardOptions = {}) {
     }),
     prisma.task.count({ where: { status: TaskStatus.DONE, ...taskFilter } }),
     prisma.deal.count({ where: dealOwnerFilter }),
-    prisma.deal.count({ where: { status: DealStatus.WON, ...dealOwnerFilter } }),
     prisma.task.count({ where: { isAiGenerated: true, ...taskFilter } }),
     prisma.task.count({ where: taskFilter }),
   ]);
@@ -136,15 +135,18 @@ export async function getDashboardData(opts: DashboardOptions = {}) {
       products: { select: { amount: true, probability: true, yomiStatus: true } },
     },
   });
-  // 進行中商談の提案金額合計（DealProduct.amount の単純合計。確度重み付けはしない）
+  // 受注判定は yomiStatus ベースに統一（Deal.status / contractDate は Notion取込で未設定のため使えない）。
+  // 受注商談 = 配下DealProductのいずれかが受注/締結済み（接頭辞付き含む）。
+  const wonDeals = allDeals.filter((d) => isWonDeal(d.products as DealProductLite[])).length;
+  // 進行中商談の提案金額合計（受注済みDealは除外。DealProduct.amount の単純合計）
   const proposedAmt = allDeals
-    .filter((d) => d.status !== DealStatus.WON && d.status !== DealStatus.LOST)
+    .filter((d) => !isWonDeal(d.products as DealProductLite[]))
     .reduce((sum, d) => sum + totalProposedAmount(d.products as DealProductLite[]), 0);
-  // 受注額（実績）：受注計上日ベース。Deal.contractDate が入っており、
-  //                 yomiStatus="受注" の DealProduct の amount合計
-  const won = allDeals
-    .filter((d) => d.contractDate != null)
-    .reduce((sum, d) => sum + wonAmount(d.products as DealProductLite[]), 0);
+  // 受注額（実績）：yomiStatus が 受注/締結済み の DealProduct の amount合計
+  const won = allDeals.reduce(
+    (sum, d) => sum + wonAmount(d.products as DealProductLite[]),
+    0,
+  );
   // nextActionRate：NG/日程調整不可/完全失注は除外（KPI上、設定義務外なので分母分子から外す）
   const nextActionEligible = allDeals.filter(
     (d) => !isExcludedFromNextAction(d),
@@ -185,11 +187,18 @@ export async function getKpiTimeseries(userId?: string) {
     where: taskWhere,
     select: { createdAt: true, completedAt: true, status: true },
   });
-  // 受注計上日ベース集計：contractDate が入っており、yomiStatus="受注" のDealProductがあるDealのみ
+  // 受注集計：yomiStatus が 受注/締結済み の DealProduct を持つ Deal。
+  // 計上日は contractDate を最優先、未設定なら appointmentDate(商談日) → bantUpdatedAt の順で代替。
+  // （Notion取込は contractDate を入れないため、商談日ベースで時系列に乗せる。2026-05 不具合修正）
   const deals = await prisma.deal.findMany({
-    where: { ...where, contractDate: { not: null } },
+    where: {
+      ...where,
+      products: { some: { OR: [{ yomiStatus: { contains: "受注" } }, { yomiStatus: { contains: "締結済み" } }] } },
+    },
     select: {
       contractDate: true,
+      appointmentDate: true,
+      bantUpdatedAt: true,
       products: { select: { amount: true, yomiStatus: true } },
     },
   });
@@ -208,19 +217,20 @@ export async function getKpiTimeseries(userId?: string) {
     });
   }
 
+  // 計上日：contractDate → appointmentDate → bantUpdatedAt の優先で確定
+  const bookedDate = (d: {
+    contractDate: Date | null;
+    appointmentDate: Date | null;
+    bantUpdatedAt: Date | null;
+  }): Date | null => d.contractDate ?? d.appointmentDate ?? d.bantUpdatedAt ?? null;
+
   return buckets.map((b) => {
-    const wonDealsInWeek = deals.filter(
-      (d) =>
-        d.contractDate &&
-        d.contractDate >= b.weekStart &&
-        d.contractDate <= b.weekEnd,
-    );
+    const wonDealsInWeek = deals.filter((d) => {
+      const bd = bookedDate(d);
+      return bd && bd >= b.weekStart && bd <= b.weekEnd;
+    });
     const wonAmt = wonDealsInWeek.reduce(
-      (s, d) =>
-        s +
-        d.products
-          .filter((p) => p.yomiStatus === "受注")
-          .reduce((ss, p) => ss + (p.amount ?? 0), 0),
+      (s, d) => s + wonAmount(d.products as DealProductLite[]),
       0,
     );
     const tasksDoneInWeek = tasks.filter(
@@ -331,12 +341,13 @@ export function periodToMonthPeriods(period: string): string[] {
 
 /**
  * 目標 vs 実績
- * 集計基準：契約日（Deal.contractDate）が指定期間内 かつ
- *           DealProduct.yomiStatus = "受注" の DealProduct.amount 合計
+ * 集計基準：DealProduct.yomiStatus が 受注/締結済み（接頭辞付き含む）の DealProduct.amount 合計。
+ *           計上日は contractDate → appointmentDate(商談日) → bantUpdatedAt の優先で確定し、
+ *           それが指定期間内のものを集計する。
  *
- * - Deal.status は問わない（契約日が入っているDealは契約済みと判定）
- * - WON / LOST / 任意ステータスでも、contractDate と yomiStatus="受注" のDealProductがあれば実績に乗る
- * - 期間指定が無い場合は全期間（contractDate not null のものすべて）
+ * - Deal.status は問わない（Notion取込では status は LEAD 固定のため受注判定に使えない）
+ * - Notion取込は contractDate を入れないため、商談日ベースで月度に按分する（2026-05 不具合修正）
+ * - 期間指定が無い場合は全期間（受注DealProductを持つDealすべて）
  *
  * 目標金額は getGoalTargetAmount に委譲（四半期/年間は月次目標の合算）。
  */
@@ -351,22 +362,27 @@ export async function getGoalProgress(period: string, userId?: string) {
   const wonDeals = await prisma.deal.findMany({
     where: {
       ...where,
-      contractDate: range
-        ? { gte: range.start, lte: range.end }
-        : { not: null },
+      products: { some: { OR: [{ yomiStatus: { contains: "受注" } }, { yomiStatus: { contains: "締結済み" } }] } },
     },
     select: {
+      contractDate: true,
+      appointmentDate: true,
+      bantUpdatedAt: true,
       products: { select: { amount: true, yomiStatus: true } },
     },
   });
-  const wonAmt = wonDeals.reduce(
-    (s, d) =>
-      s +
-      d.products
-        .filter((p) => p.yomiStatus === "受注")
-        .reduce((ss, p) => ss + (p.amount ?? 0), 0),
-    0,
-  );
+  const inRange = (d: {
+    contractDate: Date | null;
+    appointmentDate: Date | null;
+    bantUpdatedAt: Date | null;
+  }): boolean => {
+    if (!range) return true; // 全期間
+    const bd = d.contractDate ?? d.appointmentDate ?? d.bantUpdatedAt ?? null;
+    return !!bd && bd >= range.start && bd <= range.end;
+  };
+  const wonAmt = wonDeals
+    .filter(inRange)
+    .reduce((s, d) => s + wonAmount(d.products as DealProductLite[]), 0);
   return {
     targetAmount,
     wonAmount: wonAmt,
@@ -460,7 +476,7 @@ export function periodLabel(period: string): string {
 }
 
 /**
- * 会計年度KGI / 会計四半期KPI / 月次KPI を一括で取得（リージーは6月始まり）
+ * 会計年度KGI / 会計四半期KPI / 月次KPI を一括で取得（Lumaは6月始まり＝5月決算）
  * fy は会計年度（FY2026 等の数字部分）
  */
 export async function getGoalsHierarchy(fy: number, userId?: string) {
