@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +36,10 @@ import {
 import { formatJPY } from "@/lib/utils";
 import { getFiscalMonthIndex, getFiscalYear } from "@/lib/config";
 import type { WonDealCard } from "@/lib/queries";
+import {
+  WonDealProductEditor,
+  type KpiProductMaster,
+} from "@/components/kpi/won-deal-product-editor";
 
 type Progress = {
   targetAmount: number;
@@ -57,12 +61,18 @@ export function KpiHierarchyView({
   year, // 会計年度（FY2026 → 2026）
   isOrgView,
   monthlyWonDeals,
+  productMasters = [],
+  canEditProducts = false,
 }: {
   data: Hierarchy;
   year: number;
   isOrgView: boolean;
   /** period(YYYY-MM) → その月の受注案件カード一覧（月クリックのドリルダウン用） */
   monthlyWonDeals?: Record<string, WonDealCard[]>;
+  /** 受注企業カード上のプロダクト追加/変更で使う商材マスタ（カテゴリ＋プラン） */
+  productMasters?: KpiProductMaster[];
+  /** プロダクト編集の可否（user/admin のみ true） */
+  canEditProducts?: boolean;
 }) {
   // 月クリックで開くドリルダウン（選択中の月インデックス。null=閉）
   const [openMonthIdx, setOpenMonthIdx] = useState<number | null>(null);
@@ -335,48 +345,83 @@ export function KpiHierarchyView({
           ) : (
             <ul className="space-y-2.5">
               {selectedCards.map((c) => (
-                <li
+                <WonCardItem
                   key={c.dealId}
-                  className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="rounded-lg bg-emerald-100 text-emerald-700 p-1.5 shrink-0">
-                        <Building2 className="h-4 w-4" />
-                      </div>
-                      <p className="font-semibold text-sm text-zinc-800 truncate">
-                        {c.companyName}
-                      </p>
-                    </div>
-                    <p className="text-sm font-bold tabular-nums text-emerald-700 shrink-0">
-                      {formatJPY(c.wonAmount)}
-                    </p>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {c.products.length === 0 ? (
-                      <span className="text-[11px] text-zinc-400">商材情報なし</span>
-                    ) : (
-                      c.products.map((p, i) => (
-                        <span
-                          key={i}
-                          className="inline-flex items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] text-sky-800"
-                        >
-                          <Package className="h-3 w-3" />
-                          {p.name}
-                          {p.amount != null && (
-                            <span className="text-sky-500">（{formatJPY(p.amount)}）</span>
-                          )}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </li>
+                  card={c}
+                  productMasters={productMasters}
+                  canEditProducts={canEditProducts}
+                />
               ))}
             </ul>
           )}
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * 受注企業カード 1件。
+ * 表示（企業名・受注金額・受注商材ピル）＋ プロダクトのインライン編集を内包。
+ * 編集中はローカル受注金額を楽観表示し、確定後は router.refresh() でサーバー集計に同期される。
+ */
+function WonCardItem({
+  card,
+  productMasters,
+  canEditProducts,
+}: {
+  card: WonDealCard;
+  productMasters: KpiProductMaster[];
+  canEditProducts: boolean;
+}) {
+  // サーバー値（card.wonAmount）を初期値に、編集中はローカル楽観値を表示
+  const [localWon, setLocalWon] = useState<number | null>(null);
+  // card が差し替わった（再フェッチ後）らローカル楽観値をリセット
+  useEffect(() => {
+    setLocalWon(null);
+  }, [card]);
+  const displayWon = localWon ?? card.wonAmount;
+
+  return (
+    <li className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="rounded-lg bg-emerald-100 text-emerald-700 p-1.5 shrink-0">
+            <Building2 className="h-4 w-4" />
+          </div>
+          <p className="font-semibold text-sm text-zinc-800 truncate">{card.companyName}</p>
+        </div>
+        <p className="text-sm font-bold tabular-nums text-emerald-700 shrink-0">
+          {formatJPY(displayWon)}
+        </p>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {card.products.length === 0 ? (
+          <span className="text-[11px] text-zinc-400">商材情報なし</span>
+        ) : (
+          card.products.map((p, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] text-sky-800"
+            >
+              <Package className="h-3 w-3" />
+              {p.name}
+              {p.amount != null && <span className="text-sky-500">（{formatJPY(p.amount)}）</span>}
+            </span>
+          ))
+        )}
+      </div>
+
+      {canEditProducts && (
+        <WonDealProductEditor
+          dealId={card.dealId}
+          initial={card.editableProducts}
+          products={productMasters}
+          canEdit={canEditProducts}
+          onLocalWonAmountChange={setLocalWon}
+        />
+      )}
+    </li>
   );
 }
 

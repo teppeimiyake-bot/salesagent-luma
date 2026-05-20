@@ -518,14 +518,31 @@ export async function getGoalsHierarchy(fy: number, userId?: string) {
   };
 }
 
+/** 受注企業カードのインライン編集用：DealProduct 1件分の編集可能フィールド */
+export type WonDealEditableProduct = {
+  id: string;
+  productId: string | null;
+  productName: string;
+  planName: string | null;
+  amount: number | null;
+  yomiStatus: string | null;
+  probability: number;
+};
+
 /** 月クリックで開くドリルダウン用：1件の受注案件カード */
 export type WonDealCard = {
   dealId: string;
   companyName: string;
   /** その案件の受注金額（受注/締結済みのDealProduct.amount合計） */
   wonAmount: number;
-  /** 受注したプロダクト（商材）名のリスト（受注/締結済みのもののみ） */
+  /** 受注したプロダクト（商材）名のリスト（受注/締結済みのもののみ。表示サマリー用） */
   products: { name: string; amount: number | null }[];
+  /**
+   * この案件に紐づく全 DealProduct（受注以外も含む）。
+   * 受注企業カード上でのインライン編集（追加/変更/金額修正）に使う。
+   * 受注判定・受注金額は yomiStatus ベース（isWonProduct）で再集計される。
+   */
+  editableProducts: WonDealEditableProduct[];
 };
 
 /**
@@ -564,7 +581,18 @@ export async function getMonthlyWonDealsByPeriod(
       appointmentDate: true,
       bantUpdatedAt: true,
       company: { select: { name: true } },
-      products: { select: { productName: true, amount: true, yomiStatus: true } },
+      products: {
+        select: {
+          id: true,
+          productId: true,
+          productName: true,
+          planName: true,
+          amount: true,
+          yomiStatus: true,
+          probability: true,
+        },
+        orderBy: [{ amount: "desc" }, { createdAt: "asc" }],
+      },
     },
   });
 
@@ -594,6 +622,15 @@ export async function getMonthlyWonDealsByPeriod(
       products: wonProducts.map((p) => ({
         name: p.productName,
         amount: p.amount,
+      })),
+      editableProducts: d.products.map((p) => ({
+        id: p.id,
+        productId: p.productId,
+        productName: p.productName,
+        planName: p.planName,
+        amount: p.amount,
+        yomiStatus: p.yomiStatus,
+        probability: p.probability,
       })),
     });
   }

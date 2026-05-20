@@ -37,6 +37,21 @@ export default async function KpiPage({
       })
     : null;
   const isAdmin = me?.permission === "admin";
+  // 受注企業カード上のプロダクト編集（追加/変更/金額修正）は user/admin のみ
+  const canEditProducts = me?.permission === "admin" || me?.permission === "user";
+
+  // 受注企業カードのプロダクト追加/変更に使う商材マスタ（カテゴリ＋プラン）
+  const productMasters = await prisma.product.findMany({
+    where: { active: true },
+    orderBy: { name: "asc" },
+    include: {
+      plans: {
+        where: { active: true },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        select: { id: true, name: true, basePrice: true },
+      },
+    },
+  });
 
   const sp = await searchParams;
   // URLに owner が無ければ全員、"all"=全員、"me"=自分、その他=個別ユーザーID
@@ -102,6 +117,13 @@ export default async function KpiPage({
           year={year}
           isOrgView={isOrgView}
           monthlyWonDeals={monthlyWonDeals}
+          productMasters={productMasters.map((p) => ({
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            plans: p.plans,
+          }))}
+          canEditProducts={canEditProducts}
         />
 
         <KpiCards kpi={kpi} />
