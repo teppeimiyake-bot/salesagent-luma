@@ -1,7 +1,15 @@
 "use client";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -14,9 +22,20 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
-import { Crown, CalendarRange, CalendarDays, TrendingUp, Trophy, Target } from "lucide-react";
+import {
+  Crown,
+  CalendarRange,
+  CalendarDays,
+  TrendingUp,
+  Trophy,
+  Target,
+  Building2,
+  Package,
+  Inbox,
+} from "lucide-react";
 import { formatJPY } from "@/lib/utils";
 import { getFiscalMonthIndex, getFiscalYear } from "@/lib/config";
+import type { WonDealCard } from "@/lib/queries";
 
 type Progress = {
   targetAmount: number;
@@ -37,11 +56,21 @@ export function KpiHierarchyView({
   data,
   year, // 会計年度（FY2026 → 2026）
   isOrgView,
+  monthlyWonDeals,
 }: {
   data: Hierarchy;
   year: number;
   isOrgView: boolean;
+  /** period(YYYY-MM) → その月の受注案件カード一覧（月クリックのドリルダウン用） */
+  monthlyWonDeals?: Record<string, WonDealCard[]>;
 }) {
+  // 月クリックで開くドリルダウン（選択中の月インデックス。null=閉）
+  const [openMonthIdx, setOpenMonthIdx] = useState<number | null>(null);
+  const selectedMonth = openMonthIdx != null ? data.months[openMonthIdx] : null;
+  const selectedLabel = openMonthIdx != null ? data.monthLabels[openMonthIdx] : "";
+  const selectedCards: WonDealCard[] =
+    selectedMonth && monthlyWonDeals ? (monthlyWonDeals[selectedMonth.period] ?? []) : [];
+
   const yearRate = Math.min(100, data.year.rate * 100);
   const remaining = Math.max(0, data.year.targetAmount - data.year.wonAmount);
   const labels = data.monthLabels;
@@ -233,16 +262,22 @@ export function KpiHierarchyView({
             </ResponsiveContainer>
           </div>
 
-          {/* 月次セルグリッド */}
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-5">
+          {/* 月次セルグリッド（クリックで受注企業カードを表示） */}
+          <p className="mt-5 mb-2 text-[11px] text-zinc-500">
+            月をクリックすると、その月に受注した企業と商材を確認できます。
+          </p>
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
             {data.months.map((m, idx) => {
               const rate = Math.min(100, m.rate * 100);
               const accent = pickAccent(rate);
               const isCurrent = idx === currentMonthIdx;
+              const cardCount = monthlyWonDeals?.[m.period]?.length ?? 0;
               return (
-                <div
+                <button
+                  type="button"
                   key={m.period}
-                  className={`rounded-lg border p-2.5 ${accent.border} ${accent.bg} ${
+                  onClick={() => setOpenMonthIdx(idx)}
+                  className={`text-left rounded-lg border p-2.5 transition hover:shadow-md hover:ring-2 hover:ring-sky-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${accent.border} ${accent.bg} ${
                     isCurrent ? "ring-2 ring-emerald-400" : ""
                   }`}
                 >
@@ -262,12 +297,85 @@ export function KpiHierarchyView({
                       / {formatJPY(m.targetAmount)}
                     </p>
                   )}
-                </div>
+                  <p className="mt-1 text-[10px] text-sky-600 font-medium">
+                    {cardCount > 0 ? `受注 ${cardCount}件 ›` : "受注なし"}
+                  </p>
+                </button>
               );
             })}
           </div>
         </CardContent>
       </Card>
+
+      {/* ============ 月別 受注企業カード（ドリルダウン） ============ */}
+      <Dialog
+        open={openMonthIdx != null}
+        onOpenChange={(o) => {
+          if (!o) setOpenMonthIdx(null);
+        }}
+      >
+        <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-sky-500" />
+              {`FY${year} ${selectedLabel}`}の受注
+            </DialogTitle>
+            <DialogDescription>
+              {selectedMonth
+                ? `受注 ${selectedCards.length}件 ／ 受注金額 ${formatJPY(selectedMonth.wonAmount)}（受注計上日ベース）`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedCards.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-zinc-400">
+              <Inbox className="h-8 w-8" />
+              <p className="text-sm">この月に受注した案件はありません。</p>
+            </div>
+          ) : (
+            <ul className="space-y-2.5">
+              {selectedCards.map((c) => (
+                <li
+                  key={c.dealId}
+                  className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="rounded-lg bg-emerald-100 text-emerald-700 p-1.5 shrink-0">
+                        <Building2 className="h-4 w-4" />
+                      </div>
+                      <p className="font-semibold text-sm text-zinc-800 truncate">
+                        {c.companyName}
+                      </p>
+                    </div>
+                    <p className="text-sm font-bold tabular-nums text-emerald-700 shrink-0">
+                      {formatJPY(c.wonAmount)}
+                    </p>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {c.products.length === 0 ? (
+                      <span className="text-[11px] text-zinc-400">商材情報なし</span>
+                    ) : (
+                      c.products.map((p, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] text-sky-800"
+                        >
+                          <Package className="h-3 w-3" />
+                          {p.name}
+                          {p.amount != null && (
+                            <span className="text-sky-500">（{formatJPY(p.amount)}）</span>
+                          )}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

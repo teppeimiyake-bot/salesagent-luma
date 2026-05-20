@@ -9,6 +9,7 @@ import {
   getDashboardData,
   getKpiTimeseries,
   getGoalsHierarchy,
+  getMonthlyWonDealsByPeriod,
   getSalesUsers,
 } from "@/lib/queries";
 import { getFullyLostDealIds } from "@/lib/deal-status-server";
@@ -50,13 +51,15 @@ export default async function KpiPage({
   // year パラメータは会計年度（FY2026 → 2026）。未指定時は現在の会計年度。
   const year = sp.year ? Number(sp.year) : getFiscalYear();
 
-  const [{ kpi, deals }, series, hierarchy, users, fullyLostDealIds] = await Promise.all([
-    getDashboardData({ userId }),
-    getKpiTimeseries(userId),
-    getGoalsHierarchy(year, userId),
-    getSalesUsers(),
-    getFullyLostDealIds(),
-  ]);
+  const [{ kpi, deals }, series, hierarchy, monthlyWonDeals, users, fullyLostDealIds] =
+    await Promise.all([
+      getDashboardData({ userId }),
+      getKpiTimeseries(userId),
+      getGoalsHierarchy(year, userId),
+      getMonthlyWonDealsByPeriod(year, userId),
+      getSalesUsers(),
+      getFullyLostDealIds(),
+    ]);
   const fullyLostSet = new Set(fullyLostDealIds);
 
   // ヨミがAヨミ以上（受注に近い）かつ Next Action未設定の Deal をアラート対象に
@@ -94,7 +97,12 @@ export default async function KpiPage({
       </div>
       <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-zinc-50">
         {/* 年間KGI / 四半期KPI / 月次KPI を一画面で俯瞰 */}
-        <KpiHierarchyView data={hierarchy} year={year} isOrgView={isOrgView} />
+        <KpiHierarchyView
+          data={hierarchy}
+          year={year}
+          isOrgView={isOrgView}
+          monthlyWonDeals={monthlyWonDeals}
+        />
 
         <KpiCards kpi={kpi} />
         <KpiCharts data={series} />

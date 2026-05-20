@@ -10,7 +10,7 @@ import {
   getFiscalYear,
   getFiscalMonthIndex,
 } from "@/lib/config";
-import { totalProposedAmount, wonAmount, isWonDeal, type DealProductLite } from "@/lib/deal-aggregations";
+import { totalProposedAmount, wonAmount, isWonDeal, isWonProduct, type DealProductLite } from "@/lib/deal-aggregations";
 import { isExcludedFromNextAction } from "@/lib/deal-status";
 import { excludeNGDealsWhere, excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
 
@@ -516,5 +516,92 @@ export async function getGoalsHierarchy(fy: number, userId?: string) {
     monthLabels,
     remainingMonths,
   };
+}
+
+/** 月クリックで開くドリルダウン用：1件の受注案件カード */
+export type WonDealCard = {
+  dealId: string;
+  companyName: string;
+  /** その案件の受注金額（受注/締結済みのDealProduct.amount合計） */
+  wonAmount: number;
+  /** 受注したプロダクト（商材）名のリスト（受注/締結済みのもののみ） */
+  products: { name: string; amount: number | null }[];
+};
+
+/**
+ * FY内の各月（YYYY-MM）について「その月に受注した案件」のカード一覧を返す。
+ *
+ * 受注定義・月帰属は KPI月次セル（getGoalProgress / getKpiTimeseries）と完全に同一：
+ *   - 受注 = DealProduct.yomiStatus が 受注/締結済み（接頭辞付き含む。isWonProduct）を持つ Deal
+ *   - 月帰属 = 計上日（contractDate → appointmentDate(商談日) → bantUpdatedAt）が
+ *             その暦月レンジ（parsePeriodToRange("YYYY-MM")）に入る
+ *   - カードの受注金額 = wonAmount(products)（受注DealProductのamount合計）
+ *
+ * これにより KPI月次セルの「受注金額」「件数」とカード一覧が必ず一致する。
+ * 戻り値は period(YYYY-MM) → カード配列 の Record。
+ */
+export async function getMonthlyWonDealsByPeriod(
+  fy: number,
+  userId?: string,
+): Promise<Record<string, WonDealCard[]>> {
+  const where = {
+    ...(userId ? { ownerUserId: userId } : {}),
+    ...ACTIVE_DEAL_FILTER,
+  };
+  // FY内の受注案件をまとめて取得（getGoalProgress と同じ受注フィルタ）
+  const wonDeals = await prisma.deal.findMany({
+    where: {
+      ...where,
+      products: {
+        some: {
+          OR: [{ yomiStatus: { contains: "受注" } }, { yomiStatus: { contains: "締結済み" } }],
+        },
+      },
+    },
+    select: {
+      id: true,
+      contractDate: true,
+      appointmentDate: true,
+      bantUpdatedAt: true,
+      company: { select: { name: true } },
+      products: { select: { productName: true, amount: true, yomiStatus: true } },
+    },
+  });
+
+  // 12ヶ月分の period と暦月レンジを用意（getGoalsHierarchy と同じ並び）
+  const monthPeriods = Array.from({ length: 12 }, (_, i) => {
+    const { year, month } = getFiscalMonth(fy, i);
+    return monthPeriodLabel(year, month);
+  });
+  const result: Record<string, WonDealCard[]> = {};
+  for (const p of monthPeriods) result[p] = [];
+
+  for (const d of wonDeals) {
+    const bd = d.contractDate ?? d.appointmentDate ?? d.bantUpdatedAt ?? null;
+    if (!bd) continue;
+    // この計上日が属する月の period を見つける（KPIと同じ暦月レンジ判定）
+    const period = monthPeriods.find((p) => {
+      const range = parsePeriodToRange(p);
+      return range && bd >= range.start && bd <= range.end;
+    });
+    if (!period) continue; // FY外（前年5月以前 / 翌年6月以降）はスキップ
+
+    const wonProducts = (d.products as DealProductLite[]).filter(isWonProduct);
+    result[period].push({
+      dealId: d.id,
+      companyName: d.company?.name ?? "（企業名なし）",
+      wonAmount: wonAmount(d.products as DealProductLite[]),
+      products: wonProducts.map((p) => ({
+        name: p.productName,
+        amount: p.amount,
+      })),
+    });
+  }
+
+  // 各月は受注金額の大きい順に並べる（見やすさ）
+  for (const p of monthPeriods) {
+    result[p].sort((a, b) => b.wonAmount - a.wonAmount);
+  }
+  return result;
 }
 
