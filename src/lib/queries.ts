@@ -535,6 +535,19 @@ export type WonDealCard = {
   companyName: string;
   /** その案件の受注金額（受注/締結済みのDealProduct.amount合計） */
   wonAmount: number;
+  /**
+   * 受注計上日（Deal.contractDate）。
+   * KPI月次集計は contractDate を最優先（未設定時は appointmentDate→bantUpdatedAt にフォールバック）するため、
+   * カード上の編集UIは contractDate を直接書き換える（"YYYY-MM-DD" or null）。
+   */
+  contractDate: string | null;
+  /**
+   * 実際にこの案件を月度へ振り分けた「計上日」（contractDate→appointmentDate→bantUpdatedAt の確定値）。
+   * contractDate が未設定で別フィールドにフォールバックしている場合に UI で注記するために返す（"YYYY-MM-DD"）。
+   */
+  bookedDate: string | null;
+  /** bookedDate がどのフィールド由来か（contractDate / appointmentDate / bantUpdatedAt） */
+  bookedDateSource: "contractDate" | "appointmentDate" | "bantUpdatedAt" | null;
   /** 受注したプロダクト（商材）名のリスト（受注/締結済みのもののみ。表示サマリー用） */
   products: { name: string; amount: number | null }[];
   /**
@@ -604,9 +617,20 @@ export async function getMonthlyWonDealsByPeriod(
   const result: Record<string, WonDealCard[]> = {};
   for (const p of monthPeriods) result[p] = [];
 
+  // Date → "YYYY-MM-DD"（KPIの月帰属は UTC レンジ判定なので UTC で日付化して表記を揃える）
+  const toYmd = (dt: Date | null): string | null =>
+    dt ? dt.toISOString().slice(0, 10) : null;
+
   for (const d of wonDeals) {
     const bd = d.contractDate ?? d.appointmentDate ?? d.bantUpdatedAt ?? null;
     if (!bd) continue;
+    const bookedSource: WonDealCard["bookedDateSource"] = d.contractDate
+      ? "contractDate"
+      : d.appointmentDate
+        ? "appointmentDate"
+        : d.bantUpdatedAt
+          ? "bantUpdatedAt"
+          : null;
     // この計上日が属する月の period を見つける（KPIと同じ暦月レンジ判定）
     const period = monthPeriods.find((p) => {
       const range = parsePeriodToRange(p);
@@ -619,6 +643,9 @@ export async function getMonthlyWonDealsByPeriod(
       dealId: d.id,
       companyName: d.company?.name ?? "（企業名なし）",
       wonAmount: wonAmount(d.products as DealProductLite[]),
+      contractDate: toYmd(d.contractDate),
+      bookedDate: toYmd(bd),
+      bookedDateSource: bookedSource,
       products: wonProducts.map((p) => ({
         name: p.productName,
         amount: p.amount,

@@ -5,6 +5,7 @@ import { KpiHierarchyView } from "@/components/kpi/hierarchy-view";
 import { GoalsAdmin } from "@/components/kpi/goals-admin";
 import { OwnerTabs } from "@/components/deals/owner-tabs";
 import { YearTabs } from "@/components/kpi/year-tabs";
+import { NewDealDialog } from "@/components/deals/new-deal-dialog";
 import {
   getDashboardData,
   getKpiTimeseries,
@@ -107,7 +108,16 @@ export default async function KpiPage({
         }
       />
       <div className="px-8 py-3 border-b border-zinc-200 bg-white space-y-2">
-        <OwnerTabs users={users} currentUserId={session?.userId ?? ""} selected={ownerParam} />
+        <div className="flex items-start justify-between gap-3">
+          <OwnerTabs users={users} currentUserId={session?.userId ?? ""} selected={ownerParam} />
+          {/* 新規商談作成（admin/user のみ）。作成後は詳細画面へ遷移。
+              受注（ヨミ=受注）と受注計上日を入れれば、KPIの月次集計に即反映される。 */}
+          {canEditProducts && (
+            <div className="shrink-0">
+              <NewDealDialog />
+            </div>
+          )}
+        </div>
         <YearTabs currentFy={getFiscalYear()} selectedYear={year} />
       </div>
       <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-zinc-50">

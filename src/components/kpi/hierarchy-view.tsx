@@ -40,6 +40,7 @@ import {
   WonDealProductEditor,
   type KpiProductMaster,
 } from "@/components/kpi/won-deal-product-editor";
+import { WonDealContractDateEditor } from "@/components/kpi/won-deal-contract-date-editor";
 
 type Progress = {
   targetAmount: number;
@@ -411,6 +412,16 @@ function WonCardItem({
           ))
         )}
       </div>
+
+      {/* 受注計上日の編集（KPIの月度振り分けに直結）。
+          編集権が無くても閲覧用に計上日は表示する（canEdit=false で読み取り専用表示）。 */}
+      <WonDealContractDateEditor
+        dealId={card.dealId}
+        contractDate={card.contractDate}
+        bookedDate={card.bookedDate}
+        bookedDateSource={card.bookedDateSource}
+        canEdit={canEditProducts}
+      />
 
       {canEditProducts && (
         <WonDealProductEditor
