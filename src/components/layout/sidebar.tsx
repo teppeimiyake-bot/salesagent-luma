@@ -19,6 +19,7 @@ import {
   GitBranch,
   Film,
   PhoneCall,
+  Merge,
 } from "lucide-react";
 
 const baseGroups = [
@@ -55,6 +56,7 @@ const adminGroup = {
     { href: "/admin/lead-sources", label: "リード獲得経由", icon: Sparkle, color: "text-fuchsia-500", activeBg: "bg-fuchsia-500" },
     { href: "/admin/pipeline-stages", label: "商談プロセス", icon: GitBranch, color: "text-violet-500", activeBg: "bg-violet-500" },
     { href: "/admin/users", label: "ユーザー権限", icon: Shield, color: "text-red-500", activeBg: "bg-red-500" },
+    { href: "/admin/company-merges", label: "企業統合", icon: Merge, color: "text-teal-500", activeBg: "bg-teal-600" },
     { href: "/admin/trash", label: "ゴミ箱", icon: Trash2, color: "text-zinc-500", activeBg: "bg-zinc-700" },
   ],
 };
