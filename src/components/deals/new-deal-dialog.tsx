@@ -833,6 +833,9 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
                       {existingDealForCompany.productCount}件）
                     </p>
                     <p className="text-amber-800">タイトル: {existingDealForCompany.title}</p>
+                    <p className="text-amber-800">
+                      別案件であればこのまま新規商談を作成できます。既存商談の続きなら下のボタンから開いてください。
+                    </p>
                     <Button
                       type="button"
                       size="sm"
@@ -1091,7 +1094,9 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
                 !ownerUserId ||
                 !leadSourceId ||
                 !appointmentDate ||
-                !!existingDealForCompany ||
+                // 既存商談があっても作成は許可する（警告は表示するが押下はブロックしない）。
+                // 2026-05-03 のNotion一括取込で大半の企業に既存商談が付いたため、
+                // ここで !!existingDealForCompany を禁止条件に入れると新規商談を作れなくなる。
                 (existingCompanyMissingHp && !websiteUrlForExisting.trim())
               }
             >
