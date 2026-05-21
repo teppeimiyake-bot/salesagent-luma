@@ -162,23 +162,81 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
   const [existingDealLoading, setExistingDealLoading] = useState(false);
 
   // マスタ取得
+  // 重要：1つのマスタ取得が失敗しても他のドロップダウンが空にならないよう
+  // Promise.all（全か無か）ではなく個別 try/catch + 個別パースにする。
+  // （以前は Promise.all で1本でも失敗すると全マスタが空→送信ボタンが永久に
+  //   無効化される＝「商談作成ボタンが押せない」本番障害の原因になっていた）
+  const [masterError, setMasterError] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
-    Promise.all([
-      fetch("/api/companies").then((r) => r.json()),
-      fetch("/api/users").then((r) => r.json()),
-      fetch("/api/lead-sources").then((r) => r.json()),
-      fetch("/api/pipeline-stages").then((r) => r.json()),
-    ]).then(([c, u, ls, ps]) => {
-      setCompanies(c.companies ?? []);
-      setUsers(
-        (u.users ?? []).filter(
-          (x: { permission?: string }) => x.permission !== "viewer",
-        ),
-      );
-      setLeadSources(ls.leadSources ?? []);
-      setStages(ps.stages ?? []);
-    });
+    let cancelled = false;
+
+    async function loadJson(url: string): Promise<unknown | null> {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) return null;
+        return await r.json();
+      } catch {
+        return null;
+      }
+    }
+
+    (async () => {
+      const [c, u, ls, ps] = await Promise.all([
+        loadJson("/api/companies"),
+        loadJson("/api/users"),
+        loadJson("/api/lead-sources"),
+        loadJson("/api/pipeline-stages"),
+      ]);
+      if (cancelled) return;
+      setMasterError(null);
+
+      const companiesData = (c as { companies?: Company[] } | null)?.companies ?? [];
+      const usersData =
+        (u as { users?: (SalesUser & { permission?: string })[] } | null)?.users ?? [];
+      const leadSourcesData =
+        (ls as { leadSources?: LeadSource[] } | null)?.leadSources ?? [];
+      const stagesData =
+        (ps as { stages?: PipelineStageRow[] } | null)?.stages ?? [];
+
+      setCompanies(companiesData);
+      setUsers(usersData.filter((x) => x.permission !== "viewer"));
+      setLeadSources(leadSourcesData);
+      setStages(stagesData);
+
+      // 既定ステージが取得済み一覧に無ければ先頭の有効ステージへ自動フォールバック
+      if (stagesData.length > 0) {
+        const hasDefault = stagesData.some(
+          (s) => s.active && s.value === DEFAULT_STAGE,
+        );
+        if (!hasDefault) {
+          const firstActive = stagesData.find((s) => s.active) ?? stagesData[0];
+          if (firstActive) setPipelineStage(firstActive.value);
+        }
+      }
+
+      // 送信に必須なマスタが空／取得失敗ならユーザーに理由を明示
+      const problems: string[] = [];
+      if (usersData.filter((x) => x.permission !== "viewer").length === 0) {
+        problems.push("担当者");
+      }
+      if (leadSourcesData.filter((x) => x.active).length === 0) {
+        problems.push("リード獲得経由");
+      }
+      if (u === null || ls === null || c === null || ps === null) {
+        setMasterError(
+          "マスタ情報の取得に失敗しました。通信状態を確認し、ダイアログを開き直してください。",
+        );
+      } else if (problems.length > 0) {
+        setMasterError(
+          `${problems.join("・")}が登録されていないため商談を作成できません。管理者メニューから登録してください。`,
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   // 企業選択時、その企業に既にDealがあるかチェック + Contacts取得
@@ -266,6 +324,7 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
     setExistingContacts([]);
     setWebsiteUrlForExisting("");
     setSubmitError(null);
+    setMasterError(null);
   }
 
   function pickCompany(id: string) {
@@ -913,7 +972,10 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
               </SelectTrigger>
               <SelectContent>
                 {(["before", "after", "contract"] as const).map((g: StageGroup) => {
-                  const rows = stages.filter((s) => s.group === g && s.active);
+                  // value 空の行は Radix SelectItem が例外を投げる（空value禁止）ため除外。
+                  const rows = stages.filter(
+                    (s) => s.group === g && s.active && s.value,
+                  );
                   if (rows.length === 0) return null;
                   return (
                     <div key={g}>
@@ -1074,6 +1136,13 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
               )}
             </p>
           </section>
+
+          {masterError && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              {masterError}
+            </p>
+          )}
 
           {submitError && (
             <p className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded">
