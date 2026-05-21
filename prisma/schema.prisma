@@ -150,15 +150,61 @@ model Company {
   phoneNumber      String?  @map("phone_number")
   logoColor        String?  @map("logo_color")
   logoUrl          String?  @map("logo_url") // 企業ロゴ画像URL
-  // ソフト削除：null = 通常 / Date = ゴミ箱送り
+  // ソフト削除：null = 通常 / Date = ゴミ箱送り（マージによるアーカイブも同じ deletedAt を使う）
   deletedAt        DateTime? @map("deleted_at")
+  // 企業マージで統合された場合、統合先（surviving）企業の id。null = 通常
+  mergedIntoId     String?  @map("merged_into_id")
   createdAt        DateTime @default(now()) @map("created_at")
 
   contacts Contact[]
   deals    Deal[]
 
+  // 自己参照：統合先企業（surviving）／このcompanyに統合されてきた企業群（mergedChildren）
+  mergedInto     Company?  @relation("CompanyMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedChildren Company[] @relation("CompanyMerge")
+
   @@index([deletedAt])
+  @@index([mergedIntoId])
   @@map("companies")
+}
+
+// ============================================================
+// 企業マージ履歴（重複統合の監査ログ＋復元用スナップショット）
+// ============================================================
+model CompanyMerge {
+  id                 String    @id @default(uuid())
+  // 統合先（残る企業）
+  survivingCompanyId String    @map("surviving_company_id")
+  // 統合元（アーカイブされる企業）
+  mergedCompanyId    String    @map("merged_company_id")
+  // 復元用スナップショット：消えた企業の全カラム＋付け替えた contact_ids / deal_ids ＋ surviving に補完したフィールド
+  snapshot           Json
+  performedByUserId  String?   @map("performed_by_user_id")
+  performedAt        DateTime  @default(now()) @map("performed_at")
+  // 復元（undo）した場合の日時。null = 統合が有効
+  undoneAt           DateTime? @map("undone_at")
+
+  @@index([survivingCompanyId])
+  @@index([mergedCompanyId])
+  @@index([undoneAt])
+  @@map("company_merges")
+}
+
+// ============================================================
+// 「別会社」判定の記録（重複候補から除外し再提示しないペア）
+// companyIdA < companyIdB にソートして保存し一意制約で重複防止
+// ============================================================
+model CompanyMergeDismissed {
+  id           String   @id @default(uuid())
+  companyIdA   String   @map("company_id_a")
+  companyIdB   String   @map("company_id_b")
+  dismissedById String? @map("dismissed_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([companyIdA, companyIdB])
+  @@index([companyIdA])
+  @@index([companyIdB])
+  @@map("company_merge_dismissed")
 }
 
 // ============================================================
