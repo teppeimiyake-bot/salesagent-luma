@@ -16,6 +16,7 @@ import { DealContracts } from "@/components/deals/deal-contracts";
 import { DealQuotes } from "@/components/deals/deal-quotes";
 import { MeetingHistory } from "@/components/deals/meeting-history";
 import { BantSummary } from "@/components/deals/bant-summary";
+import { NotionMeetingNotes } from "@/components/deals/notion-meeting-notes";
 import { DealOverviewPanel } from "@/components/deals/deal-overview-panel";
 import { AiChat } from "@/components/dashboard/ai-chat";
 import { NewTaskDialog } from "@/components/todos/new-task-dialog";
@@ -220,6 +221,8 @@ export default async function DealDetailPage({
               meetingsCount={deal.meetings.length}
               canEdit={canEdit}
             />
+            {/* Notion ヨミ表「★初回商談ヒアリングシート」由来の議事録（閲覧専用） */}
+            <NotionMeetingNotes bant={deal.bant} />
             <RoleplayPanel dealId={deal.id} />
             <MeetingRecorder dealId={deal.id} />
             <UploadRecording dealId={deal.id} />
