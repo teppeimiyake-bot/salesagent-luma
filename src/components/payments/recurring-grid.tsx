@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Inbox, ExternalLink } from "lucide-react";
+import { Loader2, Inbox, ExternalLink, RefreshCw, AlertTriangle, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { yen, ym, ymLabel, ymRange } from "@/lib/payments";
 
 type Period = { id: string; yearMonth: number; sent: boolean; paid: boolean };
@@ -14,6 +15,16 @@ type Billing = {
   company: { id: string; name: string } | null;
   dealId: string | null;
   deal: { id: string; title: string } | null;
+  dealProductId: string | null;
+  dealProduct: {
+    id: string;
+    productName: string;
+    amount: number | null;
+    productionProject: {
+      serviceStartMonth: string | null;
+      serviceEndMonth: string | null;
+    } | null;
+  } | null;
   initialFee: number | null;
   monthlyFee: number | null;
   startDate: string | null;
@@ -26,6 +37,18 @@ function dateToYm(s: string | null): number | null {
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return null;
   return ym(d.getUTCFullYear(), d.getUTCMonth() + 1);
+}
+
+/** yyyymm の start/end（含む）から契約月数を算出。どちらか無ければ null。 */
+function monthsBetween(startYm: number | null, endYm: number | null): number | null {
+  if (startYm == null || endYm == null || endYm < startYm) return null;
+  return ymRange(startYm, endYm).length;
+}
+
+/** YYYY-MM-DD → YYYY-MM */
+function ymStr(s: string | null): string {
+  if (!s) return "";
+  return s.slice(0, 7);
 }
 
 export function RecurringGrid({ canEdit }: { canEdit: boolean }) {
@@ -102,6 +125,26 @@ export function RecurringGrid({ canEdit }: { canEdit: boolean }) {
     [],
   );
 
+  // 定期ヘッダ（初期費用/月額/契約期間）の編集
+  const patchBilling = useCallback(
+    async (billingId: string, body: Record<string, unknown>) => {
+      setBillings((prev) => prev.map((b) => (b.id === billingId ? { ...b, ...body } : b)));
+      const res = await fetch(`/api/payments/recurring/${billingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const j = await res.json();
+        if (j.billing)
+          setBillings((prev) =>
+            prev.map((b) => (b.id === billingId ? { ...b, ...j.billing } : b)),
+          );
+      }
+    },
+    [],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20 text-zinc-400">
@@ -146,8 +189,11 @@ export function RecurringGrid({ canEdit }: { canEdit: boolean }) {
               </th>
               <th className="px-2 py-2 text-right font-medium border-r border-zinc-200">初期費用</th>
               <th className="px-2 py-2 text-right font-medium border-r border-zinc-200">月額</th>
-              <th className="px-2 py-2 text-center font-medium border-r border-zinc-200 min-w-[120px]">
+              <th className="px-2 py-2 text-center font-medium border-r border-zinc-200 min-w-[150px]">
                 契約期間
+              </th>
+              <th className="px-2 py-2 text-right font-medium border-r border-zinc-200 min-w-[120px]">
+                提案金額／検算
               </th>
               {months.map((m) => (
                 <th
@@ -165,6 +211,23 @@ export function RecurringGrid({ canEdit }: { canEdit: boolean }) {
               const pmap = new Map(b.periods.map((p) => [p.yearMonth, p]));
               const startYm = dateToYm(b.startDate);
               const endYm = dateToYm(b.endDate);
+              // 検算：初期費用 + 月額 × 契約月数 = 提案金額(DealProduct.amount)
+              const contractMonths = monthsBetween(startYm, endYm);
+              const proposalAmount = b.dealProduct?.amount ?? null;
+              const computed =
+                contractMonths != null && (b.initialFee != null || b.monthlyFee != null)
+                  ? (b.initialFee ?? 0) + (b.monthlyFee ?? 0) * contractMonths
+                  : null;
+              const verifyMismatch =
+                proposalAmount != null && computed != null && Math.abs(computed - proposalAmount) > 1;
+              const verifyOk =
+                proposalAmount != null && computed != null && Math.abs(computed - proposalAmount) <= 1;
+              // PM（ProductionProject）の SNS 提供開始/終了月
+              const pmStart = b.dealProduct?.productionProject?.serviceStartMonth ?? null;
+              const pmEnd = b.dealProduct?.productionProject?.serviceEndMonth ?? null;
+              const pmPeriodDiffers =
+                (pmStart != null || pmEnd != null) &&
+                (ymStr(pmStart) !== ymStr(b.startDate) || ymStr(pmEnd) !== ymStr(b.endDate));
               return (
                 <tr key={b.id} className="border-t border-zinc-100 hover:bg-zinc-50/40">
                   <td className="sticky left-0 z-10 bg-white px-3 py-2 border-r border-zinc-200">
@@ -185,15 +248,134 @@ export function RecurringGrid({ canEdit }: { canEdit: boolean }) {
                     </div>
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums border-r border-zinc-200">
-                    {yen(b.initialFee)}
+                    {canEdit ? (
+                      <Input
+                        key={`${b.id}-init-${b.initialFee ?? ""}`}
+                        type="number"
+                        defaultValue={b.initialFee ?? ""}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          const n = v === "" ? null : parseInt(v, 10);
+                          if (n !== b.initialFee) patchBilling(b.id, { initialFee: n });
+                        }}
+                        className="h-7 w-[96px] text-right tabular-nums"
+                      />
+                    ) : (
+                      yen(b.initialFee)
+                    )}
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums border-r border-zinc-200">
-                    {yen(b.monthlyFee)}
+                    {canEdit ? (
+                      <Input
+                        key={`${b.id}-mon-${b.monthlyFee ?? ""}`}
+                        type="number"
+                        defaultValue={b.monthlyFee ?? ""}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          const n = v === "" ? null : parseInt(v, 10);
+                          if (n !== b.monthlyFee) patchBilling(b.id, { monthlyFee: n });
+                        }}
+                        className="h-7 w-[96px] text-right tabular-nums"
+                      />
+                    ) : (
+                      yen(b.monthlyFee)
+                    )}
                   </td>
                   <td className="px-2 py-2 text-center text-xs text-zinc-500 tabular-nums border-r border-zinc-200">
-                    {b.startDate ? b.startDate.slice(0, 7) : "—"}
-                    {" 〜 "}
-                    {b.endDate ? b.endDate.slice(0, 7) : "—"}
+                    {canEdit ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="month"
+                            value={ymStr(b.startDate)}
+                            onChange={(e) =>
+                              patchBilling(b.id, {
+                                startDate: e.target.value ? `${e.target.value}-01` : null,
+                              })
+                            }
+                            className="h-7 w-[110px] text-xs"
+                          />
+                          <span>〜</span>
+                          <Input
+                            type="month"
+                            value={ymStr(b.endDate)}
+                            onChange={(e) =>
+                              patchBilling(b.id, {
+                                endDate: e.target.value ? `${e.target.value}-01` : null,
+                              })
+                            }
+                            className="h-7 w-[110px] text-xs"
+                          />
+                        </div>
+                        {contractMonths != null && (
+                          <span className="text-[10px] text-zinc-400">契約 {contractMonths}ヶ月</span>
+                        )}
+                        {(pmStart != null || pmEnd != null) && (
+                          <div className="flex items-center gap-1 text-[10px] text-zinc-400">
+                            <span title="PM受注管理のSNS提供期間">
+                              PM: {ymStr(pmStart) || "—"}〜{ymStr(pmEnd) || "—"}
+                            </span>
+                            {pmPeriodDiffers && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  patchBilling(b.id, {
+                                    startDate: pmStart ? `${ymStr(pmStart)}-01` : b.startDate,
+                                    endDate: pmEnd ? `${ymStr(pmEnd)}-01` : b.endDate,
+                                  })
+                                }
+                                className="inline-flex items-center gap-0.5 text-indigo-500 hover:text-indigo-700"
+                                title="PMのSNS提供期間に合わせる"
+                              >
+                                <RefreshCw className="h-2.5 w-2.5" />
+                                合わせる
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        {ymStr(b.startDate) || "—"}
+                        {" 〜 "}
+                        {ymStr(b.endDate) || "—"}
+                        {contractMonths != null && (
+                          <div className="text-[10px] text-zinc-400">契約 {contractMonths}ヶ月</div>
+                        )}
+                      </>
+                    )}
+                  </td>
+                  {/* 提案金額／検算（初期費用 + 月額×契約月数 = 提案金額） */}
+                  <td className="px-2 py-2 text-right text-xs tabular-nums border-r border-zinc-200">
+                    {proposalAmount != null ? (
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className="text-zinc-600">提案 {yen(proposalAmount)}</span>
+                        {computed != null && (
+                          <span
+                            className={`inline-flex items-center gap-0.5 ${
+                              verifyMismatch
+                                ? "text-red-600 font-semibold"
+                                : verifyOk
+                                  ? "text-emerald-600"
+                                  : "text-zinc-400"
+                            }`}
+                            title={`初期費用 + 月額×${contractMonths ?? "?"}ヶ月 = ${yen(computed)}`}
+                          >
+                            {verifyMismatch ? (
+                              <AlertTriangle className="h-3 w-3" />
+                            ) : verifyOk ? (
+                              <Check className="h-3 w-3" />
+                            ) : null}
+                            計 {yen(computed)}
+                          </span>
+                        )}
+                        {contractMonths == null && (
+                          <span className="text-[10px] text-zinc-400">期間未設定</span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-zinc-300">—</span>
+                    )}
                   </td>
                   {months.map((m) => {
                     const p = pmap.get(m);
