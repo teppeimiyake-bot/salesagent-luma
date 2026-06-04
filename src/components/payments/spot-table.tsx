@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Inbox, Search, ExternalLink } from "lucide-react";
+import { Loader2, Inbox, Search, ExternalLink, AlertTriangle, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
@@ -49,6 +49,13 @@ type SpotRecord = {
   company: { id: string; name: string } | null;
   dealId: string | null;
   deal: { id: string; title: string } | null;
+  dealProductId: string | null;
+  dealProduct: {
+    id: string;
+    productName: string;
+    amount: number | null;
+    productionProject: { deliveryDate: string | null } | null;
+  } | null;
   paymentTiming: PaymentTiming;
   contractStatus: ContractStatus;
   invoiceStatus: InvoiceSentStatus;
@@ -62,6 +69,21 @@ type SpotRecord = {
 function isoDay(s: string | null): string {
   if (!s) return "";
   return s.slice(0, 10);
+}
+
+/** 着金見込み日が本日より前 かつ 着金が未完了（未確認/前金分確認済み）= 期日超過 */
+function isOverdue(r: {
+  expectedPaymentDate: string | null;
+  paymentStatus: PaymentRecvStatus;
+}): boolean {
+  if (!r.expectedPaymentDate) return false;
+  if (r.paymentStatus !== "UNCONFIRMED" && r.paymentStatus !== "PARTIAL_CONFIRMED") return false;
+  const due = r.expectedPaymentDate.slice(0, 10);
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
+    today.getDate(),
+  ).padStart(2, "0")}`;
+  return due < todayStr;
 }
 
 export function SpotTable({ canEdit }: { canEdit: boolean }) {
@@ -121,16 +143,18 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
     });
   }, [records, q, filters]);
 
-  // KPI: 着金確認済みの税込合計 / 未確認の税込合計
+  // KPI: 着金確認済みの税込合計 / 未確認の税込合計 / 期日超過件数
   const totals = useMemo(() => {
     let confirmed = 0;
     let pending = 0;
+    let overdue = 0;
     for (const r of records) {
       const g = r.amountGross ?? grossFromNet(r.amountNet) ?? 0;
       if (r.paymentStatus === "CONFIRMED") confirmed += g;
       else pending += g;
+      if (isOverdue(r)) overdue += 1;
     }
-    return { confirmed, pending };
+    return { confirmed, pending, overdue };
   }, [records]);
 
   if (loading) {
@@ -164,6 +188,12 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
             <span className="text-zinc-500">未確認</span>
             <span className="font-semibold text-amber-700">{yen(totals.pending)}</span>
           </div>
+          {totals.overdue > 0 && (
+            <div className="flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-red-700">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span className="font-semibold">期日超過 {totals.overdue}件</span>
+            </div>
+          )}
           <Badge variant="secondary">{filtered.length}件</Badge>
         </div>
       </div>
@@ -201,10 +231,19 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                 r.amountNet != null &&
                 r.amountGross != null &&
                 Math.abs((grossFromNet(r.amountNet) ?? 0) - r.amountGross) > 1;
+              const overdue = isOverdue(r);
+              // 提案金額（DealProduct.amount）と入金管理の契約金額がズレているか（再同期ボタン用）
+              const proposalAmount = r.dealProduct?.amount ?? null;
+              const amountDiffersFromProposal =
+                proposalAmount != null && r.amountNet !== proposalAmount;
+              // PM（ProductionProject）の納品予定日
+              const pmDelivery = r.dealProduct?.productionProject?.deliveryDate ?? null;
               return (
                 <tr
                   key={r.id}
-                  className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/60 align-middle"
+                  className={`border-b border-zinc-100 last:border-0 align-middle ${
+                    overdue ? "bg-red-50/70 hover:bg-red-50" : "hover:bg-zinc-50/60"
+                  }`}
                 >
                   {/* 顧客名（紐づく受注商談があればクリックで /deals/[id] へ。無ければプレーン表示） */}
                   <td className="px-3 py-2">
@@ -221,6 +260,15 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                         </Link>
                       ) : (
                         <span className="font-medium">{r.customerName}</span>
+                      )}
+                      {overdue && (
+                        <span
+                          className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700"
+                          title="着金見込み日を超過しています"
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                          期日超過
+                        </span>
                       )}
                     </div>
                   </td>
@@ -325,7 +373,7 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                     )}
                   </td>
 
-                  {/* 納品予定日 */}
+                  {/* 納品予定日（PM＝ProductionProject の納品予定日と連動） */}
                   <td className="px-3 py-2">
                     {canEdit ? (
                       <DateInput
@@ -336,25 +384,46 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                     ) : (
                       <span className="tabular-nums">{isoDay(r.deliveryDate) || "—"}</span>
                     )}
+                    {pmDelivery && (
+                      <div className="mt-0.5 flex items-center gap-1 text-[10px] text-zinc-400">
+                        <span title="PM受注管理の納品予定日">PM: {isoDay(pmDelivery)}</span>
+                        {canEdit && isoDay(pmDelivery) !== isoDay(r.deliveryDate) && (
+                          <button
+                            type="button"
+                            onClick={() => patch(r.id, { deliveryDate: isoDay(pmDelivery) })}
+                            className="inline-flex items-center gap-0.5 text-indigo-500 hover:text-indigo-700"
+                            title="PMの納品予定日に合わせる"
+                          >
+                            <RefreshCw className="h-2.5 w-2.5" />
+                            合わせる
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </td>
 
-                  {/* 着金見込み日 */}
+                  {/* 着金見込み日（期日超過は赤字） */}
                   <td className="px-3 py-2">
                     {canEdit ? (
                       <DateInput
                         value={isoDay(r.expectedPaymentDate)}
                         onChange={(v) => patch(r.id, { expectedPaymentDate: v || null })}
-                        className="scale-90 origin-left"
+                        className={`scale-90 origin-left ${overdue ? "text-red-600 font-semibold" : ""}`}
                       />
                     ) : (
-                      <span className="tabular-nums">{isoDay(r.expectedPaymentDate) || "—"}</span>
+                      <span
+                        className={`tabular-nums ${overdue ? "text-red-600 font-semibold" : ""}`}
+                      >
+                        {isoDay(r.expectedPaymentDate) || "—"}
+                      </span>
                     )}
                   </td>
 
-                  {/* 契約金額(税抜) */}
+                  {/* 契約金額(税抜)。既定＝提案金額(DealProduct.amount)。入金管理で調整可。 */}
                   <td className="px-3 py-2 text-right">
                     {canEdit ? (
                       <Input
+                        key={`${r.id}-${r.amountNet ?? ""}`}
                         type="number"
                         defaultValue={r.amountNet ?? ""}
                         onBlur={(e) => {
@@ -367,6 +436,24 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                       />
                     ) : (
                       <span className="tabular-nums">{yen(r.amountNet)}</span>
+                    )}
+                    {proposalAmount != null && (
+                      <div className="mt-0.5 flex items-center justify-end gap-1 text-[10px] text-zinc-400">
+                        <span title="商談の提案金額">提案: {yen(proposalAmount)}</span>
+                        {canEdit && amountDiffersFromProposal && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              patch(r.id, { amountNet: proposalAmount, recomputeGross: true })
+                            }
+                            className="inline-flex items-center gap-0.5 text-indigo-500 hover:text-indigo-700"
+                            title="提案金額に再同期する"
+                          >
+                            <RefreshCw className="h-2.5 w-2.5" />
+                            再同期
+                          </button>
+                        )}
+                      </div>
                     )}
                   </td>
 
