@@ -27,7 +27,7 @@ import {
 import { normalizeName } from "../src/lib/company-dedup";
 
 const url = process.env.DATABASE_URL ?? "";
-if (!url.includes("salesagent_luma")) {
+if (!url.includes("salesagent_luma") && process.env.SEED_ALLOW_PROD !== "1") {
   throw new Error(
     `[SAFETY] DATABASE_URL が salesagent_luma を指していません: ${url.replace(/:[^:@]+@/, ":***@")}`,
   );
