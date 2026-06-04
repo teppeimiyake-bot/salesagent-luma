@@ -34,7 +34,8 @@ const baseGroups = [
       { href: "/ms", label: "ms管理", icon: PhoneCall, color: "text-amber-600", activeBg: "bg-amber-600" },
       { href: "/companies", label: "企業", icon: Building2, color: "text-yellow-600", activeBg: "bg-yellow-600" },
       { href: "/pm", label: "PM（受注管理）", icon: Clapperboard, color: "text-rose-600", activeBg: "bg-rose-600" },
-      { href: "/payments", label: "入金管理", icon: Wallet, color: "text-green-600", activeBg: "bg-green-600" },
+      // 入金管理は admin 限定（Phase 9）。adminOnly フラグで非adminには非表示。
+      { href: "/payments", label: "入金管理", icon: Wallet, color: "text-green-600", activeBg: "bg-green-600", adminOnly: true },
     ],
   },
   {
@@ -72,7 +73,13 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const groups = user?.permission === "admin" ? [...baseGroups, adminGroup] : baseGroups;
+  const isAdmin = user?.permission === "admin";
+  // adminOnly のアイテム（入金管理など）は非adminには出さない
+  const visibleBaseGroups = baseGroups.map((g) => ({
+    ...g,
+    items: g.items.filter((it) => !("adminOnly" in it && it.adminOnly) || isAdmin),
+  }));
+  const groups = isAdmin ? [...visibleBaseGroups, adminGroup] : visibleBaseGroups;
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });

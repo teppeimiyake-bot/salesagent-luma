@@ -15,8 +15,9 @@ const schema = z.object({
  * body: { yearMonth: 202506, sent?: bool, paid?: bool }
  */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Phase 9：入金管理は admin 限定
   const perm = await getCurrentPermission();
-  if (!hasPermission(perm, "user")) {
+  if (!hasPermission(perm, "admin")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id: billingId } = await params;

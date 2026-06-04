@@ -41,8 +41,9 @@ function toDate(s: string | null | undefined): Date | null | undefined {
  * 着金金額(税込) は recomputeGross=true もしくは amountNet 更新時に net×1.1 で再計算可能。
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Phase 9：入金管理は admin 限定
   const perm = await getCurrentPermission();
-  if (!hasPermission(perm, "user")) {
+  if (!hasPermission(perm, "admin")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await params;

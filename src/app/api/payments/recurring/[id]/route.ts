@@ -25,8 +25,9 @@ function toDate(s: string | null | undefined): Date | null | undefined {
  * 定期契約ヘッダ（初期費用/月額/契約期間/顧客名）のインライン編集。
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Phase 9：入金管理は admin 限定
   const perm = await getCurrentPermission();
-  if (!hasPermission(perm, "user")) {
+  if (!hasPermission(perm, "admin")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await params;

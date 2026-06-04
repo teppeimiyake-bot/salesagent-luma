@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { PaymentsBoard } from "@/components/payments/payments-board";
 import { prisma } from "@/lib/db";
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 /**
  * 入金管理ページ（機能5）
  * スポット / 定期 の2サブタブ。請求書送付状況・着金状況を管理する。
+ * Phase 9：admin 権限のみアクセス可（非adminはダッシュボードへ）。
  */
 export default async function PaymentsPage() {
   const session = await getSession();
@@ -17,7 +19,11 @@ export default async function PaymentsPage() {
         select: { permission: true },
       })
     : null;
-  const canEdit = hasPermission(me?.permission, "user");
+  // admin 限定。非adminはダッシュボードへリダイレクト。
+  if (!hasPermission(me?.permission, "admin")) {
+    redirect("/dashboard");
+  }
+  const canEdit = true; // admin は常に編集可
 
   return (
     <>
