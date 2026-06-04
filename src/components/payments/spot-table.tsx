@@ -134,7 +134,10 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     return records.filter((r) => {
-      if (t && !r.customerName.toLowerCase().includes(t)) return false;
+      if (t) {
+        const hay = `${r.company?.name ?? ""} ${r.dealProduct?.productName ?? r.customerName}`.toLowerCase();
+        if (!hay.includes(t)) return false;
+      }
       if (!filters.paymentTiming.includes(r.paymentTiming)) return false;
       if (!filters.contractStatus.includes(r.contractStatus)) return false;
       if (!filters.invoiceStatus.includes(r.invoiceStatus)) return false;
@@ -205,7 +208,8 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-200 bg-zinc-50 text-left text-xs text-zinc-500">
-              <th className="px-3 py-2.5 font-medium min-w-[180px]">顧客名</th>
+              <th className="px-3 py-2.5 font-medium min-w-[160px]">顧客名</th>
+              <th className="px-3 py-2.5 font-medium min-w-[160px]">プロダクト名</th>
               <th className="px-3 py-2.5 font-medium">支払時期</th>
               <th className="px-3 py-2.5 font-medium">契約締結</th>
               <th className="px-3 py-2.5 font-medium">請求書送付</th>
@@ -219,7 +223,7 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-16 text-center text-zinc-400">
+                <td colSpan={10} className="py-16 text-center text-zinc-400">
                   <Inbox className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   該当する入金レコードがありません
                 </td>
@@ -245,7 +249,7 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                     overdue ? "bg-red-50/70 hover:bg-red-50" : "hover:bg-zinc-50/60"
                   }`}
                 >
-                  {/* 顧客名（紐づく受注商談があればクリックで /deals/[id] へ。無ければプレーン表示） */}
+                  {/* 顧客名＝会社名（紐づく受注商談があればクリックで /deals/[id] へ。無ければプレーン表示） */}
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5">
                       {r.dealId ? (
@@ -255,11 +259,11 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                           className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
                           title={r.deal?.title ? `商談「${r.deal.title}」を開く` : "紐づく商談を開く"}
                         >
-                          {r.customerName}
+                          {r.company?.name ?? "—"}
                           <ExternalLink className="h-3 w-3 opacity-60 shrink-0" />
                         </Link>
                       ) : (
-                        <span className="font-medium">{r.customerName}</span>
+                        <span className="font-medium">{r.company?.name ?? "—"}</span>
                       )}
                       {overdue && (
                         <span
@@ -271,6 +275,13 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                         </span>
                       )}
                     </div>
+                  </td>
+
+                  {/* プロダクト名（受注プロダクト。customerName に商材名が入っているためフォールバックに使用） */}
+                  <td className="px-3 py-2">
+                    <span className="text-zinc-700">
+                      {r.dealProduct?.productName ?? r.customerName}
+                    </span>
                   </td>
 
                   {/* 支払時期 */}

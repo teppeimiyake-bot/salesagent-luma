@@ -184,9 +184,10 @@ export function RecurringGrid({ canEdit }: { canEdit: boolean }) {
         <table className="text-sm border-collapse">
           <thead>
             <tr className="bg-zinc-50 text-xs text-zinc-500">
-              <th className="sticky left-0 z-10 bg-zinc-50 px-3 py-2 text-left font-medium min-w-[160px] border-r border-zinc-200">
+              <th className="sticky left-0 z-10 bg-zinc-50 px-3 py-2 text-left font-medium min-w-[150px] border-r border-zinc-200">
                 顧客名
               </th>
+              <th className="px-3 py-2 text-left font-medium border-r border-zinc-200 min-w-[120px]">プロダクト名</th>
               <th className="px-2 py-2 text-right font-medium border-r border-zinc-200">初期費用</th>
               <th className="px-2 py-2 text-right font-medium border-r border-zinc-200">月額</th>
               <th className="px-2 py-2 text-center font-medium border-r border-zinc-200 min-w-[150px]">
@@ -239,13 +240,16 @@ export function RecurringGrid({ canEdit }: { canEdit: boolean }) {
                           className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-800 hover:underline truncate max-w-[150px]"
                           title={b.deal?.title ? `商談「${b.deal.title}」を開く` : "紐づく商談を開く"}
                         >
-                          <span className="truncate">{b.customerName}</span>
+                          <span className="truncate">{b.company?.name ?? "—"}</span>
                           <ExternalLink className="h-3 w-3 opacity-60 shrink-0" />
                         </Link>
                       ) : (
-                        <span className="font-medium truncate max-w-[140px]">{b.customerName}</span>
+                        <span className="font-medium truncate max-w-[140px]">{b.company?.name ?? "—"}</span>
                       )}
                     </div>
+                  </td>
+                  <td className="px-3 py-2 border-r border-zinc-200 text-zinc-700 truncate max-w-[140px]">
+                    {b.dealProduct?.productName ?? b.customerName}
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums border-r border-zinc-200">
                     {canEdit ? (
