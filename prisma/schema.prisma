@@ -853,3 +853,71 @@ enum SnsPlatform {
   INSTAGRAM
   TIKTOK
 }
+
+// ============================================================
+// MS送付状況（アウトリーチ・アポ獲得KPI）
+// 既存の「ms管理」(/ms) とは別物。Lumaのアウトリーチ送付実績を
+// ワーカー（送付代行者）× 月内週(1w〜5w) の週次グリッドで管理する。
+// ルート: /ms-outreach
+// ============================================================
+
+// 送付代行ワーカーのマスタ（既存 User とは紐付けない独立マスタ）
+model MsWorker {
+  id        String   @id @default(uuid())
+  // 表示用コード（"001" など。スプレッドシート上の連番に対応。任意）
+  code      String?
+  name      String   // "フローラ三宮さん" など
+  isAgency  Boolean  @default(false) @map("is_agency") // 代理店経由か（社内/個人=false）
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0) @map("sort_order")
+  notes     String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  weeklyEntries MsWeeklyEntry[]
+
+  @@map("ms_workers")
+}
+
+// 週次実績（ワーカー × 暦年月 × 月内第N週(1〜5)）
+// 入力指標は 送信数/アポ数/リスト発注数/問い合わせ発注数 の4つ。
+// アポ率(=返信率) は sent/appointments から自動計算（保存しない）。
+model MsWeeklyEntry {
+  id            String   @id @default(uuid())
+  workerId      String   @map("worker_id")
+  // 暦年・暦月（会計年度ではなく実際の年月）。集計時に lib/config の会計年度ヘルパーで束ねる。
+  year          Int
+  month         Int      // 1〜12（暦月）
+  weekOfMonth   Int      @map("week_of_month") // 月内第N週: 1〜5
+  // 入力指標（手入力）
+  sent          Int      @default(0) // 送信数
+  appointments  Int      @default(0) // アポ数（= 返信数。アポ率/返信率の分子）
+  listOrders    Int      @default(0) @map("list_orders")    // リスト発注数
+  inquiryOrders Int      @default(0) @map("inquiry_orders") // 問い合わせ発注数
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  worker MsWorker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([workerId, year, month, weekOfMonth])
+  @@index([workerId])
+  @@index([year, month])
+  @@map("ms_weekly_entries")
+}
+
+// MS送付のKPI目標（会計年度単位）。
+// targetReplyRate = 目標返信率(=目標アポ率)。例: 0.005 (=0.50%)。
+// 達成率 = 実績アポ率 ÷ targetReplyRate で表示する。
+model MsKpiGoal {
+  id              String   @id @default(uuid())
+  // 会計年度の period ラベル（"FY2026"）。組織全体の単一目標。
+  period          String   @unique
+  targetReplyRate Float    @map("target_reply_rate") // 目標返信率(=目標アポ率) 例: 0.005
+  // 任意の月次送信数目標など（将来拡張用・現状は返信率のみ運用）
+  targetSent      Int?     @map("target_sent")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("ms_kpi_goals")
+}

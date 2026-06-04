@@ -22,6 +22,7 @@ import {
   Merge,
   Wallet,
   Clapperboard,
+  Send,
 } from "lucide-react";
 
 const baseGroups = [
@@ -32,6 +33,7 @@ const baseGroups = [
       { href: "/todos", label: "ToDo", icon: CheckSquare, color: "text-orange-500", activeBg: "bg-orange-500" },
       { href: "/deals", label: "商談", icon: Briefcase, color: "text-amber-500", activeBg: "bg-amber-500" },
       { href: "/ms", label: "ms管理", icon: PhoneCall, color: "text-amber-600", activeBg: "bg-amber-600" },
+      { href: "/ms-outreach", label: "MS送付状況", icon: Send, color: "text-amber-600", activeBg: "bg-amber-600" },
       { href: "/companies", label: "企業", icon: Building2, color: "text-yellow-600", activeBg: "bg-yellow-600" },
       { href: "/pm", label: "PM（受注管理）", icon: Clapperboard, color: "text-rose-600", activeBg: "bg-rose-600" },
       // 入金管理は admin 限定（Phase 9）。adminOnly フラグで非adminには非表示。
