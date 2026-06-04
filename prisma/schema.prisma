@@ -683,6 +683,7 @@ model InvoiceRecord {
 
   @@index([companyId])
   @@index([dealId])
+  @@index([dealProductId])
   @@index([invoiceStatus])
   @@index([paymentStatus])
   @@map("invoice_records")
@@ -740,6 +741,7 @@ model RecurringBilling {
 
   @@index([companyId])
   @@index([dealId])
+  @@index([dealProductId])
   @@map("recurring_billings")
 }
 
