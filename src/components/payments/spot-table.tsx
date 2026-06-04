@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Inbox, Search, Link2 } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Inbox, Search, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
@@ -21,8 +22,6 @@ import {
   CONTRACT_STATUS_LABEL,
   INVOICE_SENT_LABEL,
   PAYMENT_RECV_LABEL,
-  invoiceSentVariant,
-  paymentRecvVariant,
   grossFromNet,
   yen,
   type PaymentTiming,
@@ -30,12 +29,26 @@ import {
   type InvoiceSentStatus,
   type PaymentRecvStatus,
 } from "@/lib/payments";
+import {
+  PAYMENT_TIMING_BADGE,
+  CONTRACT_STATUS_BADGE,
+  INVOICE_SENT_BADGE,
+  PAYMENT_RECV_BADGE,
+} from "@/lib/payments-ui";
+import { StatusBadge } from "@/components/payments/status-badge";
+import {
+  SpotFilters,
+  defaultSpotFilterState,
+  type SpotFilterState,
+} from "@/components/payments/spot-filters";
 
 type SpotRecord = {
   id: string;
   customerName: string;
   companyId: string | null;
   company: { id: string; name: string } | null;
+  dealId: string | null;
+  deal: { id: string; title: string } | null;
   paymentTiming: PaymentTiming;
   contractStatus: ContractStatus;
   invoiceStatus: InvoiceSentStatus;
@@ -56,6 +69,8 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
+  // 着金状況は初期で「未確認 + 前金分確認済み」のみ表示（確認済みを隠す）。他項目は全選択。
+  const [filters, setFilters] = useState<SpotFilterState>(defaultSpotFilterState);
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
@@ -96,9 +111,15 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
-    if (!t) return records;
-    return records.filter((r) => r.customerName.toLowerCase().includes(t));
-  }, [records, q]);
+    return records.filter((r) => {
+      if (t && !r.customerName.toLowerCase().includes(t)) return false;
+      if (!filters.paymentTiming.includes(r.paymentTiming)) return false;
+      if (!filters.contractStatus.includes(r.contractStatus)) return false;
+      if (!filters.invoiceStatus.includes(r.invoiceStatus)) return false;
+      if (!filters.paymentStatus.includes(r.paymentStatus)) return false;
+      return true;
+    });
+  }, [records, q, filters]);
 
   // KPI: 着金確認済みの税込合計 / 未確認の税込合計
   const totals = useMemo(() => {
@@ -147,6 +168,9 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
         </div>
       </div>
 
+      {/* 項目別フィルタ（複数選択トグル）。着金状況は初期=未確認+前金分確認済み */}
+      <SpotFilters state={filters} onChange={setFilters} />
+
       <div className="rounded-xl border border-zinc-200 bg-white shadow-sm overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -182,25 +206,21 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                   key={r.id}
                   className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/60 align-middle"
                 >
-                  {/* 顧客名 */}
+                  {/* 顧客名（紐づく受注商談があればクリックで /deals/[id] へ。無ければプレーン表示） */}
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5">
-                      {canEdit ? (
-                        <Input
-                          defaultValue={r.customerName}
-                          onBlur={(e) => {
-                            const v = e.target.value.trim();
-                            if (v && v !== r.customerName) patch(r.id, { customerName: v });
-                          }}
-                          className="h-8 w-[170px]"
-                        />
+                      {r.dealId ? (
+                        <Link
+                          href={`/deals/${r.dealId}`}
+                          target="_blank"
+                          className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
+                          title={r.deal?.title ? `商談「${r.deal.title}」を開く` : "紐づく商談を開く"}
+                        >
+                          {r.customerName}
+                          <ExternalLink className="h-3 w-3 opacity-60 shrink-0" />
+                        </Link>
                       ) : (
                         <span className="font-medium">{r.customerName}</span>
-                      )}
-                      {r.company && (
-                        <span title={`企業: ${r.company.name}`}>
-                          <Link2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                        </span>
                       )}
                     </div>
                   </td>
@@ -224,7 +244,9 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                         </SelectContent>
                       </Select>
                     ) : (
-                      <span>{PAYMENT_TIMING_LABEL[r.paymentTiming]}</span>
+                      <StatusBadge tone={PAYMENT_TIMING_BADGE[r.paymentTiming]}>
+                        {PAYMENT_TIMING_LABEL[r.paymentTiming]}
+                      </StatusBadge>
                     )}
                   </td>
 
@@ -247,7 +269,9 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                         </SelectContent>
                       </Select>
                     ) : (
-                      <span>{CONTRACT_STATUS_LABEL[r.contractStatus]}</span>
+                      <StatusBadge tone={CONTRACT_STATUS_BADGE[r.contractStatus]}>
+                        {CONTRACT_STATUS_LABEL[r.contractStatus]}
+                      </StatusBadge>
                     )}
                   </td>
 
@@ -270,9 +294,9 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Badge variant={invoiceSentVariant(r.invoiceStatus)}>
+                      <StatusBadge tone={INVOICE_SENT_BADGE[r.invoiceStatus]}>
                         {INVOICE_SENT_LABEL[r.invoiceStatus]}
-                      </Badge>
+                      </StatusBadge>
                     )}
                   </td>
 
@@ -295,9 +319,9 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Badge variant={paymentRecvVariant(r.paymentStatus)}>
+                      <StatusBadge tone={PAYMENT_RECV_BADGE[r.paymentStatus]}>
                         {PAYMENT_RECV_LABEL[r.paymentStatus]}
-                      </Badge>
+                      </StatusBadge>
                     )}
                   </td>
 

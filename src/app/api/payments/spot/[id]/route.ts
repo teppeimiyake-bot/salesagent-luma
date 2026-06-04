@@ -90,7 +90,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ...(d.dealId !== undefined ? { dealId: d.dealId } : {}),
       ...(d.dealProductId !== undefined ? { dealProductId: d.dealProductId } : {}),
     },
-    include: { company: { select: { id: true, name: true } } },
+    include: {
+      company: { select: { id: true, name: true } },
+      deal: { select: { id: true, title: true } },
+    },
   });
 
   return NextResponse.json({ record: updated });

@@ -16,6 +16,7 @@ export async function GET() {
     orderBy: [{ expectedPaymentDate: "asc" }, { customerName: "asc" }],
     include: {
       company: { select: { id: true, name: true } },
+      deal: { select: { id: true, title: true } },
     },
   });
   return NextResponse.json({ records });

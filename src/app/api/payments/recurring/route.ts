@@ -15,6 +15,7 @@ export async function GET() {
     orderBy: [{ customerName: "asc" }],
     include: {
       company: { select: { id: true, name: true } },
+      deal: { select: { id: true, title: true } },
       periods: { orderBy: { yearMonth: "asc" } },
     },
   });

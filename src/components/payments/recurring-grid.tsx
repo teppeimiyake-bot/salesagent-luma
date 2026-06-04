@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Inbox, Link2 } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Inbox, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { yen, ym, ymLabel, ymRange } from "@/lib/payments";
 
@@ -11,6 +12,8 @@ type Billing = {
   customerName: string;
   companyId: string | null;
   company: { id: string; name: string } | null;
+  dealId: string | null;
+  deal: { id: string; title: string } | null;
   initialFee: number | null;
   monthlyFee: number | null;
   startDate: string | null;
@@ -166,11 +169,18 @@ export function RecurringGrid({ canEdit }: { canEdit: boolean }) {
                 <tr key={b.id} className="border-t border-zinc-100 hover:bg-zinc-50/40">
                   <td className="sticky left-0 z-10 bg-white px-3 py-2 border-r border-zinc-200">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-medium truncate max-w-[140px]">{b.customerName}</span>
-                      {b.company && (
-                        <span title={`企業: ${b.company.name}`}>
-                          <Link2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                        </span>
+                      {b.dealId ? (
+                        <Link
+                          href={`/deals/${b.dealId}`}
+                          target="_blank"
+                          className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-800 hover:underline truncate max-w-[150px]"
+                          title={b.deal?.title ? `商談「${b.deal.title}」を開く` : "紐づく商談を開く"}
+                        >
+                          <span className="truncate">{b.customerName}</span>
+                          <ExternalLink className="h-3 w-3 opacity-60 shrink-0" />
+                        </Link>
+                      ) : (
+                        <span className="font-medium truncate max-w-[140px]">{b.customerName}</span>
                       )}
                     </div>
                   </td>
