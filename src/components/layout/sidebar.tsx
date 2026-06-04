@@ -20,6 +20,7 @@ import {
   Film,
   PhoneCall,
   Merge,
+  Wallet,
 } from "lucide-react";
 
 const baseGroups = [
@@ -31,6 +32,7 @@ const baseGroups = [
       { href: "/deals", label: "商談", icon: Briefcase, color: "text-amber-500", activeBg: "bg-amber-500" },
       { href: "/ms", label: "ms管理", icon: PhoneCall, color: "text-amber-600", activeBg: "bg-amber-600" },
       { href: "/companies", label: "企業", icon: Building2, color: "text-yellow-600", activeBg: "bg-yellow-600" },
+      { href: "/payments", label: "入金管理", icon: Wallet, color: "text-green-600", activeBg: "bg-green-600" },
     ],
   },
   {
