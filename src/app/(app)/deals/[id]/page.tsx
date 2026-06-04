@@ -14,6 +14,9 @@ import { PreparationPanel } from "@/components/deals/preparation-panel";
 import { DealDocuments } from "@/components/deals/deal-documents";
 import { DealContracts } from "@/components/deals/deal-contracts";
 import { DealQuotes } from "@/components/deals/deal-quotes";
+import { QuoteBuilder } from "@/components/deals/quote-builder";
+import { ContractGenerator } from "@/components/deals/contract-generator";
+import { categoryFromDealProduct } from "@/lib/product-categories";
 import { MeetingHistory } from "@/components/deals/meeting-history";
 import { BantSummary } from "@/components/deals/bant-summary";
 import { NotionMeetingNotes } from "@/components/deals/notion-meeting-notes";
@@ -228,8 +231,38 @@ export default async function DealDetailPage({
             <UploadRecording dealId={deal.id} />
             {/* 複数回商談を時系列で記録・編集（BANTは案件全体に集約済のため、各回はメモのみ） */}
             <MeetingHistory dealId={deal.id} meetings={deal.meetings} />
+            {/* 機能①：見積書 自動作成（DealProduct単位・PDF発行） */}
+            <QuoteBuilder
+              dealId={deal.id}
+              companyName={deal.company.name}
+              dealProducts={deal.products.map((p) => ({
+                id: p.id,
+                productName: p.productName,
+                planName: p.planName,
+                planProposals: p.planProposals,
+                amount: p.amount,
+              }))}
+              canEdit={canEdit}
+            />
+            {/* 既存：手動アップロード見積（複数バージョン管理） */}
             <DealQuotes dealId={deal.id} canEdit={canEdit} />
             <DealDocuments dealId={deal.id} companyName={deal.company.name} />
+            {/* 機能②：契約書 自動生成（映像/SNS。A+ヨミ遷移でも自動生成） */}
+            <ContractGenerator
+              dealProducts={deal.products.map((p) => ({
+                id: p.id,
+                productName: p.productName,
+                planName: p.planName,
+                category: categoryFromDealProduct({
+                  yomiStatus: p.yomiStatus,
+                  productName: p.productName,
+                  product: p.product,
+                }),
+                amount: p.amount,
+                yomiStatus: p.yomiStatus,
+              }))}
+              canEdit={canEdit}
+            />
             {/* 見積もりセクションの下：商談ごとの個別契約書（全商談で常時表示） */}
             <DealContracts dealId={deal.id} companyName={deal.company.name} />
             <TasksList tasks={deal.tasks} />

@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { probabilityToYomi, YOMI_TO_PROBABILITY } from "@/lib/deal-aggregations";
-import { getCurrentPermission, hasPermission } from "@/lib/auth";
+import { getCurrentPermission, hasPermission, getSession } from "@/lib/auth";
 import { stripYomiPrefix } from "@/lib/yomi-status";
+import { generateContractDraft, isAPlusYomi } from "@/lib/contract-generate";
 
 const updateSchema = z.object({
   productId: z.string().uuid().nullable().optional(),
@@ -62,6 +63,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     yomiStatus = probabilityToYomi(data.probability);
   }
 
+  // 契約書 自動生成トリガー判定用に、更新前の yomiStatus を控える。
+  const before = await prisma.dealProduct.findUnique({
+    where: { id },
+    select: { yomiStatus: true },
+  });
+  const prevYomi = before?.yomiStatus ?? null;
+
   const updated = await prisma.dealProduct.update({
     where: { id },
     data: {
@@ -97,7 +105,33 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
   }
 
-  return NextResponse.json({ dealProduct: updated });
+  // ============================================================
+  // 機能②トリガー：yomiStatus が「A+ヨミ」へ遷移した時、契約書ドラフトを自動生成。
+  //   - 遷移検知（before が A+ヨミでなく、after が A+ヨミ）に限定し、A+ヨミ内での
+  //     別更新で毎回走らないようにする。
+  //   - generateContractDraft 側で「既存ドラフトあればスキップ（重複生成防止）」。
+  //   - 生成失敗は PATCH 本体の成否に影響させない（ログのみ）。レスポンスに結果を付与。
+  // ============================================================
+  let contractDraft: { generated: boolean; skipped: boolean; documentId?: string } | null = null;
+  if (
+    updated.yomiStatus !== undefined &&
+    isAPlusYomi(updated.yomiStatus) &&
+    !isAPlusYomi(prevYomi)
+  ) {
+    try {
+      const session = await getSession();
+      const res = await generateContractDraft(updated.id, session?.userId ?? null);
+      if (res.ok) {
+        contractDraft = { generated: !res.skipped, skipped: res.skipped, documentId: res.documentId };
+      } else {
+        console.warn("[deal-products PATCH] contract draft not generated:", res.reason);
+      }
+    } catch (e) {
+      console.error("[deal-products PATCH] contract draft generation failed:", e);
+    }
+  }
+
+  return NextResponse.json({ dealProduct: updated, contractDraft });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {

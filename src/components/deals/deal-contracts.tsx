@@ -19,6 +19,7 @@ type Doc = {
   category: string;
   version: string | null;
   sourceType?: string;
+  status?: string | null;
   createdAt: Date | string;
 };
 
@@ -288,6 +289,9 @@ export function DealContracts({ dealId, companyName }: { dealId: string; company
                       {d.name}
                       {d.version && (
                         <span className="ml-1.5 text-[10px] text-zinc-400 font-normal">{d.version}</span>
+                      )}
+                      {d.status === "draft" && (
+                        <span className="ml-1.5 text-[10px] text-amber-700 bg-amber-50 px-1 py-0.5 rounded font-normal">ドラフト（自動生成）</span>
                       )}
                       {isUrl && (
                         <span className="ml-1.5 text-[10px] text-sky-600 font-normal">外部リンク</span>

@@ -194,10 +194,9 @@ export function DealQuotes({
                     {d.fileSize ? ` ／ ${(d.fileSize / 1024).toFixed(0)} KB` : ""}
                   </p>
                 </div>
-                {d.fileUrl.startsWith("/uploads/") && (
+                {d.fileUrl && d.fileUrl !== "(リンク未登録)" && !d.fileUrl.includes(" ") && (
                   <a
-                    href={d.fileUrl}
-                    download
+                    href={`/api/documents/${d.id}/download`}
                     className="text-sm text-emerald-600 hover:underline inline-flex items-center gap-1"
                   >
                     <Download className="h-3.5 w-3.5" />

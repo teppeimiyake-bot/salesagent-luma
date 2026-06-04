@@ -34,6 +34,7 @@ model User {
   goals            Goal[]
   accounts         Account[]
   sessions         Session[]
+  createdQuotes    Quote[]
 
   @@map("users")
 }
@@ -274,6 +275,7 @@ model Deal {
   aiLogs     AiLog[]
   roleplays  RoleplaySession[]
   documents  Document[]
+  quotes     Quote[]
   invoiceRecords     InvoiceRecord[]
   recurringBillings  RecurringBilling[]
   productionProjects ProductionProject[]
@@ -364,6 +366,7 @@ model DealProduct {
   invoiceRecords    InvoiceRecord[]
   recurringBillings RecurringBilling[]
   productionProject ProductionProject?
+  quotes            Quote[]
 
   @@index([dealId])
   @@index([productId])
@@ -459,6 +462,11 @@ model Document {
   sourceType     String   @default("file") @map("source_type")
   scope          String   @default("global") // global / deal
   dealId         String?  @map("deal_id")
+  // 自動生成物の状態（quote/contract）：draft = 確定前ドラフト / final = 確定済み発行物。
+  // 手動アップロード（既存）は null のまま（= 状態管理対象外）。
+  status         String?
+  // 自動生成の出所となった DealProduct（quote/contract の差込元）。手動アップロードは null。
+  dealProductId  String?  @map("deal_product_id")
   description    String?  @db.Text
   // 見積書バージョン（"v1", "v2.1" など。quote 用）
   version        String?
@@ -477,7 +485,68 @@ model Document {
   @@index([category])
   @@index([scope])
   @@index([dealId])
+  @@index([dealProductId])
   @@map("documents")
+}
+
+// ============================================================
+// 見積書（機能①）：構造化された見積ヘッダ＋明細。
+//   PDF再生成・金額再計算のために docx をそのまま貼らず、明細をモデル化して保持する。
+//   1商談で複数の見積（プラン/企画案ごと）を持てる。確定すると Document(category=quote) を
+//   発行（fileUrl=生成PDFのストレージキー、Document.dealProductId で紐付け）。
+// ============================================================
+model Quote {
+  id            String   @id @default(uuid())
+  dealId        String   @map("deal_id")
+  // 見積の出所 DealProduct（プラン/企画案）。任意（手組みの見積も許容）。
+  dealProductId String?  @map("deal_product_id")
+  // 宛名（Company.name を既定でコピー、手修正可）と敬称（御中/様）
+  clientName    String   @map("client_name")
+  clientHonorific String @default("御中") @map("client_honorific")
+  // 委託業務名（タイトル下の件名）
+  subject       String?
+  // 発行日（和暦表示はPDF側で整形）
+  issueDate     DateTime @default(now()) @map("issue_date")
+  // 見積有効期限などの備考
+  note          String?  @db.Text
+  // 消費税率（パーセント。既定10）
+  taxRate       Int      @default(10) @map("tax_rate")
+  // 確定状態：draft / final。final になると発行 Document を持つ。
+  status        String   @default("draft")
+  // バージョン表記（"v1" 等。Document.version と揃える）
+  version       String?
+  // 発行済み PDF Document への参照（final時にセット）
+  documentId    String?  @map("document_id")
+  createdById   String?  @map("created_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  deal        Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  dealProduct DealProduct? @relation(fields: [dealProductId], references: [id], onDelete: SetNull)
+  createdBy   User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  lines       QuoteLine[]
+
+  @@index([dealId])
+  @@index([dealProductId])
+  @@map("quotes")
+}
+
+// ============================================================
+// 見積明細行（品目・数量・単価）。金額 = qty × unitPrice はアプリ層で算出。
+// ============================================================
+model QuoteLine {
+  id        String   @id @default(uuid())
+  quoteId   String   @map("quote_id")
+  name      String   // 品目（委託業務名・プラン名等）
+  detail    String?  // 補足
+  qty       Int      @default(1)
+  unitPrice Int      @map("unit_price") // 単価（税抜・円）
+  sortOrder Int      @default(0) @map("sort_order")
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+  @@map("quote_lines")
 }
 
 // ============================================================
