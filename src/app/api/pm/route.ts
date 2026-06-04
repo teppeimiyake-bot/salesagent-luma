@@ -24,8 +24,19 @@ export async function GET() {
           company: { select: { id: true, name: true } },
         },
       },
+      company: { select: { id: true, name: true } },
       dealProduct: {
         select: { id: true, productName: true, planName: true, yomiStatus: true, amount: true },
+      },
+      snsAccounts: {
+        select: {
+          id: true,
+          platform: true,
+          accountId: true,
+          profileUrl: true,
+          miyakePcLogin: true,
+        },
+        orderBy: { platform: "asc" },
       },
     },
   });

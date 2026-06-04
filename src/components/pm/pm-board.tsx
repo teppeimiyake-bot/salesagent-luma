@@ -94,7 +94,12 @@ export function PmBoard({ canEdit }: { canEdit: boolean }) {
 
       {SUBTABS.map((s) => (
         <TabsContent key={s.value} value={s.value}>
-          <PmTable canEdit={canEdit} projects={byCategory(s.value)} onUpdated={onUpdated} />
+          <PmTable
+            canEdit={canEdit}
+            projects={byCategory(s.value)}
+            onUpdated={onUpdated}
+            variant={s.value === "SNS" ? "sns" : "video"}
+          />
         </TabsContent>
       ))}
     </Tabs>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Loader2, Inbox, Building2, Check } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Inbox, Building2, Check, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
@@ -19,10 +20,21 @@ import {
   type ProductionStatus,
 } from "@/lib/production";
 
+export type SnsPlatform = "YOUTUBE" | "INSTAGRAM" | "TIKTOK";
+
+export type PmSnsAccount = {
+  id: string;
+  platform: SnsPlatform;
+  accountId: string | null;
+  profileUrl: string | null;
+  miyakePcLogin: boolean;
+};
+
 export type PmProject = {
   id: string;
   dealId: string;
   dealProductId: string | null;
+  companyId: string | null;
   category: string | null;
   projectName: string;
   status: ProductionStatus;
@@ -35,11 +47,18 @@ export type PmProject = {
   provisionalDeliveryDate: string | null;
   delivered: boolean;
   note: string | null;
+  storyboardUrl: string | null;
+  shootingScheduleUrl: string | null;
+  totalPosts: string | null;
+  serviceStartMonth: string | null;
+  serviceEndMonth: string | null;
+  mgmtSheetUrl: string | null;
   deal: {
     id: string;
     title: string;
     company: { id: string; name: string } | null;
   } | null;
+  company: { id: string; name: string } | null;
   dealProduct: {
     id: string;
     productName: string;
@@ -47,6 +66,7 @@ export type PmProject = {
     yomiStatus: string | null;
     amount: number | null;
   } | null;
+  snsAccounts: PmSnsAccount[];
 };
 
 function isoDay(s: string | null): string {
@@ -54,16 +74,31 @@ function isoDay(s: string | null): string {
   return s.slice(0, 10);
 }
 
+/** date(ISO) -> "YYYY-MM"（提供開始/終了月の表示用） */
+function isoMonth(s: string | null): string {
+  if (!s) return "";
+  return s.slice(0, 7);
+}
+
+/** 表示用の会社名：明示FK(company) を優先、無ければ deal.company。 */
+function companyName(p: PmProject): string | null {
+  return p.company?.name ?? p.deal?.company?.name ?? null;
+}
+
 export function PmTable({
   canEdit,
   projects,
   onUpdated,
+  variant = "video",
 }: {
   canEdit: boolean;
   projects: PmProject[];
   onUpdated: (p: PmProject) => void;
+  /** video=映像/CATV/アライアンス（撮影日等を表示） / sns=SNS（投稿本数・提供期間・管理シート） */
+  variant?: "video" | "sns";
 }) {
   const [savingId, setSavingId] = useState<string | null>(null);
+  const isSns = variant === "sns";
 
   const patch = useCallback(
     async (id: string, body: Record<string, unknown>) => {
@@ -94,12 +129,24 @@ export function PmTable({
             <th className="px-3 py-2.5 font-medium min-w-[140px]">企業</th>
             <th className="px-3 py-2.5 font-medium">ステータス</th>
             <th className="px-3 py-2.5 font-medium">PM担当</th>
-            <th className="px-3 py-2.5 font-medium">撮影日</th>
-            <th className="px-3 py-2.5 font-medium">仮納品予定日</th>
-            <th className="px-3 py-2.5 font-medium">納品予定日</th>
-            <th className="px-3 py-2.5 font-medium">ディレクター</th>
-            <th className="px-3 py-2.5 font-medium">カメラ</th>
-            <th className="px-3 py-2.5 font-medium">編集</th>
+            {isSns ? (
+              <>
+                <th className="px-3 py-2.5 font-medium">プラン</th>
+                <th className="px-3 py-2.5 font-medium">総投稿本数</th>
+                <th className="px-3 py-2.5 font-medium">提供開始月</th>
+                <th className="px-3 py-2.5 font-medium">提供終了月</th>
+                <th className="px-3 py-2.5 font-medium">管理シート</th>
+              </>
+            ) : (
+              <>
+                <th className="px-3 py-2.5 font-medium">撮影日</th>
+                <th className="px-3 py-2.5 font-medium">仮納品予定日</th>
+                <th className="px-3 py-2.5 font-medium">納品予定日</th>
+                <th className="px-3 py-2.5 font-medium">ディレクター</th>
+                <th className="px-3 py-2.5 font-medium">カメラ</th>
+                <th className="px-3 py-2.5 font-medium">編集</th>
+              </>
+            )}
             <th className="px-3 py-2.5 font-medium min-w-[160px]">備考</th>
             <th className="px-3 py-2.5 font-medium text-center">納品済</th>
           </tr>
@@ -107,7 +154,7 @@ export function PmTable({
         <tbody>
           {projects.length === 0 && (
             <tr>
-              <td colSpan={12} className="py-16 text-center text-zinc-400">
+              <td colSpan={isSns ? 11 : 12} className="py-16 text-center text-zinc-400">
                 <Inbox className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 このカテゴリの受注案件はありません
               </td>
@@ -139,15 +186,28 @@ export function PmTable({
                 </div>
               </td>
 
-              {/* 企業 */}
+              {/* 企業（クリックで詳細ページ /pm/[id] を新規タブで開く） */}
               <td className="px-3 py-2">
-                {p.deal?.company ? (
-                  <span className="inline-flex items-center gap-1 text-zinc-700">
-                    <Building2 className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                    {p.deal.company.name}
-                  </span>
+                {companyName(p) ? (
+                  <Link
+                    href={`/pm/${p.id}`}
+                    target="_blank"
+                    className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 hover:underline"
+                    title="案件詳細を開く"
+                  >
+                    <Building2 className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                    {companyName(p)}
+                    <ExternalLink className="h-3 w-3 opacity-60 shrink-0" />
+                  </Link>
                 ) : (
-                  <span className="text-zinc-400">—</span>
+                  <Link
+                    href={`/pm/${p.id}`}
+                    target="_blank"
+                    className="text-indigo-600 hover:underline inline-flex items-center gap-1"
+                  >
+                    （企業未紐付け）
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </Link>
                 )}
               </td>
 
@@ -189,94 +249,178 @@ export function PmTable({
                 )}
               </td>
 
-              {/* 撮影日 */}
-              <td className="px-3 py-2">
-                {canEdit ? (
-                  <DateInput
-                    value={isoDay(p.shootDate)}
-                    onChange={(v) => patch(p.id, { shootDate: v || null })}
-                    className="scale-90 origin-left"
-                  />
-                ) : (
-                  <span className="tabular-nums">{isoDay(p.shootDate) || "—"}</span>
-                )}
-              </td>
+              {isSns ? (
+                <>
+                  {/* プラン（DealProduct.planName が正・読み取り専用） */}
+                  <td className="px-3 py-2">
+                    {p.dealProduct?.planName ? (
+                      <Badge variant="secondary">{p.dealProduct.planName}</Badge>
+                    ) : (
+                      <span className="text-zinc-400">—</span>
+                    )}
+                  </td>
 
-              {/* 仮納品予定日 */}
-              <td className="px-3 py-2">
-                {canEdit ? (
-                  <DateInput
-                    value={isoDay(p.provisionalDeliveryDate)}
-                    onChange={(v) => patch(p.id, { provisionalDeliveryDate: v || null })}
-                    className="scale-90 origin-left"
-                  />
-                ) : (
-                  <span className="tabular-nums">
-                    {isoDay(p.provisionalDeliveryDate) || "—"}
-                  </span>
-                )}
-              </td>
+                  {/* 総投稿本数 */}
+                  <td className="px-3 py-2">
+                    {canEdit ? (
+                      <Input
+                        defaultValue={p.totalPosts ?? ""}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim() || null;
+                          if (v !== p.totalPosts) patch(p.id, { totalPosts: v });
+                        }}
+                        className="h-8 w-[120px]"
+                      />
+                    ) : (
+                      <span>{p.totalPosts ?? "—"}</span>
+                    )}
+                  </td>
 
-              {/* 納品予定日 */}
-              <td className="px-3 py-2">
-                {canEdit ? (
-                  <DateInput
-                    value={isoDay(p.deliveryDate)}
-                    onChange={(v) => patch(p.id, { deliveryDate: v || null })}
-                    className="scale-90 origin-left"
-                  />
-                ) : (
-                  <span className="tabular-nums">{isoDay(p.deliveryDate) || "—"}</span>
-                )}
-              </td>
+                  {/* 提供開始月 */}
+                  <td className="px-3 py-2">
+                    {canEdit ? (
+                      <Input
+                        type="month"
+                        defaultValue={isoMonth(p.serviceStartMonth)}
+                        onBlur={(e) => {
+                          const v = e.target.value || null;
+                          const cur = isoMonth(p.serviceStartMonth) || null;
+                          if (v !== cur) patch(p.id, { serviceStartMonth: v ? `${v}-01` : null });
+                        }}
+                        className="h-8 w-[120px]"
+                      />
+                    ) : (
+                      <span className="tabular-nums">{isoMonth(p.serviceStartMonth) || "—"}</span>
+                    )}
+                  </td>
 
-              {/* ディレクター */}
-              <td className="px-3 py-2">
-                {canEdit ? (
-                  <Input
-                    defaultValue={p.directorName ?? ""}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim() || null;
-                      if (v !== p.directorName) patch(p.id, { directorName: v });
-                    }}
-                    className="h-8 w-[90px]"
-                  />
-                ) : (
-                  <span>{p.directorName ?? "—"}</span>
-                )}
-              </td>
+                  {/* 提供終了月 */}
+                  <td className="px-3 py-2">
+                    {canEdit ? (
+                      <Input
+                        type="month"
+                        defaultValue={isoMonth(p.serviceEndMonth)}
+                        onBlur={(e) => {
+                          const v = e.target.value || null;
+                          const cur = isoMonth(p.serviceEndMonth) || null;
+                          if (v !== cur) patch(p.id, { serviceEndMonth: v ? `${v}-01` : null });
+                        }}
+                        className="h-8 w-[120px]"
+                      />
+                    ) : (
+                      <span className="tabular-nums">{isoMonth(p.serviceEndMonth) || "—"}</span>
+                    )}
+                  </td>
 
-              {/* カメラ */}
-              <td className="px-3 py-2">
-                {canEdit ? (
-                  <Input
-                    defaultValue={p.cameraName ?? ""}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim() || null;
-                      if (v !== p.cameraName) patch(p.id, { cameraName: v });
-                    }}
-                    className="h-8 w-[90px]"
-                  />
-                ) : (
-                  <span>{p.cameraName ?? "—"}</span>
-                )}
-              </td>
+                  {/* 管理シートリンク */}
+                  <td className="px-3 py-2">
+                    {p.mgmtSheetUrl ? (
+                      <a
+                        href={p.mgmtSheetUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
+                      >
+                        開く
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      <span className="text-zinc-400">—</span>
+                    )}
+                  </td>
+                </>
+              ) : (
+                <>
+                  {/* 撮影日 */}
+                  <td className="px-3 py-2">
+                    {canEdit ? (
+                      <DateInput
+                        value={isoDay(p.shootDate)}
+                        onChange={(v) => patch(p.id, { shootDate: v || null })}
+                        className="scale-90 origin-left"
+                      />
+                    ) : (
+                      <span className="tabular-nums">{isoDay(p.shootDate) || "—"}</span>
+                    )}
+                  </td>
 
-              {/* 編集 */}
-              <td className="px-3 py-2">
-                {canEdit ? (
-                  <Input
-                    defaultValue={p.editorName ?? ""}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim() || null;
-                      if (v !== p.editorName) patch(p.id, { editorName: v });
-                    }}
-                    className="h-8 w-[90px]"
-                  />
-                ) : (
-                  <span>{p.editorName ?? "—"}</span>
-                )}
-              </td>
+                  {/* 仮納品予定日 */}
+                  <td className="px-3 py-2">
+                    {canEdit ? (
+                      <DateInput
+                        value={isoDay(p.provisionalDeliveryDate)}
+                        onChange={(v) => patch(p.id, { provisionalDeliveryDate: v || null })}
+                        className="scale-90 origin-left"
+                      />
+                    ) : (
+                      <span className="tabular-nums">
+                        {isoDay(p.provisionalDeliveryDate) || "—"}
+                      </span>
+                    )}
+                  </td>
+
+                  {/* 納品予定日 */}
+                  <td className="px-3 py-2">
+                    {canEdit ? (
+                      <DateInput
+                        value={isoDay(p.deliveryDate)}
+                        onChange={(v) => patch(p.id, { deliveryDate: v || null })}
+                        className="scale-90 origin-left"
+                      />
+                    ) : (
+                      <span className="tabular-nums">{isoDay(p.deliveryDate) || "—"}</span>
+                    )}
+                  </td>
+
+                  {/* ディレクター */}
+                  <td className="px-3 py-2">
+                    {canEdit ? (
+                      <Input
+                        defaultValue={p.directorName ?? ""}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim() || null;
+                          if (v !== p.directorName) patch(p.id, { directorName: v });
+                        }}
+                        className="h-8 w-[90px]"
+                      />
+                    ) : (
+                      <span>{p.directorName ?? "—"}</span>
+                    )}
+                  </td>
+
+                  {/* カメラ */}
+                  <td className="px-3 py-2">
+                    {canEdit ? (
+                      <Input
+                        defaultValue={p.cameraName ?? ""}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim() || null;
+                          if (v !== p.cameraName) patch(p.id, { cameraName: v });
+                        }}
+                        className="h-8 w-[90px]"
+                      />
+                    ) : (
+                      <span>{p.cameraName ?? "—"}</span>
+                    )}
+                  </td>
+
+                  {/* 編集 */}
+                  <td className="px-3 py-2">
+                    {canEdit ? (
+                      <Input
+                        defaultValue={p.editorName ?? ""}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim() || null;
+                          if (v !== p.editorName) patch(p.id, { editorName: v });
+                        }}
+                        className="h-8 w-[90px]"
+                      />
+                    ) : (
+                      <span>{p.editorName ?? "—"}</span>
+                    )}
+                  </td>
+                </>
+              )}
 
               {/* 備考 */}
               <td className="px-3 py-2">

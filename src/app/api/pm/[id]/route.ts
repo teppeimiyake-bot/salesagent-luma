@@ -17,6 +17,14 @@ const updateSchema = z.object({
   provisionalDeliveryDate: z.string().nullable().optional(),
   delivered: z.boolean().optional(),
   note: z.string().nullable().optional(),
+  // 映像：絵コンテ／香盤表URL
+  storyboardUrl: z.string().nullable().optional(),
+  shootingScheduleUrl: z.string().nullable().optional(),
+  // SNS：総投稿本数／提供開始・終了月／管理シートURL
+  totalPosts: z.string().nullable().optional(),
+  serviceStartMonth: z.string().nullable().optional(),
+  serviceEndMonth: z.string().nullable().optional(),
+  mgmtSheetUrl: z.string().nullable().optional(),
 });
 
 function toDate(s: string | null | undefined): Date | null | undefined {
@@ -68,13 +76,34 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         : {}),
       ...(d.delivered !== undefined ? { delivered: d.delivered } : {}),
       ...(d.note !== undefined ? { note: d.note } : {}),
+      ...(d.storyboardUrl !== undefined ? { storyboardUrl: d.storyboardUrl } : {}),
+      ...(d.shootingScheduleUrl !== undefined
+        ? { shootingScheduleUrl: d.shootingScheduleUrl }
+        : {}),
+      ...(d.totalPosts !== undefined ? { totalPosts: d.totalPosts } : {}),
+      ...(d.serviceStartMonth !== undefined
+        ? { serviceStartMonth: toDate(d.serviceStartMonth) }
+        : {}),
+      ...(d.serviceEndMonth !== undefined ? { serviceEndMonth: toDate(d.serviceEndMonth) } : {}),
+      ...(d.mgmtSheetUrl !== undefined ? { mgmtSheetUrl: d.mgmtSheetUrl } : {}),
     },
     include: {
       deal: {
         select: { id: true, title: true, company: { select: { id: true, name: true } } },
       },
+      company: { select: { id: true, name: true } },
       dealProduct: {
         select: { id: true, productName: true, planName: true, yomiStatus: true, amount: true },
+      },
+      snsAccounts: {
+        select: {
+          id: true,
+          platform: true,
+          accountId: true,
+          profileUrl: true,
+          miyakePcLogin: true,
+        },
+        orderBy: { platform: "asc" },
       },
     },
   });
