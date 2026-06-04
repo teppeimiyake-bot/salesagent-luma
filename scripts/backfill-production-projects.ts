@@ -8,7 +8,9 @@
  *   export PATH="/c/dev/node-v22.12.0-win-x64:$PATH"; npx tsx scripts/backfill-production-projects.ts
  *
  * カテゴリ: categoryFromDealProduct（yomi接頭辞 → productName → Product）で判定。
- * プロジェクト名: 企業名 ＋ カテゴリ ＋ プラン名（あれば）から自動生成。後でPM画面で手修正可。
+ * プロジェクト名: 受注した商談名（Deal.title）をそのまま使う（2026-06 社長判断）。
+ *   Deal.title が空の場合のみ「企業名 ＋ カテゴリ ＋ プラン名」へフォールバック。後でPM画面で手修正可。
+ *   既存プロジェクトも projectName を Deal.title で上書きする（冪等・本日生成のため手編集ほぼ無い前提）。
  *
  * SAFETY: DATABASE_URL に 'salesagent_luma' を含まない場合は中断（他DB誤爆防止）。
  *
@@ -35,11 +37,18 @@ if (!url.includes("salesagent_luma")) {
 const pool = new Pool({ connectionString: url });
 const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
+/**
+ * プロジェクト名 = 受注した商談名（Deal.title）。
+ * Deal.title が空の場合のみ「企業名 ＋ カテゴリ ＋ プラン名」へフォールバック。
+ */
 function buildProjectName(
+  dealTitle: string | null | undefined,
   companyName: string | null | undefined,
   category: string | null,
   planName: string | null | undefined,
 ): string {
+  const title = dealTitle?.trim();
+  if (title) return title;
   const parts: string[] = [];
   if (companyName) parts.push(companyName);
   if (category) parts.push(category);
@@ -63,24 +72,38 @@ async function main() {
   const won = dps.filter((d) => isWonYomi(d.yomiStatus));
 
   let created = 0;
-  let skipped = 0;
+  let renamed = 0; // 既存の projectName を Deal.title に更新した件数
+  let unchanged = 0; // 既存で projectName が既に一致していた件数
   const byCategory: Record<string, number> = {};
 
   for (const d of won) {
     const category = categoryFromDealProduct(d);
     const catKey = category ?? "(未分類)";
+    const projectName = buildProjectName(
+      d.deal?.title,
+      d.deal?.company?.name,
+      category,
+      d.planName,
+    );
 
-    // 冪等: 既に dealProductId で紐付くプロジェクトがあればスキップ
+    // 冪等: dealProductId は @unique。既存があれば projectName を Deal.title へ上書きする。
     const existing = await prisma.productionProject.findUnique({
       where: { dealProductId: d.id },
-      select: { id: true },
+      select: { id: true, projectName: true },
     });
+
     if (existing) {
-      skipped++;
+      if (existing.projectName !== projectName) {
+        await prisma.productionProject.update({
+          where: { id: existing.id },
+          data: { projectName },
+        });
+        renamed++;
+      } else {
+        unchanged++;
+      }
       continue;
     }
-
-    const projectName = buildProjectName(d.deal?.company?.name, category, d.planName);
 
     await prisma.productionProject.create({
       data: {
@@ -97,7 +120,9 @@ async function main() {
 
   console.log("=== backfill-production-projects 完了 ===");
   console.log(`受注 DealProduct 総数: ${won.length}`);
-  console.log(`新規生成: ${created}  /  既存スキップ: ${skipped}`);
+  console.log(
+    `新規生成: ${created}  /  projectName更新(Deal.title化): ${renamed}  /  既存据置(一致): ${unchanged}`,
+  );
   console.log("新規生成のカテゴリ別内訳:", JSON.stringify(byCategory, null, 2));
 }
 
