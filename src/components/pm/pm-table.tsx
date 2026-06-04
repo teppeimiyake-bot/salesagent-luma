@@ -85,6 +85,17 @@ function companyName(p: PmProject): string | null {
   return p.company?.name ?? p.deal?.company?.name ?? null;
 }
 
+/** リンク用の企業ID：明示FK(company) を優先、無ければ deal.company。 */
+function companyId(p: PmProject): string | null {
+  return p.companyId ?? p.company?.id ?? p.deal?.company?.id ?? null;
+}
+
+/** プロジェクト名リンク先：受注商談詳細のPM管理タブ。dealId が辿れなければ null。 */
+function dealHref(p: PmProject): string | null {
+  const dealId = p.deal?.id ?? p.dealId ?? null;
+  return dealId ? `/deals/${dealId}?tab=pm` : null;
+}
+
 export function PmTable({
   canEdit,
   projects,
@@ -165,18 +176,19 @@ export function PmTable({
               key={p.id}
               className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/60 align-middle"
             >
-              {/* プロジェクト名 */}
+              {/* プロジェクト名（＝受注商談名。クリックで商談詳細のPM管理タブを新規タブで開く。編集不可） */}
               <td className="px-3 py-2">
                 <div className="flex items-center gap-1.5">
-                  {canEdit ? (
-                    <Input
-                      defaultValue={p.projectName}
-                      onBlur={(e) => {
-                        const v = e.target.value.trim();
-                        if (v && v !== p.projectName) patch(p.id, { projectName: v });
-                      }}
-                      className="h-8 w-[200px]"
-                    />
+                  {dealHref(p) ? (
+                    <Link
+                      href={dealHref(p)!}
+                      target="_blank"
+                      className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
+                      title="商談詳細（PM管理タブ）を開く"
+                    >
+                      {p.projectName}
+                      <ExternalLink className="h-3 w-3 opacity-60 shrink-0" />
+                    </Link>
                   ) : (
                     <span className="font-medium">{p.projectName}</span>
                   )}
@@ -186,28 +198,21 @@ export function PmTable({
                 </div>
               </td>
 
-              {/* 企業（クリックで詳細ページ /pm/[id] を新規タブで開く） */}
+              {/* 企業（クリックで企業ページ /companies/[id] を新規タブで開く） */}
               <td className="px-3 py-2">
-                {companyName(p) ? (
+                {companyId(p) && companyName(p) ? (
                   <Link
-                    href={`/pm/${p.id}`}
+                    href={`/companies/${companyId(p)}`}
                     target="_blank"
                     className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 hover:underline"
-                    title="案件詳細を開く"
+                    title="企業ページを開く"
                   >
                     <Building2 className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
                     {companyName(p)}
                     <ExternalLink className="h-3 w-3 opacity-60 shrink-0" />
                   </Link>
                 ) : (
-                  <Link
-                    href={`/pm/${p.id}`}
-                    target="_blank"
-                    className="text-indigo-600 hover:underline inline-flex items-center gap-1"
-                  >
-                    （企業未紐付け）
-                    <ExternalLink className="h-3 w-3 opacity-60" />
-                  </Link>
+                  <span className="text-zinc-400">{companyName(p) ?? "（企業未紐付け）"}</span>
                 )}
               </td>
 

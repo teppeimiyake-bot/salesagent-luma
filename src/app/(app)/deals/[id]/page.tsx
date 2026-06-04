@@ -27,7 +27,11 @@ import { CompanyLogo } from "@/components/ui/company-logo";
 import { DeleteButton } from "@/components/shared/delete-button";
 import { STATUS_LABEL, statusColor } from "@/lib/deal-status";
 import { getSalesUsers } from "@/lib/queries";
-import { getSession } from "@/lib/auth";
+import { getSession, hasPermission } from "@/lib/auth";
+import { isWonYomi } from "@/lib/yomi-status";
+import { buildPmDetailDataForDeal } from "@/lib/pm-detail-data";
+import { DealTabs } from "@/components/deals/deal-tabs";
+import { PmDealPanel } from "@/components/pm/pm-deal-panel";
 import { ArrowLeft } from "lucide-react";
 import type { DealStatus } from "@prisma/client";
 
@@ -38,7 +42,7 @@ export default async function DealDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ from?: string }>;
+  searchParams?: Promise<{ from?: string; tab?: string }>;
 }) {
   const { id } = await params;
   const sp = searchParams ? await searchParams : {};
@@ -115,6 +119,17 @@ export default async function DealDetailPage({
       ? bantObj.fiscalMonth
       : null;
 
+  // PM管理タブ：受注（isWonYomi）DealProduct が1件以上ある商談でのみ表示する。
+  const hasWonProduct = deal.products.some((p) => isWonYomi(p.yomiStatus));
+  const canSeeSecret = hasPermission(me?.permission, "user");
+  const pmProjects = hasWonProduct
+    ? await buildPmDetailDataForDeal(deal.id, { canEdit, canSeeSecret })
+    : [];
+  // 受注プロダクトはあるが ProductionProject がまだ生成されていない場合もタブは出す
+  // （バックフィル前の受注など）。中身は空状態メッセージで案内する。
+  const hasPm = hasWonProduct;
+  const initialTab: "deal" | "pm" = sp.tab === "pm" && hasPm ? "pm" : "deal";
+
   return (
     <>
       <Header
@@ -168,6 +183,12 @@ export default async function DealDetailPage({
         )}
       </div>
       <div className="flex-1 overflow-y-auto bg-zinc-50">
+        <DealTabs
+          hasPm={hasPm}
+          pmCount={pmProjects.length}
+          initialTab={initialTab}
+          pmContent={<PmDealPanel projects={pmProjects} />}
+          dealContent={
         <div className="p-6 grid grid-cols-1 xl:grid-cols-12 gap-4">
           <div className="xl:col-span-7 space-y-4">
             <DealProductsPanel
@@ -290,6 +311,8 @@ export default async function DealDetailPage({
             </div>
           </div>
         </div>
+          }
+        />
       </div>
     </>
   );
