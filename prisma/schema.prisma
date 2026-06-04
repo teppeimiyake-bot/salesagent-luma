@@ -160,6 +160,7 @@ model Company {
   deals    Deal[]
   invoiceRecords    InvoiceRecord[]
   recurringBillings RecurringBilling[]
+  productionProjects ProductionProject[]
 
   // 自己参照：統合先企業（surviving）／このcompanyに統合されてきた企業群（mergedChildren）
   mergedInto     Company?  @relation("CompanyMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
@@ -704,6 +705,8 @@ model ProductionProject {
   dealId        String   @map("deal_id")
   // 受注商材（DealProduct）に1:1で紐付け。
   dealProductId String?  @unique @map("deal_product_id")
+  // 表示/フィルタ用の明示FK。本来は dealProduct->deal->company で辿れるが、SNS等のため明示的に持つ。
+  companyId     String?  @map("company_id")
   // 商材カテゴリ（映像/SNS/CATV/アライアンス）。サブタブ分けに使用。
   category      String?
   projectName   String   @map("project_name")
@@ -718,13 +721,24 @@ model ProductionProject {
   provisionalDeliveryDate DateTime? @map("provisional_delivery_date") // 仮納品予定日
   delivered     Boolean  @default(false)          // 納品済み(チェック)
   note          String?  @db.Text
+  // 映像：絵コンテ／香盤表のスプレッドシートURL
+  storyboardUrl       String?  @map("storyboard_url")
+  shootingScheduleUrl String?  @map("shooting_schedule_url")
+  // SNS：総投稿本数（「24本（月4本）」等のテキスト）／提供開始・終了月／管理シートURL
+  totalPosts        String?   @map("total_posts")
+  serviceStartMonth DateTime? @map("service_start_month")
+  serviceEndMonth   DateTime? @map("service_end_month")
+  mgmtSheetUrl      String?   @map("mgmt_sheet_url")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   deal        Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
   dealProduct DealProduct? @relation(fields: [dealProductId], references: [id], onDelete: SetNull)
+  company     Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  snsAccounts SnsAccount[]
 
   @@index([dealId])
+  @@index([companyId])
   @@index([category])
   @@index([status])
   @@map("production_projects")
@@ -738,4 +752,33 @@ enum ProductionStatus {
   REVISION_WAIT    // 修正待ち
   NEAR_DELIVERY    // 納品間近
   DELIVERED        // 納品済み
+}
+
+// ============================================================
+// SNS媒体別アカウント（PM・SNSカード用）
+//   productionProject × platform で一意。password は内部ツール用に平文保存（UIは伏字+トグル）。
+//   TODO(security): password は将来 KMS/暗号化カラムへ移行する。
+// ============================================================
+model SnsAccount {
+  id                  String       @id @default(uuid())
+  productionProjectId String       @map("production_project_id")
+  platform            SnsPlatform
+  accountId           String?      @map("account_id")
+  password            String?
+  profileUrl          String?      @map("profile_url")
+  miyakePcLogin       Boolean      @default(false) @map("miyake_pc_login")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  productionProject ProductionProject @relation(fields: [productionProjectId], references: [id], onDelete: Cascade)
+
+  @@unique([productionProjectId, platform])
+  @@index([productionProjectId])
+  @@map("sns_accounts")
+}
+
+enum SnsPlatform {
+  YOUTUBE
+  INSTAGRAM
+  TIKTOK
 }

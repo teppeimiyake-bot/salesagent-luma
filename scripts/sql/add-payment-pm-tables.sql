@@ -180,4 +180,56 @@ CREATE INDEX IF NOT EXISTS "production_projects_deal_id_idx"  ON "production_pro
 CREATE INDEX IF NOT EXISTS "production_projects_category_idx" ON "production_projects"("category");
 CREATE INDEX IF NOT EXISTS "production_projects_status_idx"   ON "production_projects"("status");
 
+-- ============================================================
+-- Phase 3.5（社長フィードバック 2026-06-04）
+--   ProductionProject に companyId / 映像URL / SNS項目 を追加
+--   ＋ 新テーブル sns_accounts（SNS媒体別アカウント）＋ enum SnsPlatform
+--   冪等: ADD COLUMN IF NOT EXISTS / CREATE TABLE IF NOT EXISTS / enumガード
+-- ============================================================
+
+-- production_projects 追加カラム
+ALTER TABLE "production_projects" ADD COLUMN IF NOT EXISTS "company_id"             TEXT;
+ALTER TABLE "production_projects" ADD COLUMN IF NOT EXISTS "storyboard_url"         TEXT;
+ALTER TABLE "production_projects" ADD COLUMN IF NOT EXISTS "shooting_schedule_url"  TEXT;
+ALTER TABLE "production_projects" ADD COLUMN IF NOT EXISTS "total_posts"            TEXT;
+ALTER TABLE "production_projects" ADD COLUMN IF NOT EXISTS "service_start_month"    TIMESTAMP(3);
+ALTER TABLE "production_projects" ADD COLUMN IF NOT EXISTS "service_end_month"      TIMESTAMP(3);
+ALTER TABLE "production_projects" ADD COLUMN IF NOT EXISTS "mgmt_sheet_url"         TEXT;
+
+DO $$ BEGIN
+  ALTER TABLE "production_projects"
+    ADD CONSTRAINT "production_projects_company_id_fkey"
+    FOREIGN KEY ("company_id") REFERENCES "companies"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE INDEX IF NOT EXISTS "production_projects_company_id_idx" ON "production_projects"("company_id");
+
+-- enum SnsPlatform
+DO $$ BEGIN
+  CREATE TYPE "SnsPlatform" AS ENUM ('YOUTUBE', 'INSTAGRAM', 'TIKTOK');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- sns_accounts
+CREATE TABLE IF NOT EXISTS "sns_accounts" (
+  "id"                    TEXT PRIMARY KEY,
+  "production_project_id" TEXT NOT NULL,
+  "platform"              "SnsPlatform" NOT NULL,
+  "account_id"            TEXT,
+  "password"              TEXT,
+  "profile_url"           TEXT,
+  "miyake_pc_login"       BOOLEAN NOT NULL DEFAULT false,
+  "created_at"            TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at"            TIMESTAMP(3) NOT NULL
+);
+
+DO $$ BEGIN
+  ALTER TABLE "sns_accounts"
+    ADD CONSTRAINT "sns_accounts_production_project_id_fkey"
+    FOREIGN KEY ("production_project_id") REFERENCES "production_projects"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "sns_accounts_production_project_id_platform_key"
+  ON "sns_accounts"("production_project_id", "platform");
+CREATE INDEX IF NOT EXISTS "sns_accounts_production_project_id_idx" ON "sns_accounts"("production_project_id");
+
 COMMIT;
