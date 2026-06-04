@@ -35,6 +35,80 @@ function toDate(s: string | null | undefined): Date | null | undefined {
 }
 
 /**
+ * GET /api/pm/[id]
+ * 案件詳細ページ用。プロジェクト本体＋紐づくDealの議事録(Meeting)・提案企画書
+ * (Document category=proposal scope=deal)・SNSアカウントを返す。
+ * password は user 権限以上にだけ含める（viewer には伏字すら返さない=undefined）。
+ */
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const perm = await getCurrentPermission();
+  if (!hasPermission(perm, "viewer")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  const canSeeSecret = hasPermission(perm, "user");
+  const { id } = await params;
+
+  const project = await prisma.productionProject.findUnique({
+    where: { id },
+    include: {
+      deal: { select: { id: true, title: true, company: { select: { id: true, name: true } } } },
+      company: { select: { id: true, name: true } },
+      dealProduct: {
+        select: { id: true, productName: true, planName: true, yomiStatus: true, amount: true },
+      },
+      snsAccounts: { orderBy: { platform: "asc" } },
+    },
+  });
+  if (!project) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const meetings = await prisma.meeting.findMany({
+    where: { dealId: project.dealId },
+    orderBy: { meetingDate: "desc" },
+    select: {
+      id: true,
+      title: true,
+      meetingDate: true,
+      minutes: true,
+      summary: true,
+      recordingUrl: true,
+    },
+  });
+
+  const proposals = await prisma.document.findMany({
+    where: { dealId: project.dealId, scope: "deal", category: "proposal" },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      sourceType: true,
+      fileUrl: true,
+      version: true,
+      description: true,
+      createdAt: true,
+    },
+  });
+
+  // password を権限でガード（viewer には返さない）
+  const snsAccounts = project.snsAccounts.map((a) => ({
+    id: a.id,
+    platform: a.platform,
+    accountId: a.accountId,
+    password: canSeeSecret ? a.password : null,
+    profileUrl: a.profileUrl,
+    miyakePcLogin: a.miyakePcLogin,
+  }));
+
+  return NextResponse.json({
+    project: { ...project, snsAccounts },
+    meetings,
+    proposals,
+    canSeeSecret,
+  });
+}
+
+/**
  * PATCH /api/pm/[id]
  * 案件進捗のインライン編集。プロジェクト名・ステータス・各担当者・各日付・備考・納品済。
  * delivered=true にした場合は status を DELIVERED に追従させる（逆方向は強制しない）。
