@@ -158,6 +158,8 @@ model Company {
 
   contacts Contact[]
   deals    Deal[]
+  invoiceRecords    InvoiceRecord[]
+  recurringBillings RecurringBilling[]
 
   // 自己参照：統合先企業（surviving）／このcompanyに統合されてきた企業群（mergedChildren）
   mergedInto     Company?  @relation("CompanyMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
@@ -271,6 +273,9 @@ model Deal {
   aiLogs     AiLog[]
   roleplays  RoleplaySession[]
   documents  Document[]
+  invoiceRecords     InvoiceRecord[]
+  recurringBillings  RecurringBilling[]
+  productionProjects ProductionProject[]
 
   @@index([companyId])
   @@index([status])
@@ -355,6 +360,9 @@ model DealProduct {
   deal    Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
   product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
   owner   User?    @relation("DealProductOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  invoiceRecords    InvoiceRecord[]
+  recurringBillings RecurringBilling[]
+  productionProject ProductionProject?
 
   @@index([dealId])
   @@index([productId])
@@ -563,4 +571,171 @@ model Goal {
   @@index([ownerUserId])
   @@index([period])
   @@map("goals")
+}
+
+// ============================================================
+// 入金管理：スポット案件（請求書送付状況・着金状況）
+// 元データ: docs/payment-mgmt/入金管理_spot.csv
+// Deal / DealProduct / Company とは顧客名マッチ＋手動FK（nullable）で紐付け。
+// 着金金額(amountGross) = 契約金額(amountNet) × 1.1（税込）。検算に利用。
+// ============================================================
+model InvoiceRecord {
+  id            String   @id @default(uuid())
+  // 顧客名（CSV原文。重複企業の表記ゆれをそのまま保持。照合用は normalizeName で別途）
+  customerName  String   @map("customer_name")
+  // 任意FK（顧客名マッチで紐付け。未マッチは null のまま）
+  companyId     String?  @map("company_id")
+  dealId        String?  @map("deal_id")
+  dealProductId String?  @map("deal_product_id")
+
+  paymentTiming  PaymentTiming  @default(PREPAID)    @map("payment_timing")    // 前払い/納品後/分割
+  contractStatus ContractStatus @default(SIGNED)     @map("contract_status")   // 締結済み/未締結
+  invoiceStatus  InvoiceSentStatus @default(NOT_SENT) @map("invoice_status")    // 送付済み/未送付/前金分送付済み
+  paymentStatus  PaymentRecvStatus @default(UNCONFIRMED) @map("payment_status") // 確認済み/未確認/前金分確認済み
+
+  deliveryDate  DateTime? @map("delivery_date")      // 納品予定日
+  expectedPaymentDate DateTime? @map("expected_payment_date") // 着金見込み日
+
+  // 契約金額(税抜・円)。CSVで空のものは null。
+  amountNet     Int?     @map("amount_net")
+  // 着金金額(税込・円)。原則 amountNet×1.1 だが、CSV原値を優先保持（端数丸めの差異を温存）。
+  amountGross   Int?     @map("amount_gross")
+
+  note          String?  @db.Text
+  // 投入シードの冪等キー（CSV由来の安定識別子。重複行を区別するため customerName+amountNet 等で生成）
+  sourceKey     String?  @unique @map("source_key")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  company     Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  deal        Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  dealProduct DealProduct? @relation(fields: [dealProductId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([dealId])
+  @@index([invoiceStatus])
+  @@index([paymentStatus])
+  @@map("invoice_records")
+}
+
+enum PaymentTiming {
+  PREPAID      // 前払い
+  ON_DELIVERY  // 納品後支払い
+  INSTALLMENT  // 分割支払い
+}
+
+enum ContractStatus {
+  SIGNED    // 締結済み
+  UNSIGNED  // 未締結
+}
+
+enum InvoiceSentStatus {
+  SENT            // 送付済み
+  NOT_SENT        // 未送付
+  PARTIAL_SENT    // 前金分送付済み
+}
+
+enum PaymentRecvStatus {
+  CONFIRMED          // 確認済み
+  UNCONFIRMED        // 未確認
+  PARTIAL_CONFIRMED  // 前金分確認済み
+}
+
+// ============================================================
+// 入金管理：定期（SNS等の月額継続契約）
+// 元データ: docs/payment-mgmt/入金管理_recurring.csv
+// 月次の請求送付/着金フラグは RecurringBillingPeriod に正規化（40列の生フラグは持たない）。
+// ============================================================
+model RecurringBilling {
+  id            String   @id @default(uuid())
+  customerName  String   @map("customer_name")
+  companyId     String?  @map("company_id")
+  dealId        String?  @map("deal_id")
+  dealProductId String?  @map("deal_product_id")
+
+  initialFee    Int?     @map("initial_fee")    // 初期費用(円)
+  monthlyFee    Int?     @map("monthly_fee")     // 月額(円)
+  startDate     DateTime? @map("start_date")     // 契約開始日
+  endDate       DateTime? @map("end_date")       // 契約終了日
+
+  note          String?  @db.Text
+  sourceKey     String?  @unique @map("source_key")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  company     Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  deal        Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  dealProduct DealProduct? @relation(fields: [dealProductId], references: [id], onDelete: SetNull)
+  periods     RecurringBillingPeriod[]
+
+  @@index([companyId])
+  @@index([dealId])
+  @@map("recurring_billings")
+}
+
+// ============================================================
+// 定期契約の月次ステータス（請求送付/着金の2フラグ）。
+// 1契約 × 対象年月(yyyymm) で一意。グリッドUIのセルに対応。
+// ============================================================
+model RecurringBillingPeriod {
+  id          String   @id @default(uuid())
+  billingId   String   @map("billing_id")
+  // 対象年月。YYYYMM の整数（例 202506）。並び替え・範囲検索が容易。
+  yearMonth   Int      @map("year_month")
+  sent        Boolean  @default(false)  // 請求送付済み
+  paid        Boolean  @default(false)  // 着金確認済み
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  billing RecurringBilling @relation(fields: [billingId], references: [id], onDelete: Cascade)
+
+  @@unique([billingId, yearMonth])
+  @@index([billingId])
+  @@index([yearMonth])
+  @@map("recurring_billing_periods")
+}
+
+// ============================================================
+// 受注企業の案件進捗（PMタブ・機能4）
+// Notion PMボード「Luma PM-dev」準拠。受注した DealProduct 単位に1件。
+// ============================================================
+model ProductionProject {
+  id            String   @id @default(uuid())
+  dealId        String   @map("deal_id")
+  // 受注商材（DealProduct）に1:1で紐付け。
+  dealProductId String?  @unique @map("deal_product_id")
+  // 商材カテゴリ（映像/SNS/CATV/アライアンス）。サブタブ分けに使用。
+  category      String?
+  projectName   String   @map("project_name")
+  status        ProductionStatus @default(BEFORE_SHOOT)
+  // PM（担当者）。User FK ではなく Notion準拠のテキスト（社外スタッフ名が入ることがある）。
+  pmName        String?  @map("pm_name")
+  directorName  String?  @map("director_name")  // ディレクター
+  cameraName    String?  @map("camera_name")     // カメラ
+  editorName    String?  @map("editor_name")     // 編集
+  shootDate     DateTime? @map("shoot_date")      // 撮影日
+  deliveryDate  DateTime? @map("delivery_date")   // 納品予定日
+  provisionalDeliveryDate DateTime? @map("provisional_delivery_date") // 仮納品予定日
+  delivered     Boolean  @default(false)          // 納品済み(チェック)
+  note          String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  deal        Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  dealProduct DealProduct? @relation(fields: [dealProductId], references: [id], onDelete: SetNull)
+
+  @@index([dealId])
+  @@index([category])
+  @@index([status])
+  @@map("production_projects")
+}
+
+enum ProductionStatus {
+  BEFORE_SHOOT     // 撮影前
+  EDITING          // 編集中
+  REVISING         // 修正中
+  CLIENT_REVIEW    // 先方チェック待ち
+  REVISION_WAIT    // 修正待ち
+  NEAR_DELIVERY    // 納品間近
+  DELIVERED        // 納品済み
 }
