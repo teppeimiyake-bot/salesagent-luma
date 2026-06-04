@@ -2,6 +2,8 @@ import { Header } from "@/components/layout/header";
 import { DealsTable } from "@/components/dashboard/deals-table";
 import { NewDealDialog } from "@/components/deals/new-deal-dialog";
 import { OwnerTabs } from "@/components/deals/owner-tabs";
+import { PhaseTabs } from "@/components/deals/phase-tabs";
+import { WonCategoryTabs } from "@/components/deals/won-category-tabs";
 import { ProductFilter } from "@/components/deals/product-filter";
 import { SortFilter } from "@/components/deals/sort-filter";
 import { YomiFilter } from "@/components/deals/yomi-filter";
@@ -19,6 +21,8 @@ import {
   dealYomiRank,
   type DealProductLite,
 } from "@/lib/deal-aggregations";
+import { isWonYomi } from "@/lib/yomi-status";
+import { categoryFromDealProduct } from "@/lib/product-categories";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +34,8 @@ export default async function DealsPage({
     product?: string;
     sort?: string;
     yomi?: string;
+    phase?: string;
+    cat?: string;
   }>;
 }) {
   const session = await getSession();
@@ -44,6 +50,12 @@ export default async function DealsPage({
   const ownerParam = sp.owner ?? "all";
   const productParam = sp.product ?? null;
   const sortParam = sp.sort ?? "next";
+  // 受注前(pre) / 受注後(won) フェーズタブ。デフォルトは受注前。
+  const phaseParam = sp.phase === "won" ? "won" : "pre";
+  // 受注後タブ内の受注商材サブタブ。"all" or 映像/SNS/CATV/アライアンス。
+  const WON_CATEGORIES = ["映像", "SNS", "CATV", "アライアンス"] as const;
+  const catParam =
+    sp.cat && (WON_CATEGORIES as readonly string[]).includes(sp.cat) ? sp.cat : "all";
   // ヨミフィルタ：
   // - `sp.yomi === undefined`（クエリ無し）→ デフォルト = DEFAULT_YOMI_VALUES
   //   （A+ヨミ/Aヨミ/Bヨミ/Cヨミ の4種。ネタ/NG/受注は受注確度フォーカス運用のため初期非表示）
@@ -165,6 +177,50 @@ export default async function DealsPage({
       break;
   }
 
+  // ---- 受注前 / 受注後 フェーズ振り分け ----
+  // 受注後 = 配下 DealProduct のいずれかが isWonYomi。受注前 = それ以外。
+  // （isWonYomi は接頭辞除去を伴うため Prisma where では表現せずメモリ側で判定）
+  type DealWithProducts = (typeof sortedDeals)[number];
+  const isWonDeal = (d: DealWithProducts) =>
+    d.products.some((p) => isWonYomi(p.yomiStatus));
+
+  const preDeals = sortedDeals.filter((d) => !isWonDeal(d));
+  const wonDeals = sortedDeals.filter((d) => isWonDeal(d));
+
+  // 受注後タブの受注商材カテゴリ判定。
+  // PMボードと同じ粒度：映像/SNS/CATV と、それ以外（未分類含む）= アライアンス。
+  // 「その企業がどの商材を受注したか」は、受注(isWonYomi)の DealProduct のみで判定する。
+  const wonCategoriesOf = (d: DealWithProducts): Set<string> => {
+    const set = new Set<string>();
+    for (const p of d.products) {
+      if (!isWonYomi(p.yomiStatus)) continue;
+      const cat = categoryFromDealProduct(p);
+      // 映像/SNS/CATV 以外（null 含む）は「アライアンス」に寄せる（PMボードと統一）
+      set.add(cat === "映像" || cat === "SNS" || cat === "CATV" ? cat : "アライアンス");
+    }
+    return set;
+  };
+
+  // 受注後タブの各サブタブ件数（複数受注は各カテゴリにカウント）
+  const wonCatCounts: Record<string, number> = { all: wonDeals.length };
+  for (const c of WON_CATEGORIES) wonCatCounts[c] = 0;
+  for (const d of wonDeals) {
+    for (const c of wonCategoriesOf(d)) {
+      wonCatCounts[c] = (wonCatCounts[c] ?? 0) + 1;
+    }
+  }
+
+  // 表示対象を確定
+  let visibleDeals: DealWithProducts[];
+  if (phaseParam === "won") {
+    visibleDeals =
+      catParam === "all"
+        ? wonDeals
+        : wonDeals.filter((d) => wonCategoriesOf(d).has(catParam));
+  } else {
+    visibleDeals = preDeals;
+  }
+
   const products = productGroups.map((p) => ({ name: p.productName, count: p._count._all }));
 
   // 商談詳細→「商談一覧」戻りリンク用に、現在のフィルタ/並びをクエリ文字列で持ち回す。
@@ -175,12 +231,27 @@ export default async function DealsPage({
   if (productParam) backQueryParams.set("product", productParam);
   if (sortParam !== "next") backQueryParams.set("sort", sortParam);
   if (yomiSelected.length > 0) backQueryParams.set("yomi", yomiSelected.join(","));
+  if (phaseParam === "won") backQueryParams.set("phase", "won");
+  if (phaseParam === "won" && catParam !== "all") backQueryParams.set("cat", catParam);
   const linkQuery = backQueryParams.toString();
+
+  const tableTitle =
+    phaseParam === "won"
+      ? `受注後${catParam === "all" ? "" : `・${catParam}`} (${visibleDeals.length}件)`
+      : `受注前 (${visibleDeals.length}件)`;
 
   return (
     <>
-      <Header title="商談一覧" subtitle={`${deals.length} 件（企業単位）`} right={<NewDealDialog />} />
+      <Header
+        title="商談一覧"
+        subtitle={`${visibleDeals.length} 件 / 全 ${deals.length} 件（企業単位）`}
+        right={<NewDealDialog />}
+      />
       <div className="px-8 py-3 border-b border-zinc-200 bg-white space-y-3">
+        <PhaseTabs selected={phaseParam} preCount={preDeals.length} wonCount={wonDeals.length} />
+        {phaseParam === "won" && (
+          <WonCategoryTabs selected={catParam} counts={wonCatCounts} />
+        )}
         <OwnerTabs users={users} currentUserId={session?.userId ?? ""} selected={ownerParam} />
         <ProductFilter products={products} selected={productParam} />
         <YomiFilter selected={yomiSelected} />
@@ -188,8 +259,8 @@ export default async function DealsPage({
       </div>
       <div className="flex-1 overflow-y-auto p-6 bg-zinc-50">
         <DealsTable
-          deals={sortedDeals}
-          title={`商談 (${deals.length}件)`}
+          deals={visibleDeals}
+          title={tableTitle}
           showAllLink={false}
           canDelete={canEdit}
           editable={canEdit}
