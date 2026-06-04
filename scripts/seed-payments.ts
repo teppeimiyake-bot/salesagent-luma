@@ -151,9 +151,9 @@ async function seedSpot(companyIndex: Map<string, string[]>) {
     const companyId = await resolveCompanyId(customerName, companyIndex);
     const sourceKey = `spot::${normalizeName(customerName)}::${seq}`;
 
-    const data = {
+    // シート由来の値（再同期で上書きする対象）。
+    const sheetData = {
       customerName,
-      companyId,
       paymentTiming: parsePaymentTiming(r[1] ?? ""),
       contractStatus: parseContractStatus(r[2] ?? ""),
       invoiceStatus: parseInvoiceSent(r[3] ?? ""),
@@ -164,10 +164,13 @@ async function seedSpot(companyIndex: Map<string, string[]>) {
       amountGross,
     };
 
+    // 再同期では FK（companyId/dealId/dealProductId）を上書きしない。
+    //   link-sheet-payments.ts が手動エイリアスも使って解決した紐付けを温存するため。
+    //   新規作成時のみ、正規化名で一意に絞れた companyId をセット（曖昧時は null）。
     await prisma.invoiceRecord.upsert({
       where: { sourceKey },
-      create: { ...data, sourceKey },
-      update: data,
+      create: { ...sheetData, companyId, sourceKey },
+      update: sheetData,
     });
     created++;
   }
@@ -192,10 +195,11 @@ async function seedRecurring(companyIndex: Map<string, string[]>) {
     const companyId = await resolveCompanyId(customerName, companyIndex);
     const sourceKey = `recurring::${normalizeName(customerName)}`;
 
+    // 再同期では FK（companyId/dealId/dealProductId）を上書きしない（link-sheet-payments の紐付けを温存）。
     const billing = await prisma.recurringBilling.upsert({
       where: { sourceKey },
       create: { customerName, companyId, initialFee, monthlyFee, startDate, endDate, sourceKey },
-      update: { customerName, companyId, initialFee, monthlyFee, startDate, endDate },
+      update: { customerName, initialFee, monthlyFee, startDate, endDate },
     });
     billings++;
 

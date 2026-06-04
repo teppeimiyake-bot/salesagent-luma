@@ -13,10 +13,10 @@ export async function GET() {
   if (!hasPermission(perm, "admin")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  // Phase 9：プロダクト単位エントリ（dealProductId あり）のみ表示。
-  //   CSV由来のソース行（dealProductId=null）はバックフィルの引き継ぎ元として残すが一覧には出さない。
+  // Phase 10：入金管理の正本＝スプレッドシート由来の行（source_key='spot::%'）のみ表示。
+  //   Phase 9 の余剰 dpid:: エントリ（受注プロダクト全件生成）は表示しない（cleanup で削除）。
   const records = await prisma.invoiceRecord.findMany({
-    where: { dealProductId: { not: null } },
+    where: { sourceKey: { startsWith: "spot::" } },
     orderBy: [{ expectedPaymentDate: "asc" }, { customerName: "asc" }],
     include: {
       company: { select: { id: true, name: true } },

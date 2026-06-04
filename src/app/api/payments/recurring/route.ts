@@ -12,9 +12,10 @@ export async function GET() {
   if (!hasPermission(perm, "admin")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  // Phase 9：プロダクト単位エントリ（dealProductId あり）のみ表示。
+  // Phase 10：入金管理の正本＝スプレッドシート由来の行（source_key='recurring::%'）のみ表示。
+  //   Phase 9 の余剰 dpid:: エントリは表示しない（cleanup で削除）。
   const billings = await prisma.recurringBilling.findMany({
-    where: { dealProductId: { not: null } },
+    where: { sourceKey: { startsWith: "recurring::" } },
     orderBy: [{ customerName: "asc" }],
     include: {
       company: { select: { id: true, name: true } },

@@ -240,11 +240,11 @@ export function RecurringGrid({ canEdit }: { canEdit: boolean }) {
                           className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-800 hover:underline truncate max-w-[150px]"
                           title={b.deal?.title ? `商談「${b.deal.title}」を開く` : "紐づく商談を開く"}
                         >
-                          <span className="truncate">{b.company?.name ?? "—"}</span>
+                          <span className="truncate">{b.company?.name ?? b.customerName ?? "—"}</span>
                           <ExternalLink className="h-3 w-3 opacity-60 shrink-0" />
                         </Link>
                       ) : (
-                        <span className="font-medium truncate max-w-[140px]">{b.company?.name ?? "—"}</span>
+                        <span className="font-medium truncate max-w-[140px]">{b.company?.name ?? b.customerName ?? "—"}</span>
                       )}
                     </div>
                   </td>

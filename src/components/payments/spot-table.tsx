@@ -259,11 +259,11 @@ export function SpotTable({ canEdit }: { canEdit: boolean }) {
                           className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
                           title={r.deal?.title ? `商談「${r.deal.title}」を開く` : "紐づく商談を開く"}
                         >
-                          {r.company?.name ?? "—"}
+                          {r.company?.name ?? r.customerName ?? "—"}
                           <ExternalLink className="h-3 w-3 opacity-60 shrink-0" />
                         </Link>
                       ) : (
-                        <span className="font-medium">{r.company?.name ?? "—"}</span>
+                        <span className="font-medium">{r.company?.name ?? r.customerName ?? "—"}</span>
                       )}
                       {overdue && (
                         <span
