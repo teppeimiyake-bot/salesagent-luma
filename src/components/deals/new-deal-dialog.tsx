@@ -44,6 +44,7 @@ import {
   type StageGroup,
 } from "@/lib/pipeline-stage";
 import { leadSourceColor } from "@/lib/lead-source";
+import { IndustryPicker } from "@/components/companies/industry-picker";
 
 type Company = {
   id: string;
@@ -818,13 +819,11 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
                           required
                         />
                       </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">業界</Label>
-                        <Input
+                      <div className="space-y-1.5 md:col-span-3">
+                        <Label className="text-xs">業種（複数選択可）</Label>
+                        <IndustryPicker
                           value={newCompanyIndustry}
-                          onChange={(e) => setNewCompanyIndustry(e.target.value)}
-                          placeholder="製造／商社..."
-                          className="h-9"
+                          onChange={setNewCompanyIndustry}
                         />
                       </div>
                     </div>

@@ -19,6 +19,7 @@ import {
   ImageIcon,
 } from "lucide-react";
 import { formatJPY } from "@/lib/utils";
+import { IndustryPicker } from "@/components/companies/industry-picker";
 import { CompanyLogo } from "@/components/ui/company-logo";
 
 type Company = {
@@ -152,8 +153,16 @@ export function CompanyHero({ company, stats }: { company: Company; stats: Stats
 
       {editing && (
         <div className="mt-6 pt-5 border-t border-white/20 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* 業種：複数選択（チップトグル・マスタ＋既存値の動的補完） */}
+          <div className="space-y-1.5 md:col-span-2">
+            <Label className="text-xs text-white/80">業種（複数選択可）</Label>
+            <IndustryPicker
+              value={v.industry}
+              onChange={(next) => setV({ ...v, industry: next })}
+              variant="onDark"
+            />
+          </div>
           {[
-            { key: "industry", label: "業種" },
             { key: "ceoName", label: "代表者" },
             { key: "establishedYear", label: "設立年（数値）" },
             { key: "employeeCount", label: "従業員数（数値）" },

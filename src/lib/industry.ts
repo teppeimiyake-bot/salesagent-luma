@@ -9,6 +9,92 @@
  */
 
 /**
+ * 業種マスタ（選択式ドロップダウンの選択肢）。
+ *
+ * 設計方針（2026-06）:
+ * - 既存DB(salesagent_luma)に実際に入っている業種値16種を「そのまま」中核に採用し、
+ *   表記ゆれを生まないようにしている（例: 既存値は「IT」なので「IT・ソフトウェア」にしない）。
+ * - Lumaの顧客層(B2B映像/SNS)向けに「教育」「飲食」「美容・サロン」を追加。
+ * - 「その他」は必ず末尾に固定で含める。
+ * - DBスキーマは String? のまま（enum化しない）。複数業種は「,」区切りで保存する運用を継続。
+ * - マスタに無い既存値（過去の自由記入）は industrySelectOptions() で動的に補完して
+ *   ドロップダウンに出すため、選択肢に無くても値が消えない。
+ */
+export const INDUSTRY_OPTIONS: string[] = [
+  "IT",
+  "製造",
+  "商社",
+  "小売・流通",
+  "建設・設計",
+  "不動産",
+  "医療・福祉",
+  "人材",
+  "広告・出版・マスコミ",
+  "エンタメ",
+  "サービス",
+  "コンサル",
+  "金融",
+  "インフラ",
+  "教育",
+  "飲食",
+  "美容・サロン",
+  "官公庁・団体",
+  "その他",
+];
+
+/**
+ * 単一選択ドロップダウン用の選択肢を返す。
+ * - 基本は INDUSTRY_OPTIONS。
+ * - currentValue がマスタに無い既存値（自由記入の名残・複数業種文字列など）の場合は
+ *   先頭に追加して、保存済みの値がドロップダウンから欠落しないようにする。
+ * - 「その他」は常に末尾に残す。
+ */
+export function industrySelectOptions(
+  currentValue: string | null | undefined,
+): string[] {
+  const cur = (currentValue ?? "").trim();
+  if (!cur || INDUSTRY_OPTIONS.includes(cur)) return INDUSTRY_OPTIONS;
+  // マスタ外の既存値：先頭に補完（「その他」は末尾固定のまま）
+  const head = INDUSTRY_OPTIONS.filter((o) => o !== "その他");
+  return [cur, ...head, "その他"];
+}
+
+/**
+ * 複数選択ピッカー用：選択肢リストを返す。
+ * - 基本は INDUSTRY_OPTIONS。
+ * - currentValue（「,」区切りの保存値）に含まれる業種でマスタに無いものは
+ *   先頭に補完して、保存済みの値がピッカーから欠落しないようにする。
+ * - 「その他」は常に末尾に残す。
+ */
+export function industryMultiOptions(
+  currentValue: string | null | undefined,
+): string[] {
+  const head = INDUSTRY_OPTIONS.filter((o) => o !== "その他");
+  const extras = parseIndustries(currentValue).filter(
+    (v) => !INDUSTRY_OPTIONS.includes(v),
+  );
+  // extras（マスタ外の既存値）を先頭、続いてマスタ、末尾に「その他」
+  return [...extras, ...head, "その他"];
+}
+
+/**
+ * 複数選択の配列を Company.industry 保存用の「,」区切り文字列に直す。
+ * - trim・空除外・重複排除
+ * - 空配列なら null（未設定）
+ */
+export function serializeIndustries(values: string[]): string | null {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const v = (raw ?? "").trim();
+    if (!v || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out.length > 0 ? out.join(", ") : null;
+}
+
+/**
  * industry 文字列を「,」で分割し、個別の業界名の配列にする。
  * - 「,」でのみ分割（「・」は保持）
  * - 各トークンは trim、空文字は除外
