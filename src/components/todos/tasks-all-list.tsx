@@ -46,6 +46,66 @@ type Task = {
   };
 };
 
+/** Date|string|null → input[type=date] 用の YYYY-MM-DD（ローカル日付） */
+function toDateInputValue(d: Date | string | null): string {
+  if (!d) return "";
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return "";
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const day = String(dt.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * 期日の表示＋編集。クリックでバッジ⇄日付入力をトグル。
+ * 変更すると onChange(YYYY-MM-DD | null) を呼ぶ。空にすると期日クリア。
+ */
+function EditableDue({
+  date,
+  done,
+  disabled,
+  onChange,
+}: {
+  date: Date | string | null;
+  done: boolean;
+  disabled: boolean;
+  onChange: (v: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <input
+          type="date"
+          autoFocus
+          defaultValue={toDateInputValue(date)}
+          disabled={disabled}
+          onBlur={(e) => {
+            const v = e.target.value || null;
+            setEditing(false);
+            if (v !== toDateInputValue(date) || (v === null && date !== null)) {
+              onChange(v);
+            }
+          }}
+          className="h-8 rounded-md border border-zinc-300 px-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait"
+        />
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      disabled={disabled}
+      title="期日を変更"
+      className="cursor-pointer rounded-lg hover:ring-2 hover:ring-emerald-200 disabled:cursor-wait"
+    >
+      <DueBadge date={date} size="md" done={done} />
+    </button>
+  );
+}
+
 /** native <select> の選択肢用にヨミの候補リストを組み立てる（現在値が候補外なら先頭に足す） */
 function yomiSelectOptions(current: string | null): string[] {
   const base = [...YOMI_OPTIONS];
@@ -117,6 +177,18 @@ export function TasksAllList({ tasks }: { tasks: Task[] }) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount }),
+      });
+      router.refresh();
+    });
+  }
+
+  function changeDue(id: string, dueDate: string | null) {
+    start(async () => {
+      await fetch(`/api/tasks/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        // date(YYYY-MM-DD) → ISO。null は期日クリア。
+        body: JSON.stringify({ dueDate: dueDate ? new Date(dueDate).toISOString() : null }),
       });
       router.refresh();
     });
@@ -292,7 +364,16 @@ export function TasksAllList({ tasks }: { tasks: Task[] }) {
             </div>
 
             <div className="flex flex-col items-end gap-2 shrink-0">
-              <DueBadge date={t.dueDate} size="md" done={done} />
+              {isDealNA ? (
+                <DueBadge date={t.dueDate} size="md" done={done} />
+              ) : (
+                <EditableDue
+                  date={t.dueDate}
+                  done={done}
+                  disabled={pending}
+                  onChange={(v) => changeDue(t.id, v)}
+                />
+              )}
               <div className="flex items-center gap-2">
                 {t.deal.owner && (
                   <div

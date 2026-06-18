@@ -19,6 +19,7 @@ import {
   productionStatusVariant,
   type ProductionStatus,
 } from "@/lib/production";
+import { StaffPicker } from "@/components/pm/staff-picker";
 
 export type SnsPlatform = "YOUTUBE" | "INSTAGRAM" | "TIKTOK";
 
@@ -240,18 +241,13 @@ export function PmTable({
 
               {/* PM担当 */}
               <td className="px-3 py-2">
-                {canEdit ? (
-                  <Input
-                    defaultValue={p.pmName ?? ""}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim() || null;
-                      if (v !== p.pmName) patch(p.id, { pmName: v });
-                    }}
-                    className="h-8 w-[100px]"
-                  />
-                ) : (
-                  <span>{p.pmName ?? "—"}</span>
-                )}
+                <StaffPicker
+                  role="pm"
+                  value={p.pmName}
+                  canEdit={canEdit}
+                  onChange={(v) => patch(p.id, { pmName: v })}
+                  width="w-[110px]"
+                />
               </td>
 
               {isSns ? (
@@ -379,50 +375,35 @@ export function PmTable({
 
                   {/* ディレクター */}
                   <td className="px-3 py-2">
-                    {canEdit ? (
-                      <Input
-                        defaultValue={p.directorName ?? ""}
-                        onBlur={(e) => {
-                          const v = e.target.value.trim() || null;
-                          if (v !== p.directorName) patch(p.id, { directorName: v });
-                        }}
-                        className="h-8 w-[90px]"
-                      />
-                    ) : (
-                      <span>{p.directorName ?? "—"}</span>
-                    )}
+                    <StaffPicker
+                      role="director"
+                      value={p.directorName}
+                      canEdit={canEdit}
+                      onChange={(v) => patch(p.id, { directorName: v })}
+                      width="w-[100px]"
+                    />
                   </td>
 
                   {/* カメラ */}
                   <td className="px-3 py-2">
-                    {canEdit ? (
-                      <Input
-                        defaultValue={p.cameraName ?? ""}
-                        onBlur={(e) => {
-                          const v = e.target.value.trim() || null;
-                          if (v !== p.cameraName) patch(p.id, { cameraName: v });
-                        }}
-                        className="h-8 w-[90px]"
-                      />
-                    ) : (
-                      <span>{p.cameraName ?? "—"}</span>
-                    )}
+                    <StaffPicker
+                      role="camera"
+                      value={p.cameraName}
+                      canEdit={canEdit}
+                      onChange={(v) => patch(p.id, { cameraName: v })}
+                      width="w-[100px]"
+                    />
                   </td>
 
                   {/* 編集 */}
                   <td className="px-3 py-2">
-                    {canEdit ? (
-                      <Input
-                        defaultValue={p.editorName ?? ""}
-                        onBlur={(e) => {
-                          const v = e.target.value.trim() || null;
-                          if (v !== p.editorName) patch(p.id, { editorName: v });
-                        }}
-                        className="h-8 w-[90px]"
-                      />
-                    ) : (
-                      <span>{p.editorName ?? "—"}</span>
-                    )}
+                    <StaffPicker
+                      role="editor"
+                      value={p.editorName}
+                      canEdit={canEdit}
+                      onChange={(v) => patch(p.id, { editorName: v })}
+                      width="w-[100px]"
+                    />
                   </td>
                 </>
               )}

@@ -83,6 +83,9 @@ export function MsBoard({
   }, []);
 
   // 現在のタブの商談から、実際に owner が存在する担当者だけをフィルタ候補に出す。
+  // ドロップダウンの選択肢はこの ownerOptions を使う：
+  //   全 users を並べると「このステージに商談が無い担当者」も選べてしまい、
+  //   選ぶと常に0件になって『フィルタが効かない（=三宅でヒットしない）』ように見えるため。
   const ownerOptions = useMemo(() => {
     const seen = new Map<string, MsUser>();
     for (const d of deals) {
@@ -94,8 +97,20 @@ export function MsBoard({
         });
       }
     }
-    return Array.from(seen.values());
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, "ja"));
   }, [deals]);
+
+  // タブ切替で選択中の担当者がそのタブに存在しない場合はフィルタを解除（0件のまま固まるのを防ぐ）。
+  useEffect(() => {
+    if (
+      ownerFilter &&
+      ownerFilter !== "__none__" &&
+      !loading &&
+      !ownerOptions.some((o) => o.id === ownerFilter)
+    ) {
+      setOwnerFilter("");
+    }
+  }, [ownerOptions, ownerFilter, loading]);
 
   // 担当者フィルター → アポ獲得日ソートを適用した表示用リスト。
   const visibleDeals = useMemo(() => {
@@ -182,7 +197,7 @@ export function MsBoard({
             <SelectContent>
               <SelectItem value="__all__">すべて</SelectItem>
               <SelectItem value="__none__">未設定</SelectItem>
-              {users.map((u) => (
+              {ownerOptions.map((u) => (
                 <SelectItem key={u.id} value={u.id}>
                   <span className="inline-flex items-center gap-2">
                     <span

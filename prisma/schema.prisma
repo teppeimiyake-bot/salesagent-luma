@@ -921,3 +921,26 @@ model MsKpiGoal {
 
   @@map("ms_kpi_goals")
 }
+
+// ============================================================
+// PMスタッフマスタ（機能4）
+// PM管理タブの「PM担当 / ディレクター / カメラ / 編集」プルダウンの選択肢。
+// ProductionProject 側は従来どおりテキスト（pmName 等）で値を保持し、
+// このマスタは「選択肢の人員リスト」を提供するだけ（FKは張らない）。
+// 社外スタッフ名も入り得るため、選択肢に無い名前の手入力も許容する設計。
+//   role: "pm" | "director" | "camera" | "editor"
+// ============================================================
+model PmStaff {
+  id        String   @id @default(uuid())
+  // 役割。1人が複数役割を兼ねる場合は role 別に複数レコードを持つ。
+  role      String
+  name      String
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([role, name])
+  @@index([role])
+  @@map("pm_staff")
+}

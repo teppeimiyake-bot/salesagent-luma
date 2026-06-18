@@ -76,7 +76,6 @@ export type DealProductRow = {
 export function DealProductsPanel({
   dealId,
   initial,
-  users,
   products,
   planProposalMasters,
   canEdit,
@@ -84,7 +83,8 @@ export function DealProductsPanel({
 }: {
   dealId: string;
   initial: DealProductRow[];
-  users: SalesUser[];
+  /** 後方互換：商談主担当に一本化したためプロダクト側の担当者選択は廃止。プロパティは受け取るが未使用。 */
+  users?: SalesUser[];
   products: ProductMaster[];
   planProposalMasters: PlanProposalMaster[];
   canEdit: boolean;
@@ -154,7 +154,6 @@ export function DealProductsPanel({
             <div className="ml-auto">
               <AddProductDialog
                 dealId={dealId}
-                users={users}
                 products={products}
                 planProposalMasters={planProposalMasters}
                 isAdmin={isAdmin}
@@ -193,7 +192,6 @@ export function DealProductsPanel({
                   <th className="text-left font-medium py-2 px-2 w-[160px]">プラン</th>
                   <th className="text-left font-medium py-2 px-2 w-[110px]">ヨミ</th>
                   <th className="text-right font-medium py-2 px-2 w-[140px]">提案金額</th>
-                  <th className="text-left font-medium py-2 px-2 w-[150px]">担当</th>
                   {canEdit && <th className="w-[40px]" />}
                 </tr>
               </thead>
@@ -202,12 +200,11 @@ export function DealProductsPanel({
                   <ProductRow
                     key={row.id}
                     row={row}
-                    users={users}
                     products={products}
                     planProposalMasters={planProposalMasters}
                     canEdit={canEdit}
                     pending={pending}
-                    colCount={canEdit ? 6 : 5}
+                    colCount={canEdit ? 5 : 4}
                     onPatch={(p, api) => patchRow(row, p, api)}
                     onDelete={() => deleteRow(row)}
                   />
@@ -223,7 +220,6 @@ export function DealProductsPanel({
 
 function ProductRow({
   row,
-  users,
   products,
   planProposalMasters,
   canEdit,
@@ -233,7 +229,6 @@ function ProductRow({
   onDelete,
 }: {
   row: DealProductRow;
-  users: SalesUser[];
   products: ProductMaster[];
   planProposalMasters: PlanProposalMaster[];
   canEdit: boolean;
@@ -413,46 +408,8 @@ function ProductRow({
           <span className="tabular-nums">{formatJPY(row.amount)}</span>
         )}
       </td>
-      <td className="py-2 px-2">
-        {canEdit ? (
-          <Select
-            value={row.ownerUserId ?? "__none__"}
-            onValueChange={(v) => onPatch({ ownerUserId: v === "__none__" ? null : v })}
-          >
-            <SelectTrigger className="h-8 text-xs border-0 shadow-none px-1 hover:bg-zinc-100">
-              <SelectValue placeholder="未割当">
-                {row.owner ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <span
-                      className="w-4 h-4 rounded-full text-white text-[9px] font-bold flex items-center justify-center"
-                      style={{ background: row.owner.avatarColor ?? "#6366f1" }}
-                    >
-                      {row.owner.name.charAt(0)}
-                    </span>
-                    <span className="text-xs">{row.owner.name}</span>
-                  </span>
-                ) : (
-                  <span className="text-zinc-400 text-xs">未割当</span>
-                )}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">
-                <span className="text-zinc-400">未割当</span>
-              </SelectItem>
-              {users.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : row.owner ? (
-          <span className="text-xs">{row.owner.name}</span>
-        ) : (
-          <span className="text-zinc-400 text-xs">未割当</span>
-        )}
-      </td>
+      {/* プロダクト内の担当者は廃止（商談の主担当に一本化）。
+          DB上の ownerUserId は履歴として残置するが UI からは入力・表示しない。 */}
       {canEdit && (
         <td className="py-2 px-2 text-right">
           <Button
@@ -631,14 +588,12 @@ function PlanProposalPicker({
 
 function AddProductDialog({
   dealId,
-  users,
   products,
   planProposalMasters,
   isAdmin,
   onAdded,
 }: {
   dealId: string;
-  users: SalesUser[];
   products: ProductMaster[];
   planProposalMasters: PlanProposalMaster[];
   isAdmin: boolean;
@@ -651,7 +606,6 @@ function AddProductDialog({
   const [yomiStatus, setYomiStatus] = useState<string>("Cヨミ");
   const [amount, setAmount] = useState("");
   const [amountTouched, setAmountTouched] = useState(false);
-  const [ownerUserId, setOwnerUserId] = useState("");
   const [planProposals, setPlanProposals] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   // 新規カテゴリ追加（admin限定）
@@ -710,7 +664,6 @@ function AddProductDialog({
         probability: YOMI_TO_PROBABILITY[yomiStatus] ?? 0,
         amount: amount ? Number(amount) : null,
         yomiStatus,
-        ownerUserId: ownerUserId || null,
       }),
     });
     setLoading(false);
@@ -737,7 +690,6 @@ function AddProductDialog({
       setYomiStatus("Cヨミ");
       setAmount("");
       setAmountTouched(false);
-      setOwnerUserId("");
       setPlanProposals([]);
       onAdded(newRow);
     }
@@ -908,21 +860,6 @@ function AddProductDialog({
                   setAmountTouched(true);
                 }}
               />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">担当者</Label>
-              <Select value={ownerUserId} onValueChange={setOwnerUserId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="未割当" />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">

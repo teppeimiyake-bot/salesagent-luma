@@ -30,6 +30,7 @@ import {
   productionStatusVariant,
   type ProductionStatus,
 } from "@/lib/production";
+import { StaffPicker } from "@/components/pm/staff-picker";
 
 type SnsPlatform = "YOUTUBE" | "INSTAGRAM" | "TIKTOK";
 
@@ -177,32 +178,44 @@ export function PmDetail({ data }: { data: PmDetailData }) {
               </Badge>
             )}
           </Field>
-          <EditableText
-            label="PM担当"
-            value={project.pmName}
-            canEdit={canEdit}
-            onSave={(v) => patchProject({ pmName: v })}
-          />
+          <Field label="PM担当">
+            <StaffPicker
+              role="pm"
+              value={project.pmName}
+              canEdit={canEdit}
+              onChange={(v) => patchProject({ pmName: v })}
+              width="w-[200px]"
+            />
+          </Field>
           {!isSns && (
             <>
-              <EditableText
-                label="ディレクター"
-                value={project.directorName}
-                canEdit={canEdit}
-                onSave={(v) => patchProject({ directorName: v })}
-              />
-              <EditableText
-                label="カメラ"
-                value={project.cameraName}
-                canEdit={canEdit}
-                onSave={(v) => patchProject({ cameraName: v })}
-              />
-              <EditableText
-                label="編集"
-                value={project.editorName}
-                canEdit={canEdit}
-                onSave={(v) => patchProject({ editorName: v })}
-              />
+              <Field label="ディレクター">
+                <StaffPicker
+                  role="director"
+                  value={project.directorName}
+                  canEdit={canEdit}
+                  onChange={(v) => patchProject({ directorName: v })}
+                  width="w-[200px]"
+                />
+              </Field>
+              <Field label="カメラ">
+                <StaffPicker
+                  role="camera"
+                  value={project.cameraName}
+                  canEdit={canEdit}
+                  onChange={(v) => patchProject({ cameraName: v })}
+                  width="w-[200px]"
+                />
+              </Field>
+              <Field label="編集">
+                <StaffPicker
+                  role="editor"
+                  value={project.editorName}
+                  canEdit={canEdit}
+                  onChange={(v) => patchProject({ editorName: v })}
+                  width="w-[200px]"
+                />
+              </Field>
             </>
           )}
           {isSns && (
