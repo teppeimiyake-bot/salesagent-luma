@@ -43,6 +43,11 @@ const updateSchema = z.object({
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // viewer は編集不可（UI 側 canEdit と同じ admin/user のみ許可）
+  const perm = await getCurrentPermission();
+  if (!hasPermission(perm, "user")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const body = await req.json().catch(() => null);
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) {

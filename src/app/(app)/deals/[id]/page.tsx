@@ -32,6 +32,7 @@ import { isWonYomi } from "@/lib/yomi-status";
 import { buildPmDetailDataForDeal } from "@/lib/pm-detail-data";
 import { DealTabs } from "@/components/deals/deal-tabs";
 import { PmDealPanel } from "@/components/pm/pm-deal-panel";
+import { DealIndustryEditor } from "@/components/deals/deal-industry-editor";
 import { ArrowLeft } from "lucide-react";
 import type { DealStatus } from "@prisma/client";
 
@@ -170,7 +171,13 @@ export default async function DealDetailPage({
         <Badge variant={statusColor(deal.status as DealStatus)}>
           {STATUS_LABEL[deal.status as DealStatus]}
         </Badge>
-        {industryLabel && <Badge variant="secondary">{industryLabel}</Badge>}
+        <DealIndustryEditor
+          companyId={deal.company.id}
+          companyName={deal.company.name}
+          initialIndustry={deal.company.industry}
+          displayLabel={industryLabel}
+          canEdit={canEdit}
+        />
         {fiscalMonth && (
           <Badge variant="outline" className="text-xs">
             決算月: {fiscalMonth}
