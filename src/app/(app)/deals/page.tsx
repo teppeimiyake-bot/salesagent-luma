@@ -82,7 +82,11 @@ export default async function DealsPage({
         ? undefined
         : ownerParam;
 
-  // owner: Deal.ownerUserId または DealProduct.ownerUserId のどちらかに一致
+  // owner: 商談（Deal）の担当者 = Deal.ownerUserId に一致
+  //   ※以前は OR で DealProduct.ownerUserId も含めていたが、現状 DealProduct.ownerUserId が
+  //     全件 三宅哲平（Notion取り込み時の既定値）に固定されており、その OR 条件が
+  //     「全商談ヒット」になって三宅のフィルターボタンが無反応になっていた（2026-06 社長報告）。
+  //     商談一覧の担当者フィルタは商談オーナー（Deal.ownerUserId）で判定する。
   // product: DealProduct.productName に一致するものが少なくとも1件
   // yomi: DealProduct.yomiStatus が指定されたヨミ値（接頭辞展開後）のいずれかに一致
   //       product / yomi は AND（同一 DealProduct で全条件を満たす必要は無く、
@@ -98,14 +102,7 @@ export default async function DealsPage({
   }
 
   const where = {
-    ...(ownerUserId
-      ? {
-          OR: [
-            { ownerUserId },
-            { products: { some: { ownerUserId } } },
-          ],
-        }
-      : {}),
+    ...(ownerUserId ? { ownerUserId } : {}),
     ...(productConditions.length > 0 ? { AND: productConditions } : {}),
     deletedAt: null,
     company: { deletedAt: null },
@@ -129,15 +126,12 @@ export default async function DealsPage({
     prisma.dealProduct.groupBy({
       by: ["productName"],
       where: {
-        ...(ownerUserId
-          ? {
-              OR: [
-                { ownerUserId },
-                { deal: { ownerUserId } },
-              ],
-            }
-          : {}),
-        deal: { deletedAt: null, company: { deletedAt: null } },
+        // 商品フィルタの選択肢件数も、担当者は商談オーナー（Deal.ownerUserId）で集計を揃える
+        deal: {
+          ...(ownerUserId ? { ownerUserId } : {}),
+          deletedAt: null,
+          company: { deletedAt: null },
+        },
       },
       _count: { _all: true },
       orderBy: { _count: { productName: "desc" } },
