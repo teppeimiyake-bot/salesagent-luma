@@ -36,6 +36,10 @@ export async function GET(req: Request) {
           { title: { contains: q, mode: "insensitive" } },
           { nextAction: { contains: q, mode: "insensitive" } },
           { company: { name: { contains: q, mode: "insensitive" } } },
+          // 担当者（自社オーナー）名で検索：漢字フルネーム・姓のみ（部分一致）・カタカナ読みのいずれでもヒット。
+          // Notion取込の商談はタイトルが会社名のみで担当者名を含まないため、owner を直接見る必要がある。
+          { owner: { name: { contains: q, mode: "insensitive" } } },
+          { owner: { nameKana: { contains: q, mode: "insensitive" } } },
           {
             products: {
               some: {

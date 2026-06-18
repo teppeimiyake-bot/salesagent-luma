@@ -23,6 +23,7 @@ export default async function AdminUsersPage() {
     select: {
       id: true,
       name: true,
+      nameKana: true,
       email: true,
       role: true,
       permission: true,

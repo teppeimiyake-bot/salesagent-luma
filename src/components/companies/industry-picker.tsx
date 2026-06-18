@@ -1,8 +1,33 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
 import { industryMultiOptions, parseIndustries } from "@/lib/industry";
+
+/**
+ * 業種マスタ（/api/industries の active 分）のモジュールキャッシュ。
+ * 同一ページに複数の IndustryPicker があっても 1 回しか fetch しないようにする。
+ * fetch 失敗時は null のままで、ピッカーは静的 INDUSTRY_OPTIONS にフォールバックする。
+ */
+let cachedMaster: string[] | null = null;
+let inflight: Promise<string[] | null> | null = null;
+
+async function loadIndustryMaster(): Promise<string[] | null> {
+  if (cachedMaster) return cachedMaster;
+  if (inflight) return inflight;
+  inflight = fetch("/api/industries")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j: { industries?: { name: string }[] } | null) => {
+      const names = j?.industries?.map((i) => i.name) ?? null;
+      cachedMaster = names && names.length > 0 ? names : null;
+      return cachedMaster;
+    })
+    .catch(() => null)
+    .finally(() => {
+      inflight = null;
+    });
+  return inflight;
+}
 
 /**
  * 業種 複数選択ピッカー（チップ式トグル）。
@@ -25,8 +50,20 @@ export function IndustryPicker({
   /** 背景色に応じた配色。ダーク背景(company-hero編集)用に "onDark" を指定 */
   variant?: "light" | "onDark";
 }) {
+  // DB業種マスタ（未取得時は null → 静的 INDUSTRY_OPTIONS にフォールバック）
+  const [master, setMaster] = useState<string[] | null>(cachedMaster);
+  useEffect(() => {
+    let mounted = true;
+    loadIndustryMaster().then((m) => {
+      if (mounted && m) setMaster(m);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const selected = useMemo(() => parseIndustries(value), [value]);
-  const options = useMemo(() => industryMultiOptions(value), [value]);
+  const options = useMemo(() => industryMultiOptions(value, master), [value, master]);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
   const toggle = (opt: string) => {

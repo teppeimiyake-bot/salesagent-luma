@@ -23,6 +23,7 @@ import {
 type User = {
   id: string;
   name: string;
+  nameKana: string | null;
   email: string;
   role: string | null;
   permission: string;
@@ -40,8 +41,8 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
     invites: number;
   } | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  // インライン編集（メール / 氏名）
-  const [editing, setEditing] = useState<{ id: string; field: "email" | "name" } | null>(null);
+  // インライン編集（メール / 氏名 / フリガナ）
+  const [editing, setEditing] = useState<{ id: string; field: "email" | "name" | "nameKana" } | null>(null);
   const [draft, setDraft] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -63,7 +64,8 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
   function commitEdit() {
     if (!editing) return;
     const value = draft.trim();
-    if (!value) {
+    // フリガナは空でも可（未設定に戻せる）。氏名/メールは空不可。
+    if (!value && editing.field !== "nameKana") {
       setEditError("空にはできません");
       return;
     }
@@ -169,6 +171,46 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
                         setDraft(u.name);
                       }}
                       title="氏名を編集"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                    </button>
+                  </div>
+                )}
+                {/* フリガナ（カタカナ・インライン編集。担当者をカナ読みでも検索可能にする） */}
+                {editing?.id === u.id && editing.field === "nameKana" ? (
+                  <div className="flex items-center gap-1 mt-1">
+                    <Input
+                      value={draft}
+                      autoFocus
+                      placeholder="ミヤケテッペイ"
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") cancelEdit();
+                      }}
+                      className="h-7 text-sm"
+                    />
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={commitEdit} disabled={pending}>
+                      <Check className="w-4 h-4 text-emerald-600" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={cancelEdit} disabled={pending}>
+                      <X className="w-4 h-4 text-zinc-500" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 group">
+                    <p className="text-xs text-zinc-400 truncate">
+                      フリガナ: {u.nameKana || <span className="italic text-zinc-300">未設定</span>}
+                    </p>
+                    <button
+                      type="button"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-zinc-100 shrink-0"
+                      onClick={() => {
+                        setEditError(null);
+                        setEditing({ id: u.id, field: "nameKana" });
+                        setDraft(u.nameKana ?? "");
+                      }}
+                      title="フリガナ（カタカナ）を編集"
                     >
                       <Pencil className="w-3.5 h-3.5 text-zinc-400" />
                     </button>

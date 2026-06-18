@@ -194,6 +194,25 @@ export function TasksAllList({ tasks }: { tasks: Task[] }) {
     });
   }
 
+  /**
+   * 商談由来ネクストアクション（isDealNA）の期日変更。
+   * 期日は Deal.nextActionAt に保存されているため、Task ではなく Deal を PATCH する。
+   * これにより商談画面（Deal.nextActionAt を表示・編集）と双方向で整合する。
+   */
+  function changeDealNADue(dealId: string, dueDate: string | null) {
+    start(async () => {
+      await fetch(`/api/deals/${dealId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        // date(YYYY-MM-DD) → ISO。null は nextActionAt クリア。
+        body: JSON.stringify({
+          nextActionAt: dueDate ? new Date(dueDate).toISOString() : null,
+        }),
+      });
+      router.refresh();
+    });
+  }
+
   function complete(id: string) {
     start(async () => {
       await fetch(`/api/tasks/${id}`, {
@@ -365,7 +384,13 @@ export function TasksAllList({ tasks }: { tasks: Task[] }) {
 
             <div className="flex flex-col items-end gap-2 shrink-0">
               {isDealNA ? (
-                <DueBadge date={t.dueDate} size="md" done={done} />
+                // 商談由来NAの期日も編集可能に（Deal.nextActionAt を更新 → 商談画面と双方向で整合）
+                <EditableDue
+                  date={t.dueDate}
+                  done={done}
+                  disabled={pending}
+                  onChange={(v) => changeDealNADue(t.deal.id, v)}
+                />
               ) : (
                 <EditableDue
                   date={t.dueDate}

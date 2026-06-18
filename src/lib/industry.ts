@@ -61,19 +61,24 @@ export function industrySelectOptions(
 
 /**
  * 複数選択ピッカー用：選択肢リストを返す。
- * - 基本は INDUSTRY_OPTIONS。
- * - currentValue（「,」区切りの保存値）に含まれる業種でマスタに無いものは
- *   先頭に補完して、保存済みの値がピッカーから欠落しないようにする。
+ * - 基本は `master`（DB業種マスタ）。未指定/空なら静的 INDUSTRY_OPTIONS にフォールバック。
+ *   → DB未投入時やfetch失敗時でも、従来どおりの選択肢が必ず出る（後方互換）。
+ * - currentValue（「,」区切りの保存値）に含まれる業種で選択肢に無いものは
+ *   先頭に補完して、保存済みの値がピッカーから欠落しないようにする（データ消失防止）。
  * - 「その他」は常に末尾に残す。
+ *
+ * @param master DB業種マスタの名前リスト（active順）。省略時は静的リストを使う。
  */
 export function industryMultiOptions(
   currentValue: string | null | undefined,
+  master?: string[] | null,
 ): string[] {
-  const head = INDUSTRY_OPTIONS.filter((o) => o !== "その他");
-  const extras = parseIndustries(currentValue).filter(
-    (v) => !INDUSTRY_OPTIONS.includes(v),
-  );
-  // extras（マスタ外の既存値）を先頭、続いてマスタ、末尾に「その他」
+  const base = master && master.length > 0 ? master : INDUSTRY_OPTIONS;
+  // 「その他」は末尾固定にするため一旦除く
+  const head = base.filter((o) => o !== "その他");
+  const baseSet = new Set(base);
+  const extras = parseIndustries(currentValue).filter((v) => !baseSet.has(v));
+  // extras（選択肢外の既存値）を先頭、続いて業種、末尾に「その他」
   return [...extras, ...head, "その他"];
 }
 

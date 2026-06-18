@@ -9,6 +9,8 @@ const schema = z.object({
   // メール/氏名は admin のみ編集可能
   email: z.string().email("メールアドレスの形式が不正です").optional(),
   name: z.string().min(1, "名前は必須です").max(100).optional(),
+  // フリガナ（カタカナ読み）。担当者をカナでも検索できるようにする。空文字は null 化。
+  nameKana: z.string().max(100).optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -35,10 +37,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       );
     }
   }
+  // nameKana は空文字を null に正規化（未設定扱いに戻せるように）
+  const data = { ...parsed.data };
+  if (data.nameKana !== undefined) {
+    data.nameKana = data.nameKana.trim() === "" ? (null as unknown as string) : data.nameKana.trim();
+  }
   const user = await prisma.user.update({
     where: { id },
-    data: parsed.data,
-    select: { id: true, name: true, email: true, role: true, permission: true, avatarColor: true },
+    data,
+    select: { id: true, name: true, nameKana: true, email: true, role: true, permission: true, avatarColor: true },
   });
   return NextResponse.json({ user });
 }

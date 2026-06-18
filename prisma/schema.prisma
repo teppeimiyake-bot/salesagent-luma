@@ -18,6 +18,9 @@ model User {
   // パスワード認証は任意化（Googleログインのみのユーザは null）
   passwordHash String?  @map("password_hash")
   name         String
+  // 氏名のフリガナ（カタカナ）。担当者をカタカナ読みでも検索できるようにするための任意フィールド。
+  // 例: name="三宅哲平" / nameKana="ミヤケテッペイ"。未設定でも検索は name 部分一致で機能する。
+  nameKana     String?  @map("name_kana")
   // NextAuth が使用するプロフィール画像URL（Googleアバターなど）
   image        String?
   emailVerified DateTime? @map("email_verified")
@@ -339,6 +342,26 @@ model LeadSource {
   deals Deal[]
 
   @@map("lead_sources")
+}
+
+// ============================================================
+// Industry（業種マスタ）
+// 会社情報・商談ページの業種ピッカー（複数選択チップ）の選択肢を提供する。
+// Company.industry は従来どおり「,」区切りのテキストで値を保持し（FKは張らない）、
+// このマスタは「選択肢のリスト」だけを提供する。
+//   - 静的な初期セット（INDUSTRY_OPTIONS）を seed で投入。
+//   - 後から admin 画面で追加/編集/無効化できる。
+//   - マスタに無い既存の業種文字列も、ピッカー側で動的補完するので消えない。
+// LeadSource と同じフラット構造（name @unique / active / sortOrder）。
+// ============================================================
+model Industry {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("industries")
 }
 
 // ============================================================
