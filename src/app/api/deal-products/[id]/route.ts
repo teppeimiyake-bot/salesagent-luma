@@ -5,6 +5,8 @@ import { probabilityToYomi, YOMI_TO_PROBABILITY } from "@/lib/deal-aggregations"
 import { getCurrentPermission, hasPermission, getSession } from "@/lib/auth";
 import { stripYomiPrefix } from "@/lib/yomi-status";
 import { generateContractDraft, isAPlusYomi } from "@/lib/contract-generate";
+import { syncWonProductToPayments } from "@/lib/payment-sync";
+import { isWonYomi } from "@/lib/yomi-status";
 
 const updateSchema = z.object({
   productId: z.string().uuid().nullable().optional(),
@@ -106,6 +108,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   // ============================================================
+  // 依頼1：受注 → 入金管理の自動連携。
+  //   受注ステータス（プレフィックス付き含む isWonYomi）へ「遷移」した時、
+  //   入金管理（スポット）レコードが未作成なら1件だけ自動作成する。
+  //   - 遷移検知（before が受注でなく after が受注）に限定し、受注内の別更新では走らない。
+  //   - 同じ会社が既に入金管理にあれば重複作成しない（syncWonProductToPayments 側で判定）。
+  //   - 失敗は PATCH 本体の成否に影響させない（ログのみ）。
+  // ============================================================
+  let paymentSync: Awaited<ReturnType<typeof syncWonProductToPayments>> | null = null;
+  if (isWonYomi(updated.yomiStatus) && !isWonYomi(prevYomi)) {
+    try {
+      paymentSync = await syncWonProductToPayments(prisma, updated.id);
+    } catch (e) {
+      console.error("[deal-products PATCH] payment sync failed:", e);
+    }
+  }
+
+  // ============================================================
   // 機能②トリガー：yomiStatus が「A+ヨミ」へ遷移した時、契約書ドラフトを自動生成。
   //   - 遷移検知（before が A+ヨミでなく、after が A+ヨミ）に限定し、A+ヨミ内での
   //     別更新で毎回走らないようにする。
@@ -131,7 +150,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
   }
 
-  return NextResponse.json({ dealProduct: updated, contractDraft });
+  return NextResponse.json({ dealProduct: updated, contractDraft, paymentSync });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {

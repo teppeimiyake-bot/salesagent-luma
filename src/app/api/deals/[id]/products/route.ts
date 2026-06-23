@@ -3,7 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { probabilityToYomi, YOMI_TO_PROBABILITY } from "@/lib/deal-aggregations";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
-import { stripYomiPrefix } from "@/lib/yomi-status";
+import { stripYomiPrefix, isWonYomi } from "@/lib/yomi-status";
+import { syncWonProductToPayments } from "@/lib/payment-sync";
 
 /**
  * yomiStatus（接頭辞付き含む）から確度% を引く。不明なら null。
@@ -101,5 +102,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
-  return NextResponse.json({ dealProduct: created });
+  // 依頼1：受注プロダクトとして新規追加された場合も、入金管理（スポット）へ自動連携。
+  //   同じ会社が既に入金管理にあれば重複作成しない（sync 側で判定）。失敗はログのみ。
+  let paymentSync: Awaited<ReturnType<typeof syncWonProductToPayments>> | null = null;
+  if (isWonYomi(created.yomiStatus)) {
+    try {
+      paymentSync = await syncWonProductToPayments(prisma, created.id);
+    } catch (e) {
+      console.error("[deals/products POST] payment sync failed:", e);
+    }
+  }
+
+  return NextResponse.json({ dealProduct: created, paymentSync });
 }
