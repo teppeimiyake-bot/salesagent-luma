@@ -160,12 +160,6 @@ model Company {
   mergedIntoId     String?  @map("merged_into_id")
   createdAt        DateTime @default(now()) @map("created_at")
 
-  // 営業リストエージェント連携（Phase 3）— agent 由来の追加情報
-  contactFormUrl   String?  @map("contact_form_url")            // 問い合わせフォームURL
-  doNotContact     Boolean  @default(false) @map("do_not_contact") // 送付禁止 / 明示NG
-  source           String?                                       // 取得元媒体（mynavi 等）
-  sourceKey        String?  @unique @map("source_key")           // agent由来会社の冪等キー
-
   contacts Contact[]
   deals    Deal[]
   invoiceRecords    InvoiceRecord[]
@@ -239,81 +233,6 @@ model Contact {
 
   @@index([companyId])
   @@map("contacts")
-}
-
-// ============================================================
-// 営業リストエージェント連携：staging（未レビュー成果物の緩衝層）— Phase 3
-// エージェントが出した会社候補を貯め、人手レビューで承認したものだけを
-// Company/Contact へ正式反映する。CRM に未検証データを混ぜないための層。
-// ============================================================
-model AgentRun {
-  id         String   @id @default(uuid())
-  source     String   // 取得元媒体（mynavi / rikunabi / ...）
-  agentRunId String?  @map("agent_run_id") // Cloud Run 側の run_HHMMSS
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  candidates AgentCandidate[]
-
-  @@index([source])
-  @@map("agent_runs")
-}
-
-model AgentCandidate {
-  id               String    @id @default(uuid())
-  runId            String    @map("run_id")
-  sourceKey        String    @unique @map("source_key") // 冪等キー（媒体+媒体内ID等）
-  companyName      String    @map("company_name")
-  dedupeKey        String    @map("dedupe_key") // normalizeName(companyName)
-  websiteUrl       String?   @map("website_url")
-  contactFormUrl   String?   @map("contact_form_url")
-  phone            String?
-  email            String?
-  industry         String?
-  address          String?
-  // 事前突合（intake 時に既存 Company へ当たれば記録）
-  matchedCompanyId String?   @map("matched_company_id")
-  matchStatus      String?   @map("match_status") // new / exact / domain / norm
-  // レビュー状態：pending / approved / rejected / ingested
-  reviewStatus     String    @default("pending") @map("review_status")
-  reviewedById     String?   @map("reviewed_by_id")
-  reviewedAt       DateTime? @map("reviewed_at")
-  ingestedCompanyId String?  @map("ingested_company_id")
-  ingestedAt       DateTime? @map("ingested_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
-
-  run      AgentRun                @relation(fields: [runId], references: [id], onDelete: Cascade)
-  evidence AgentEvidence[]
-  messages AgentGeneratedMessage[]
-
-  @@index([runId])
-  @@index([reviewStatus])
-  @@index([dedupeKey])
-  @@map("agent_candidates")
-}
-
-model AgentEvidence {
-  id           String   @id @default(uuid())
-  candidateId  String   @map("candidate_id")
-  evidenceJson Json     @map("evidence_json") // 根拠URL/テキスト
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  candidate AgentCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-
-  @@index([candidateId])
-  @@map("agent_evidence")
-}
-
-model AgentGeneratedMessage {
-  id          String   @id @default(uuid())
-  candidateId String   @map("candidate_id")
-  subject     String?
-  body        String?  @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  candidate AgentCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-
-  @@index([candidateId])
-  @@map("agent_generated_messages")
 }
 
 // ============================================================

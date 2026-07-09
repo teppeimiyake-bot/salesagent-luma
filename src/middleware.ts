@@ -26,13 +26,6 @@ function isPublicInviteToken(pathname: string) {
   return /^\/api\/invites\/[^/]+\/?$/.test(pathname);
 }
 
-// /api/agents/* は外部エージェント(Cloud Run)用。cookie セッションを持たないため
-// middleware の cookie ゲートはバイパスし、トークン認証は各ルート内で行う
-// （middleware は Edge runtime なので Prisma/crypto を持ち込まない）。
-function isAgentIngestPath(pathname: string) {
-  return /^\/api\/agents(\/|$)/.test(pathname);
-}
-
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -49,8 +42,7 @@ export async function middleware(req: NextRequest) {
   const isPublic =
     PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/")) ||
     isPublicAuthPath(pathname) ||
-    isPublicInviteToken(pathname) ||
-    isAgentIngestPath(pathname);
+    isPublicInviteToken(pathname);
   const token = req.cookies.get(COOKIE_NAME)?.value;
   const isAuthed = token ? await isValidToken(token) : false;
 
