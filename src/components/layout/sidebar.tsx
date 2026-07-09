@@ -25,6 +25,7 @@ import {
   Send,
   Users2,
   Tag,
+  Bot,
 } from "lucide-react";
 
 const baseGroups = [
@@ -32,6 +33,7 @@ const baseGroups = [
     label: "ワーク",
     items: [
       { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard, color: "text-orange-500", activeBg: "bg-orange-500" },
+      { href: "/agent", label: "エージェント", icon: Bot, color: "text-indigo-500", activeBg: "bg-indigo-500" },
       { href: "/todos", label: "ToDo", icon: CheckSquare, color: "text-orange-500", activeBg: "bg-orange-500" },
       { href: "/deals", label: "商談", icon: Briefcase, color: "text-amber-500", activeBg: "bg-amber-500" },
       { href: "/ms", label: "ms管理", icon: PhoneCall, color: "text-amber-600", activeBg: "bg-amber-600" },
