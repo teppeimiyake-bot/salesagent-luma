@@ -25,6 +25,7 @@ import {
   Send,
   Users2,
   Tag,
+  ClipboardCheck,
 } from "lucide-react";
 
 const baseGroups = [
@@ -63,6 +64,7 @@ const adminGroup = {
     { href: "/admin/products", label: "カテゴリ", icon: Package, color: "text-rose-500", activeBg: "bg-rose-500" },
     { href: "/admin/plan-proposals", label: "企画提案", icon: Film, color: "text-orange-500", activeBg: "bg-orange-500" },
     { href: "/admin/lead-sources", label: "リード獲得経由", icon: Sparkle, color: "text-fuchsia-500", activeBg: "bg-fuchsia-500" },
+    { href: "/admin/agent-candidates", label: "エージェント候補", icon: ClipboardCheck, color: "text-indigo-500", activeBg: "bg-indigo-500" },
     { href: "/admin/industries", label: "業種", icon: Tag, color: "text-emerald-500", activeBg: "bg-emerald-500" },
     { href: "/admin/pipeline-stages", label: "商談プロセス", icon: GitBranch, color: "text-violet-500", activeBg: "bg-violet-500" },
     { href: "/admin/pm-staff", label: "PMスタッフ", icon: Users2, color: "text-rose-400", activeBg: "bg-rose-400" },
