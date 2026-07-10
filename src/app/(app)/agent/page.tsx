@@ -1,12 +1,14 @@
-// 営業リスト作成エージェント（Cloud Run）への導線ページ（Phase 2）。
-// iframe 埋め込みは IAP のログイン（accounts.google.com）が iframe 内で表示できず
-// 成立しないため、外部リンク（新規タブで開く）方式にする（クラウド移行計画書の推奨）。
-// 開き先は環境変数 NEXT_PUBLIC_AGENT_URL（IAP 保護された Cloud Run の URL）。
+// 営業リスト作成エージェント（Cloud Run）への導線ページ。
+// 以前は環境変数 NEXT_PUBLIC_AGENT_URL（ローカル proxy 前提の localhost）を新規タブで
+// 開いていたが、手元でプロキシを起動しなくても到達できるよう、Luma 内の
+// /api/agent/open（ログイン確認 → グラント発行 → agent-proxy へリダイレクト）経由に変更。
+// 開き先の実体は非公開 Cloud Run で、Vercel 上の agent-proxy が認証付きで転送する。
 
 import { Bot, ExternalLink } from "lucide-react";
 import { Header } from "@/components/layout/header";
 
-const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_URL;
+// プロキシ接続が設定済みか（未設定なら案内を表示）。
+const PROXY_CONFIGURED = Boolean(process.env.AGENT_PROXY_URL);
 
 export default function AgentPage() {
   return (
@@ -26,12 +28,12 @@ export default function AgentPage() {
             </h2>
             <p className="mt-2 text-sm text-zinc-500">
               会社リストの生成・公式HP解決・連絡先/フォーム抽出・文面生成を行う
-              エージェントを、別タブで開きます（Google アカウントでのログインが必要です）。
+              エージェントを、別タブで開きます（ローカルでのプロキシ起動は不要です）。
             </p>
 
-            {AGENT_URL ? (
+            {PROXY_CONFIGURED ? (
               <a
-                href={AGENT_URL}
+                href="/api/agent/open"
                 target="_blank"
                 rel="noreferrer"
                 className="mt-6 inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 px-5 py-2.5 text-sm font-semibold text-white shadow hover:from-orange-600 hover:to-amber-600"
@@ -41,9 +43,9 @@ export default function AgentPage() {
               </a>
             ) : (
               <div className="mt-6 rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm text-zinc-500">
-                エージェントURLが未設定です。環境変数{" "}
+                エージェント接続が未設定です。環境変数{" "}
                 <code className="px-1 py-0.5 rounded bg-zinc-100">
-                  NEXT_PUBLIC_AGENT_URL
+                  AGENT_PROXY_URL
                 </code>{" "}
                 を設定してください。
               </div>
