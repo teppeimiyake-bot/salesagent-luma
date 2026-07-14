@@ -31,6 +31,9 @@ const STRIP_RESPONSE = new Set([
   "upgrade",
   "content-length",
   "content-encoding",
+  // Luma の /agent 画面に iframe で埋め込むため、フレーム表示を阻害するヘッダは落とす
+  "x-frame-options",
+  "content-security-policy",
 ]);
 
 function unauthorizedHtml(): string {
@@ -43,7 +46,7 @@ background:#f6f6f9;color:#1a1730;display:flex;min-height:100vh;align-items:cente
 box-shadow:0 8px 24px rgba(30,20,60,.06);text-align:center}
 h1{font-size:18px;margin:0 0 10px}p{color:#5c5670;font-size:14px;line-height:1.7;margin:0}</style></head>
 <body><div class="card"><h1>ログインが必要です</h1>
-<p>このエージェントは Luma からのみ開けます。<br>Luma にログインし、サイドバーの「エージェント」→「エージェントを開く」から開いてください。</p>
+<p>このエージェントは Luma からのみ開けます。<br>Luma にログインし、サイドバーの「エージェント」を開いてください。</p>
 </div></body></html>`;
 }
 
@@ -66,7 +69,9 @@ async function handler(req: NextRequest): Promise<Response> {
     res.cookies.set(SESSION_COOKIE, session, {
       httpOnly: true,
       secure: true,
-      sameSite: "lax",
+      // Luma の /agent 画面に iframe（クロスサイト）で埋め込むため None にする。
+      // secure: true 必須。新規タブで開いた場合も同じ Cookie が使われる。
+      sameSite: "none",
       path: "/",
       maxAge: SESSION_MAX_AGE_SECONDS,
     });

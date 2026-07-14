@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // ワークスペースルートを明示（親ディレクトリの lockfile による誤検出を防ぐ。
+  // 親パスに非ASCII文字が含まれると Turbopack がパニックするため必須）。
+  turbopack: {
+    root: __dirname,
+  },
   // Vercel 本番では <project>.public.blob.vercel-storage.com から画像を読み込むため
   // next/image を使う場合に備えてリモートホストを許可しておく。
   images: {
