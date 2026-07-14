@@ -23,6 +23,7 @@ const STRIP_REQUEST = new Set([
   "content-length",
   "accept-encoding",
   "cookie", // プロキシ自身のセッション Cookie を Cloud Run に漏らさない
+  "x-agent-grant", // Luma サーバー間認証用グラント。Cloud Run に漏らさない
 ]);
 const STRIP_RESPONSE = new Set([
   "connection",
@@ -78,9 +79,16 @@ async function handler(req: NextRequest): Promise<Response> {
     return res;
   }
 
-  // 2) セッション検証（無効なら案内を返す）
-  const sessionToken = req.cookies.get(SESSION_COOKIE)?.value;
-  const session = sessionToken ? await verifySession(sessionToken) : null;
+  // 2) 認証。次のいずれかを許可する。
+  //    a) x-agent-grant ヘッダ（Luma サーバーがリクエスト毎に署名する短命グラント。
+  //       Luma の /api/agent/gw 中継からの server-to-server 呼び出しに使う）
+  //    b) セッション Cookie（ブラウザで直接プロキシを開く従来経路）
+  const headerGrant = req.headers.get("x-agent-grant");
+  let session = headerGrant ? await verifyGrant(headerGrant) : null;
+  if (!session) {
+    const sessionToken = req.cookies.get(SESSION_COOKIE)?.value;
+    session = sessionToken ? await verifySession(sessionToken) : null;
+  }
   if (!session) {
     return new NextResponse(unauthorizedHtml(), {
       status: 401,
