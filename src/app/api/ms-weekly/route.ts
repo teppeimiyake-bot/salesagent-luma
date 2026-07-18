@@ -72,26 +72,50 @@ export async function POST(req: Request) {
   // 全数値0かつ notes 空 → 未入力扱いで削除
   const isEmpty =
     sent === 0 && appointments === 0 && listOrders === 0 && inquiryOrders === 0 && !notes;
-  if (isEmpty) {
-    const existing = await prisma.msWeeklyEntry.findUnique({ where });
-    if (existing) await prisma.msWeeklyEntry.delete({ where });
-    return NextResponse.json({ entry: null });
-  }
 
-  const entry = await prisma.msWeeklyEntry.upsert({
-    where,
-    create: {
+  try {
+    if (isEmpty) {
+      const existing = await prisma.msWeeklyEntry.findUnique({ where });
+      if (existing) await prisma.msWeeklyEntry.delete({ where });
+      return NextResponse.json({ entry: null });
+    }
+
+    const entry = await prisma.msWeeklyEntry.upsert({
+      where,
+      create: {
+        workerId,
+        year,
+        month,
+        weekOfMonth,
+        sent,
+        appointments,
+        listOrders,
+        inquiryOrders,
+        notes: notes ?? null,
+      },
+      update: { sent, appointments, listOrders, inquiryOrders, notes: notes ?? null },
+    });
+    return NextResponse.json({ entry });
+  } catch (e) {
+    // DB/Prisma 層の失敗を握りつぶさず、コード＋メッセージを返す。
+    // 例: P2002(unique違反) / P2003(FK違反) / P2025(対象なし) / Neon接続エラー 等。
+    // 従来は未捕捉で 500（本文なし）となり、フロントに原因が出なかった。
+    const err = e as { code?: string; message?: string };
+    console.error("[ms-weekly POST] save failed", {
       workerId,
       year,
       month,
       weekOfMonth,
-      sent,
-      appointments,
-      listOrders,
-      inquiryOrders,
-      notes: notes ?? null,
-    },
-    update: { sent, appointments, listOrders, inquiryOrders, notes: notes ?? null },
-  });
-  return NextResponse.json({ entry });
+      isEmpty,
+      code: err?.code ?? null,
+      message: err?.message ?? String(e),
+    });
+    return NextResponse.json(
+      {
+        error: err?.message ?? "週次実績の保存に失敗しました",
+        code: err?.code ?? null,
+      },
+      { status: 500 },
+    );
+  }
 }

@@ -1,11 +1,11 @@
 "use client";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Pencil, Plus, Target, Users } from "lucide-react";
+import { Pencil, Plus, Power, PowerOff, Settings2, Target, Trash2, Users, X } from "lucide-react";
 
 // 月内の最大週数（1w〜5w）
 const WEEKS = [1, 2, 3, 4, 5];
@@ -234,7 +234,7 @@ export function MsOutreachBoard({
           </button>
         </div>
         {isAdmin && (
-          <MsWorkerAdder onSaved={() => router.refresh()} />
+          <MsWorkerManager onSaved={() => router.refresh()} />
         )}
       </div>
 
@@ -421,8 +421,14 @@ function CellEditDialog({
     });
     setSaving(false);
     if (!res.ok) {
-      const j = await res.json().catch(() => null);
-      setError(j?.error ?? "保存に失敗しました");
+      // サーバーが返した error / code を画面に出す（原因切り分け用）。
+      // 本文が JSON でない（生の 500 等）場合も HTTP ステータスを表示する。
+      const j = (await res.json().catch(() => null)) as
+        | { error?: string; code?: string | null }
+        | null;
+      const detail = j?.error ?? `保存に失敗しました (HTTP ${res.status})`;
+      const code = j?.code ? `（コード: ${j.code}）` : "";
+      setError(`${detail}${code}`);
       return;
     }
     onSaved();
@@ -480,77 +486,464 @@ function CellEditDialog({
 }
 
 // ---------------------------------------------------------------
-// ワーカー追加（admin）
+// ワーカー管理（admin）
+//   活用中 / 未活用 を分離表示し、新規登録・状態変更(トグル)・
+//   ナンバリング(code)・情報編集・削除を一括で行う管理モーダル。
+//   ・活用/未活用は MsWorker.active フラグで管理（true=活用中 / false=未活用）。
+//     未活用にすると週次グリッド（KPI集計）から外れる（履歴データは保持）。
+//   ・ナンバリング(code)は手入力だが、新規登録時に「既存の最大番号+1」を
+//     初期値として自動提案する（＝手動連番、初期値だけ自動採番）。
 // ---------------------------------------------------------------
-function MsWorkerAdder({ onSaved }: { onSaved: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
-  const [isAgency, setIsAgency] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+type ManagerWorker = {
+  id: string;
+  code: string | null;
+  name: string;
+  isAgency: boolean;
+  active: boolean;
+  sortOrder: number;
+};
 
-  async function save() {
-    if (!name.trim()) {
-      setError("名前は必須です");
-      return;
-    }
-    setSaving(true);
+// 既存 code から次の連番を提案（数値codeの最大+1を3桁ゼロ詰め）。
+function suggestNextCode(workers: ManagerWorker[]): string {
+  let max = 0;
+  for (const w of workers) {
+    const n = Number(w.code);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return String(max + 1).padStart(3, "0");
+}
+
+function MsWorkerManager({ onSaved }: { onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [workers, setWorkers] = useState<ManagerWorker[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // いずれかの変更があったら閉じる時に grid を更新
+  const [dirty, setDirty] = useState(false);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
     setError(null);
-    const res = await fetch("/api/ms-workers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: code || null, name: name.trim(), isAgency }),
-    });
-    setSaving(false);
+    try {
+      const res = await fetch("/api/ms-workers?includeInactive=true", { cache: "no-store" });
+      if (!res.ok) throw new Error(`一覧の取得に失敗しました (HTTP ${res.status})`);
+      const j = (await res.json()) as { workers: ManagerWorker[] };
+      setWorkers(j.workers ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "一覧の取得に失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) reload();
+  }, [open, reload]);
+
+  function close() {
+    setOpen(false);
+    if (dirty) {
+      setDirty(false);
+      onSaved();
+    }
+  }
+
+  async function mutate(fn: () => Promise<Response>): Promise<boolean> {
+    setError(null);
+    const res = await fn();
     if (!res.ok) {
       const j = await res.json().catch(() => null);
-      setError(j?.error ?? "追加に失敗しました");
-      return;
+      setError(j?.error ?? `操作に失敗しました (HTTP ${res.status})`);
+      return false;
     }
-    setOpen(false);
-    setCode("");
-    setName("");
-    setIsAgency(false);
-    onSaved();
+    setDirty(true);
+    await reload();
+    return true;
   }
+
+  const activeWorkers = workers.filter((w) => w.active);
+  const inactiveWorkers = workers.filter((w) => !w.active);
 
   if (!open) {
     return (
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <Plus className="h-4 w-4 mr-1" />
-        ワーカー追加
+        <Settings2 className="h-4 w-4 mr-1" />
+        ワーカー管理
       </Button>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setOpen(false)}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-bold text-base">ワーカー追加</h3>
-        <label className="text-sm space-y-1 block">
-          <span className="text-zinc-600">コード（任意・例: 005）</span>
-          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="005" />
-        </label>
-        <label className="text-sm space-y-1 block">
-          <span className="text-zinc-600">名前</span>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="○○さん" />
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={isAgency} onChange={(e) => setIsAgency(e.target.checked)} />
-          代理店経由
-        </label>
-        {error && <p className="text-xs text-red-600">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
-            キャンセル
-          </Button>
-          <Button onClick={save} disabled={saving}>
-            {saving ? "追加中…" : "追加"}
-          </Button>
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto"
+      onClick={close}
+    >
+      <div
+        className="bg-white rounded-xl shadow-xl w-full max-w-2xl my-8 p-5 space-y-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-base flex items-center gap-2">
+            <Users className="h-4 w-4 text-amber-600" />
+            ワーカー管理
+          </h3>
+          <button onClick={close} className="text-zinc-400 hover:text-zinc-700" title="閉じる">
+            <X className="h-5 w-5" />
+          </button>
         </div>
+
+        {/* 新規登録 */}
+        <MsWorkerAddForm
+          nextCode={suggestNextCode(workers)}
+          onCreate={(payload) =>
+            mutate(() =>
+              fetch("/api/ms-workers", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              }),
+            )
+          }
+        />
+
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        {loading && <p className="text-xs text-zinc-400">読み込み中…</p>}
+
+        {/* 活用中 */}
+        <WorkerSection
+          title="活用中"
+          countVariant="success"
+          workers={activeWorkers}
+          emptyText="活用中のワーカーがいません。"
+          onToggle={(w) =>
+            mutate(() =>
+              fetch(`/api/ms-workers/${w.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ active: false }),
+              }),
+            )
+          }
+          onEdit={(id, payload) =>
+            mutate(() =>
+              fetch(`/api/ms-workers/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              }),
+            )
+          }
+          onDelete={(w) =>
+            mutate(() => fetch(`/api/ms-workers/${w.id}`, { method: "DELETE" }))
+          }
+        />
+
+        {/* 未活用 */}
+        <WorkerSection
+          title="未活用"
+          countVariant="secondary"
+          dimmed
+          workers={inactiveWorkers}
+          emptyText="未活用のワーカーはいません。"
+          onToggle={(w) =>
+            mutate(() =>
+              fetch(`/api/ms-workers/${w.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ active: true }),
+              }),
+            )
+          }
+          onEdit={(id, payload) =>
+            mutate(() =>
+              fetch(`/api/ms-workers/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              }),
+            )
+          }
+          onDelete={(w) =>
+            mutate(() => fetch(`/api/ms-workers/${w.id}`, { method: "DELETE" }))
+          }
+        />
+
+        <p className="text-[11px] text-zinc-400 leading-relaxed">
+          「未活用」にしたワーカーは週次グリッド（KPI集計）から外れますが、過去の実績データは保持されます。活用/未活用はいつでも切り替えできます。
+        </p>
       </div>
     </div>
+  );
+}
+
+// 新規登録フォーム
+function MsWorkerAddForm({
+  nextCode,
+  onCreate,
+}: {
+  nextCode: string;
+  onCreate: (payload: {
+    code: string | null;
+    name: string;
+    isAgency: boolean;
+    sortOrder: number;
+  }) => Promise<boolean>;
+}) {
+  const [code, setCode] = useState(nextCode);
+  const [name, setName] = useState("");
+  const [isAgency, setIsAgency] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  // モーダルを開き直した/一覧が変わった時に次番号を反映
+  useEffect(() => {
+    setCode(nextCode);
+  }, [nextCode]);
+
+  async function submit() {
+    if (!name.trim()) {
+      setLocalError("名前は必須です");
+      return;
+    }
+    setSaving(true);
+    setLocalError(null);
+    // sortOrder は code の数値（無ければ0）に揃え、番号順に並ぶようにする
+    const n = Number(code);
+    const ok = await onCreate({
+      code: code.trim() || null,
+      name: name.trim(),
+      isAgency,
+      sortOrder: Number.isFinite(n) ? n : 0,
+    });
+    setSaving(false);
+    if (ok) {
+      setName("");
+      setIsAgency(false);
+      // code は親から nextCode 更新が来るので触らない
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 space-y-3">
+      <div className="text-sm font-semibold text-zinc-700 flex items-center gap-1.5">
+        <Plus className="h-4 w-4 text-amber-600" />
+        新規登録
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-[100px_1fr_auto] gap-3 items-end">
+        <label className="text-xs space-y-1 block">
+          <span className="text-zinc-500">番号</span>
+          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="005" />
+        </label>
+        <label className="text-xs space-y-1 block">
+          <span className="text-zinc-500">名前</span>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="○○さん"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+            }}
+          />
+        </label>
+        <Button onClick={submit} disabled={saving} className="whitespace-nowrap">
+          {saving ? "登録中…" : "登録"}
+        </Button>
+      </div>
+      <label className="flex items-center gap-2 text-xs text-zinc-600">
+        <input type="checkbox" checked={isAgency} onChange={(e) => setIsAgency(e.target.checked)} />
+        代理店経由
+      </label>
+      {localError && <p className="text-xs text-red-600">{localError}</p>}
+    </div>
+  );
+}
+
+// 活用中/未活用 セクション
+function WorkerSection({
+  title,
+  countVariant,
+  workers,
+  emptyText,
+  dimmed = false,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  title: string;
+  countVariant: "success" | "secondary";
+  workers: ManagerWorker[];
+  emptyText: string;
+  dimmed?: boolean;
+  onToggle: (w: ManagerWorker) => Promise<boolean>;
+  onEdit: (
+    id: string,
+    payload: { code: string | null; name: string; isAgency: boolean },
+  ) => Promise<boolean>;
+  onDelete: (w: ManagerWorker) => Promise<boolean>;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold text-zinc-700">{title}</span>
+        <Badge variant={countVariant}>{workers.length}</Badge>
+      </div>
+      {workers.length === 0 ? (
+        <p className="text-xs text-zinc-400 py-2">{emptyText}</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {workers.map((w) => (
+            <WorkerRow
+              key={w.id}
+              worker={w}
+              dimmed={dimmed}
+              onToggle={onToggle}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// 1行（表示 or 編集）
+function WorkerRow({
+  worker,
+  dimmed,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  worker: ManagerWorker;
+  dimmed: boolean;
+  onToggle: (w: ManagerWorker) => Promise<boolean>;
+  onEdit: (
+    id: string,
+    payload: { code: string | null; name: string; isAgency: boolean },
+  ) => Promise<boolean>;
+  onDelete: (w: ManagerWorker) => Promise<boolean>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState(worker.code ?? "");
+  const [name, setName] = useState(worker.name);
+  const [isAgency, setIsAgency] = useState(worker.isAgency);
+
+  async function run(action: () => Promise<boolean>) {
+    setBusy(true);
+    await action();
+    setBusy(false);
+  }
+
+  async function saveEdit() {
+    if (!name.trim()) return;
+    setBusy(true);
+    const ok = await onEdit(worker.id, {
+      code: code.trim() || null,
+      name: name.trim(),
+      isAgency,
+    });
+    setBusy(false);
+    if (ok) setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <li className="rounded-md border border-amber-300 bg-amber-50 p-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-[90px_1fr] gap-2">
+          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="番号" />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="名前" />
+        </div>
+        <div className="flex items-center justify-between mt-2">
+          <label className="flex items-center gap-1.5 text-xs text-zinc-600">
+            <input
+              type="checkbox"
+              checked={isAgency}
+              onChange={(e) => setIsAgency(e.target.checked)}
+            />
+            代理店経由
+          </label>
+          <div className="flex gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setEditing(false);
+                setCode(worker.code ?? "");
+                setName(worker.name);
+                setIsAgency(worker.isAgency);
+              }}
+              disabled={busy}
+            >
+              キャンセル
+            </Button>
+            <Button size="sm" onClick={saveEdit} disabled={busy || !name.trim()}>
+              {busy ? "保存中…" : "保存"}
+            </Button>
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li
+      className={
+        "flex items-center gap-2 rounded-md border px-3 py-2 " +
+        (dimmed ? "border-zinc-200 bg-zinc-50/60" : "border-zinc-200 bg-white")
+      }
+    >
+      <span
+        className={
+          "text-[11px] tabular-nums w-9 shrink-0 " + (dimmed ? "text-zinc-400" : "text-zinc-500")
+        }
+      >
+        {worker.code ? `#${worker.code}` : "—"}
+      </span>
+      <span className={"text-sm flex-1 truncate " + (dimmed ? "text-zinc-500" : "text-zinc-900")}>
+        {worker.name}
+      </span>
+      {worker.isAgency && (
+        <Badge variant="secondary" className="text-[9px] shrink-0">
+          代理店
+        </Badge>
+      )}
+      {/* 活用/未活用トグル */}
+      <button
+        onClick={() => run(() => onToggle(worker))}
+        disabled={busy}
+        title={worker.active ? "未活用にする" : "活用中にする"}
+        className={
+          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 shrink-0 " +
+          (worker.active
+            ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+            : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300")
+        }
+      >
+        {worker.active ? <Power className="h-3 w-3" /> : <PowerOff className="h-3 w-3" />}
+        {worker.active ? "活用中" : "未活用"}
+      </button>
+      <button
+        onClick={() => setEditing(true)}
+        disabled={busy}
+        title="編集"
+        className="text-zinc-400 hover:text-zinc-700 disabled:opacity-50 shrink-0"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={() => {
+          if (confirm(`「${worker.name}」を削除しますか？\n（週次実績がある場合は未活用に切り替わり、履歴は保持されます）`))
+            run(() => onDelete(worker));
+        }}
+        disabled={busy}
+        title="削除"
+        className="text-zinc-400 hover:text-red-600 disabled:opacity-50 shrink-0"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </li>
   );
 }
 

@@ -107,6 +107,7 @@ export default async function DashboardPage() {
               deals={deals}
               title="あなたの進行中商談（次回アクション順）"
               canDelete={canEdit}
+              editable={canEdit}
             />
           </div>
           <div className="hidden xl:flex xl:col-span-4 flex-col p-4 bg-white">

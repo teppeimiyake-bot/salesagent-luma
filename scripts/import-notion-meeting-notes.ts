@@ -2,46 +2,74 @@
  * Notion ヨミ表DB → deals.bant.meetingNotes 取込スクリプト
  *
  * 方針:
- * - 各 Notion ページから Block を再帰取得し、「★初回商談ヒアリングシート」
- *   heading_1 セクション配下を議事録本文として採用。
- * - 該当 heading が無いページは null（既存値があれば保護）。
- * - 該当 Deal は `deals.bant.notionPageId` で一意紐付け（全1654件に既に入っている）。
+ * - 各 Notion ページから Block を再帰取得し、全テキストを markdown 風に連結（FULL_PAGE_MODE）。
+ * - 該当 Deal は `deals.bant.notionPageId` で一意紐付け。
  * - 保存先: deals.bant の以下キー（スキーマ変更なし）
  *     - meetingNotes        : 議事録本文（plain markdown 風）
- *     - meetingNotesSection : 採用したセクション見出し（"★初回商談ヒアリングシート"）
+ *     - meetingNotesSection : "full_page"
  *     - meetingNotesSource  : "notion"
  *     - meetingNotesUpdatedAt: ISO 文字列（本投入時刻）
  *     - meetingNotesNotionLastEditedAt: Notion ページの last_edited_time
  *
  * 安全策:
- * - DATABASE_URL に "salesagent_luma" を含まない場合は即 abort
+ * - DATABASE_URL に "salesagent_luma" / "neondb" を含まない場合は即 abort
  * - NOTION_API_KEY 未設定なら即 abort
  * - 既存 bant.meetingNotes が入っていて、Notion 側に内容が無い場合は上書きしない
- * - レート制限考慮: 各ページごとに 350ms sleep（< 3 req/sec）
+ * - レート制限考慮: 各ページごとに sleep（< 3 req/sec）
  * - 個人情報を含むため、議事録本文をログに長く出力しない
+ *
+ * 堅牢化（504/502/429/ハング対策）:
+ * - undici Agent で headersTimeout / bodyTimeout を強制（pooled keep-alive socket のハングを socket レベルで切る）
+ * - keep-alive を短命化し、stuck socket の再利用を避ける
+ * - 5xx / ネットワークエラー / タイムアウト時は指数バックオフで最大5回リトライ
+ * - リトライ尽きたページは warn を出してスキップし、処理全体は止めない
  *
  * 使い方:
  *   export PATH="/c/dev/node-v22.12.0-win-x64:$PATH"
  *   # ドライラン（DB書き込みなし、件数とサンプル3件出力）
  *   npx tsx --env-file=.env scripts/import-notion-meeting-notes.ts
- *   # 本投入
+ *   # 本投入（ローカルDB）
  *   npx tsx --env-file=.env scripts/import-notion-meeting-notes.ts --apply
+ *   # 本投入（Neon 本番。DATABASE_URL を上書きして .env から Notion キーを使う）
+ *   PROD=$(grep ^DATABASE_URL= .env.production.local | sed -E 's/^DATABASE_URL=//; s/^"//; s/"$//')
+ *   DATABASE_URL="$PROD" RESUME=1 npx tsx --env-file=.env scripts/import-notion-meeting-notes.ts --apply
  */
 
+import { Agent, setGlobalDispatcher } from "undici";
 import { prisma } from "../src/lib/db";
 
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const NOTION_DB_ID = process.env.NOTION_LUMA_YOMI_DB_ID;
 const NOTION_VERSION = "2025-09-03";
 const TARGET_HEADING = "★初回商談ヒアリングシート";
-const RATE_LIMIT_SLEEP_MS = 800;
-const CHILD_BLOCK_SLEEP_MS = 500;
+// レート制限考慮の sleep（env で調整可能）。Notion は平均 ~3 req/sec まで許容。
+// 429 はリトライで吸収するため、デフォルトをやや短めにして全体時間を抑える。
+const RATE_LIMIT_SLEEP_MS = process.env.PAGE_SLEEP_MS ? Number(process.env.PAGE_SLEEP_MS) : 350;
+const CHILD_BLOCK_SLEEP_MS = process.env.CHILD_SLEEP_MS ? Number(process.env.CHILD_SLEEP_MS) : 150;
 // 全Block取込モード（深度3まで再帰）
 const MAX_BLOCK_DEPTH = 3;
 const FULL_PAGE_MODE = true;
 
 const APPLY = process.argv.includes("--apply");
 const DRY_RUN = !APPLY;
+
+// 5xx/ネットワークエラー用の指数バックオフ。max5回（1s→2s→4s→8s→16s）。
+const MAX_TRANSIENT_RETRIES = 5;
+// ソケットレベルのタイムアウト（undici が直接強制する。AbortController と違い pooled socket でも確実に切れる）
+const HEADERS_TIMEOUT_MS = 30000;
+const BODY_TIMEOUT_MS = 30000;
+
+// undici グローバル dispatcher: ヘッダ/ボディのタイムアウトを socket レベルで強制し、
+// keep-alive socket を短命化して stuck socket の再利用を防ぐ。
+setGlobalDispatcher(
+  new Agent({
+    headersTimeout: HEADERS_TIMEOUT_MS,
+    bodyTimeout: BODY_TIMEOUT_MS,
+    keepAliveTimeout: 5000,
+    keepAliveMaxTimeout: 10000,
+    connect: { timeout: 15000 },
+  }),
+);
 
 function safeCheck() {
   const url = process.env.DATABASE_URL ?? "";
@@ -62,11 +90,48 @@ function safeCheck() {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-// 5xx/ネットワークエラー用の指数バックオフ。max5回（1s→2s→4s→8s→16s）。
-const MAX_TRANSIENT_RETRIES = 5;
-// ハング対策: 1リクエストが30秒応答しなければ abort → transient リトライへ。
-// （タイムアウト無しの fetch はソケットが固まると永久に await し続け、無言で停止する）
-const REQUEST_TIMEOUT_MS = 30000;
+// 1リクエストの実時間ハードリミット。これを超えたら（ソケットが固まって
+// undici/AbortController が応答しなくても）Promise.race で必ず reject させ、
+// リトライへ移行する。固まったソケットは leak するが一回限りのバックフィルなので許容。
+const HARD_REQUEST_TIMEOUT_MS = 25000;
+
+class HardTimeoutError extends Error {
+  constructor() {
+    super(`hard-timeout >${HARD_REQUEST_TIMEOUT_MS}ms`);
+    this.name = "HardTimeoutError";
+  }
+}
+
+/** op を HARD_REQUEST_TIMEOUT_MS でタイムボックス。超過時は ac.abort() して reject。 */
+function withHardTimeout<T>(ac: AbortController, op: () => Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      try {
+        ac.abort();
+      } catch {
+        // ignore
+      }
+      reject(new HardTimeoutError());
+    }, HARD_REQUEST_TIMEOUT_MS);
+  });
+  return Promise.race([op().finally(() => clearTimeout(timer)), timeout]);
+}
+
+function isTransient(e: unknown): boolean {
+  const err = e as { name?: string; code?: string; message?: string };
+  const name = err?.name ?? "";
+  const code = err?.code ?? "";
+  const msg = err?.message ?? "";
+  return (
+    name === "AbortError" ||
+    name === "HardTimeoutError" ||
+    /Timeout|TimeoutError/i.test(name) ||
+    /UND_ERR_(HEADERS_TIMEOUT|BODY_TIMEOUT|CONNECT_TIMEOUT|SOCKET)/i.test(code) ||
+    /ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|ENOTFOUND/i.test(code) ||
+    /timeout|terminated|socket|network|fetch failed/i.test(msg)
+  );
+}
 
 async function notionFetch(path: string, init?: RequestInit): Promise<unknown> {
   let rateRetries = 0;
@@ -75,36 +140,38 @@ async function notionFetch(path: string, init?: RequestInit): Promise<unknown> {
     let res: Response;
     let text: string;
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
     try {
-      res = await fetch(`https://api.notion.com${path}`, {
-        ...init,
-        signal: ac.signal,
-        headers: {
-          Authorization: `Bearer ${NOTION_API_KEY}`,
-          "Notion-Version": NOTION_VERSION,
-          "Content-Type": "application/json",
-          ...(init?.headers || {}),
-        },
+      // fetch + 本文読み出しを 1 つの hard-timeout 配下に置く。
+      // ソケットが固まっても HARD_REQUEST_TIMEOUT_MS で必ず reject される。
+      const out = await withHardTimeout(ac, async () => {
+        const r = await fetch(`https://api.notion.com${path}`, {
+          ...init,
+          signal: ac.signal,
+          headers: {
+            Authorization: `Bearer ${NOTION_API_KEY}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+            ...(init?.headers || {}),
+          },
+        });
+        const t = await r.text();
+        return { r, t };
       });
-      // 本文読み出しもタイムアウト管轄に含める（ヘッダだけ返って本文で固まるケース対策）
-      text = await res.text();
+      res = out.r;
+      text = out.t;
     } catch (e) {
-      // ネットワークエラー / abort（タイムアウト）/ 接続断 → 指数バックオフでリトライ
-      const aborted = (e as Error)?.name === "AbortError";
-      if (transientRetries < MAX_TRANSIENT_RETRIES) {
+      // ネットワークエラー / タイムアウト / 接続断 → 指数バックオフでリトライ
+      if (isTransient(e) && transientRetries < MAX_TRANSIENT_RETRIES) {
         const wait = 1000 * Math.pow(2, transientRetries);
-        const label = aborted ? `timeout >${REQUEST_TIMEOUT_MS}ms` : (e as Error).message?.slice(0, 80) ?? "fetch failed";
+        const label = ((e as Error).name || "") + " " + ((e as { code?: string }).code || "") + " " + ((e as Error).message?.slice(0, 60) ?? "");
         console.warn(
-          `  [network] ${label}, retry ${transientRetries + 1}/${MAX_TRANSIENT_RETRIES} in ${wait}ms`,
+          `  [network] ${label.trim()}, retry ${transientRetries + 1}/${MAX_TRANSIENT_RETRIES} in ${wait}ms`,
         );
         await sleep(wait);
         transientRetries++;
         continue;
       }
       throw new Error(`Notion network error ${path}: ${(e as Error).message?.slice(0, 200)}`);
-    } finally {
-      clearTimeout(timer);
     }
 
     // 429: レート制限（既存ロジック維持）
@@ -162,7 +229,6 @@ function blockText(b: NotionBlock): string {
 function formatBlockLine(b: NotionBlock, depth: number): string | null {
   const text = blockText(b);
   if (!text) {
-    // 空 block でも箇条書きスタイルなら "・" 出すなど将来検討。今は省略。
     return null;
   }
   const indent = "  ".repeat(Math.min(depth, MAX_BLOCK_DEPTH));
@@ -219,7 +285,6 @@ async function listAllBlocks(blockId: string, depth = 0): Promise<FlatBlock[]> {
         formatted: formatted ?? "",
       });
       if (b.has_children) {
-        // child 取得（再帰スリープ＝Notion API rate limit対策）
         await sleep(CHILD_BLOCK_SLEEP_MS);
         const child = await listAllBlocks(b.id, depth + 1);
         out.push(...child);
@@ -316,7 +381,7 @@ async function main() {
   safeCheck();
   console.log(`\n=== Notion 議事録取込 ${DRY_RUN ? "[DRY RUN]" : "[APPLY]"} ===\n`);
   console.log(`  target heading: ${TARGET_HEADING}`);
-  console.log(`  database: ${process.env.DATABASE_URL?.match(/\/([^/?]+)\?/)?.[1] ?? "?"}`);
+  console.log(`  database: ${process.env.DATABASE_URL?.match(/\/([^/?]+)\?/)?.[1] ?? (process.env.DATABASE_URL?.includes("neondb") ? "neondb" : "?")}`);
   console.log(`  notion db: ${NOTION_DB_ID}`);
 
   // 1) DBの全 deals を notionPageId 付きで取得
@@ -325,7 +390,6 @@ async function main() {
   });
   console.log(`  deals in DB: ${deals.length}`);
 
-  // notionPageId → deal の index 構築
   const byPageId = new Map<
     string,
     { dealId: string; title: string; companyName: string; existingNotes: string | null }
@@ -365,6 +429,8 @@ async function main() {
   let willSkipExisting = 0;
   let willSkipNoMatch = 0;
   let willSkipNoTarget = 0;
+  let pagesFailed = 0;
+  const failedPageIds: string[] = [];
   const samples: { company: string; title: string; chars: number; preview: string }[] = [];
   const updates: {
     dealId: string;
@@ -373,7 +439,6 @@ async function main() {
   }[] = [];
 
   const limit = process.env.LIMIT ? Number(process.env.LIMIT) : Infinity;
-  // RESUME=1 が指定された場合、既存 meetingNotes ありの page は即 skip（API call なし）
   const resumeMode = process.env.RESUME === "1";
   if (limit !== Infinity) {
     console.log(`  [limit] processing first ${limit} unprocessed pages (LIMIT env var)`);
@@ -390,11 +455,9 @@ async function main() {
     if (!mapped) {
       notMatchedToDb++;
       willSkipNoMatch++;
-      // API call なしのスキップなのでsleep不要
       continue;
     }
 
-    // RESUME モード: 既存notesありなら即スキップ
     if (resumeMode && mapped.existingNotes) {
       willSkipExisting++;
       continue;
@@ -407,7 +470,7 @@ async function main() {
     }
     if (processedSinceStart % 10 === 0) {
       console.log(
-        `  [progress] ${processedSinceStart} processed (page ${processed}/${pages.length}), extracted=${extractedCount}, willUpdate=${willUpdate}`,
+        `  [progress] ${processedSinceStart} processed (page ${processed}/${pages.length}), extracted=${extractedCount}, willUpdate=${willUpdate}, failed=${pagesFailed}`,
       );
     }
 
@@ -415,7 +478,9 @@ async function main() {
     try {
       blocks = await listAllBlocks(p.id, 0);
     } catch (e) {
-      console.warn(`  [warn] failed to list blocks for page ${p.id}: ${(e as Error).message}`);
+      pagesFailed++;
+      failedPageIds.push(p.id);
+      console.warn(`  [warn] failed to list blocks for page ${p.id}: ${(e as Error).message?.slice(0, 120)}`);
       await sleep(RATE_LIMIT_SLEEP_MS);
       continue;
     }
@@ -434,7 +499,6 @@ async function main() {
     extractedCount++;
     extractedTotalChars += body.length;
 
-    // 既存 meetingNotes があり、新規本文と完全一致なら skip
     if (mapped.existingNotes && mapped.existingNotes === body) {
       willSkipExisting++;
       await sleep(RATE_LIMIT_SLEEP_MS);
@@ -464,12 +528,16 @@ async function main() {
   console.log(`  total notion pages         : ${pages.length}`);
   console.log(`  matched to DB deal         : ${pages.length - notMatchedToDb}`);
   console.log(`  not matched to DB          : ${notMatchedToDb}`);
-  console.log(`  extracted (target found)   : ${extractedCount}`);
+  console.log(`  extracted (content found)  : ${extractedCount}`);
   console.log(`  avg chars (extracted)      : ${extractedCount > 0 ? Math.round(extractedTotalChars / extractedCount) : 0}`);
   console.log(`  will update                : ${willUpdate}`);
-  console.log(`  skip (already same content): ${willSkipExisting}`);
-  console.log(`  skip (no target heading)   : ${willSkipNoTarget}`);
+  console.log(`  skip (already same/exists) : ${willSkipExisting}`);
+  console.log(`  skip (no content)          : ${willSkipNoTarget}`);
   console.log(`  skip (no DB match)         : ${willSkipNoMatch}`);
+  console.log(`  pages failed (retry exhausted): ${pagesFailed}`);
+  if (failedPageIds.length > 0) {
+    console.log(`  failed page ids (first 20) : ${failedPageIds.slice(0, 20).join(", ")}`);
+  }
 
   // 4) サンプル表示
   console.log(`\n=== Sample 3 ===`);
@@ -527,7 +595,7 @@ async function main() {
       console.warn(`  [write-error] dealId=${u.dealId}: ${(e as Error).message}`);
     }
   }
-  console.log(`\n[APPLY] done. wrote=${wrote} errors=${writeErrors}`);
+  console.log(`\n[APPLY] done. wrote=${wrote} errors=${writeErrors} pagesFailed=${pagesFailed}`);
 
   await prisma.$disconnect();
 }
