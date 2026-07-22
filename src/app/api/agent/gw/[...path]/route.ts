@@ -17,6 +17,7 @@ const ALLOW: { method: string; pattern: RegExp }[] = [
   { method: "GET", pattern: /^api\/sources$/ },
   { method: "GET", pattern: /^api\/source-states$/ },
   { method: "POST", pattern: /^api\/runs$/ },
+  { method: "POST", pattern: /^api\/runs\/[a-f0-9]+\/cancel$/ },
   { method: "GET", pattern: /^api\/runs\/[a-f0-9]+$/ },
   { method: "GET", pattern: /^api\/runs\/[a-f0-9]+\/stream$/ },
   { method: "GET", pattern: /^api\/runs\/[a-f0-9]+\/results$/ },

@@ -415,7 +415,8 @@ function RunPanel({
 
   // フォーム状態
   const [sourceId, setSourceId] = useState<string>("");
-  const [mode, setMode] = useState<"dry-run" | "factcheck">("dry-run");
+  // お試し(dry-run)モードは廃止。常に本番(factcheck)実行のみ。
+  const [mode] = useState<"dry-run" | "factcheck">("factcheck");
   const [limit, setLimit] = useState<number>(20);
   const [startPosition, setStartPosition] = useState<number | "">("");
   const [seqFrom, setSeqFrom] = useState<number | "">("");
@@ -437,10 +438,12 @@ function RunPanel({
   const [summary, setSummary] = useState<RunSummary | null>(null);
   const [results, setResults] = useState<ResultCompany[]>([]);
   const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
 
   const esRef = useRef<EventSource | null>(null);
   const logBoxRef = useRef<HTMLDivElement | null>(null);
   const runMetaRef = useRef<{ source: string; mode: string } | null>(null);
+  const runIdRef = useRef<string | null>(null);
 
   const selectedSource = useMemo(
     () => sources.find((s) => s.id === sourceId) ?? null,
@@ -509,6 +512,7 @@ function RunPanel({
           const st = await stRes.json();
           if (st.status === "running") {
             runMetaRef.current = { source: st.source, mode: st.mode };
+            runIdRef.current = saved;
             attachStream(saved);
             setPhase("running");
           } else {
@@ -612,6 +616,7 @@ function RunPanel({
   async function startRun() {
     if (!selectedSource || starting) return;
     setStarting(true);
+    setStopping(false);
     setRunError(null);
     try {
       const params: Record<string, unknown> = {
@@ -637,6 +642,7 @@ function RunPanel({
         );
       }
       runMetaRef.current = { source: selectedSource.id, mode };
+      runIdRef.current = data.run_id;
       window.localStorage.setItem(ACTIVE_RUN_KEY, data.run_id);
       setLogs([]);
       setProgress({ count_done: null, count_total: limit, stage: null, company: null });
@@ -649,6 +655,24 @@ function RunPanel({
       setRunError(e instanceof Error ? e.message : "実行開始に失敗しました");
     } finally {
       setStarting(false);
+    }
+  }
+
+  /* ---- 途中停止 ---- */
+  async function handleStop() {
+    const runId = runIdRef.current;
+    if (!runId || stopping) return;
+    setStopping(true);
+    try {
+      const res = await fetch(`${GW}/api/runs/${runId}/cancel`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail ?? data.error ?? `停止に失敗しました（${res.status}）`);
+      }
+      // 実際の停止完了は SSE の done イベントで検知される (attachStream 側で phase="done" に遷移)
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : "停止に失敗しました");
+      setStopping(false);
     }
   }
 
@@ -734,28 +758,40 @@ function RunPanel({
     const pct = total ? Math.min(100, Math.round((done / total) * 100)) : null;
     return (
       <div className="mx-auto max-w-4xl px-6 py-8">
-        <div className="mb-6">
-          <div className="flex items-center gap-2 text-[13px] font-medium text-zinc-500">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            実行中
-            {runMetaRef.current && (
-              <>
-                <span className="text-zinc-300">·</span>
-                {sources.find((s) => s.id === runMetaRef.current?.source)?.label ??
-                  runMetaRef.current.source}
-                <span className="text-zinc-300">·</span>
-                {runMetaRef.current.mode === "dry-run" ? "お試し" : "本番"}
-              </>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-[13px] font-medium text-zinc-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              実行中
+              {runMetaRef.current && (
+                <>
+                  <span className="text-zinc-300">·</span>
+                  {sources.find((s) => s.id === runMetaRef.current?.source)?.label ??
+                    runMetaRef.current.source}
+                </>
+              )}
+            </div>
+            <h2 className="mt-1 text-xl font-bold tracking-tight text-zinc-900">
+              {progress.stage
+                ? (STAGE_LABEL[progress.stage] ?? progress.stage)
+                : "準備しています…"}
+            </h2>
+            {progress.company && (
+              <p className="mt-1 truncate text-sm text-zinc-500">{progress.company}</p>
             )}
           </div>
-          <h2 className="mt-1 text-xl font-bold tracking-tight text-zinc-900">
-            {progress.stage
-              ? (STAGE_LABEL[progress.stage] ?? progress.stage)
-              : "準備しています…"}
-          </h2>
-          {progress.company && (
-            <p className="mt-1 truncate text-sm text-zinc-500">{progress.company}</p>
-          )}
+          <button
+            onClick={handleStop}
+            disabled={stopping}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3.5 py-2 text-[13px] font-medium text-red-600 shadow-sm transition-colors hover:bg-red-50 disabled:opacity-50"
+          >
+            {stopping ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <XCircle className="h-3.5 w-3.5" />
+            )}
+            {stopping ? "停止中…" : "途中で止める"}
+          </button>
         </div>
 
         {/* 進捗バー */}
@@ -783,7 +819,7 @@ function RunPanel({
           </div>
           <style>{`@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(400%)}}`}</style>
           <p className="mt-3 text-[11px] text-zinc-400">
-            実行はサーバー側で継続されます。画面を離れても中断されません（途中キャンセルは不可）。
+            実行はサーバー側で継続されます。画面を離れても中断されません。「途中で止める」を押すと、完了済みループの結果は台帳に残したまま停止します（処理中だったループの分は反映されません）。
           </p>
         </div>
 
@@ -816,7 +852,7 @@ function RunPanel({
   if (phase === "done") {
     const totals = summary?.totals;
     const succeeded = runStatus === "succeeded";
-    const wasProd = runMetaRef.current?.mode === "factcheck";
+    const cancelled = runStatus === "cancelled";
     return (
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
@@ -827,14 +863,18 @@ function RunPanel({
               ) : (
                 <XCircle className="h-4 w-4 text-zinc-400" />
               )}
-              {succeeded ? "実行が完了しました" : "実行が失敗しました"}
+              {succeeded
+                ? "実行が完了しました"
+                : cancelled
+                  ? "途中で停止しました"
+                  : "実行が失敗しました"}
             </div>
             <h2 className="mt-1 text-xl font-bold tracking-tight text-zinc-900">
               結果
             </h2>
           </div>
           <div className="flex items-center gap-2">
-            {wasProd && sheetsUrl && (
+            {sheetsUrl && (
               <a
                 href={sheetsUrl}
                 target="_blank"
@@ -972,65 +1012,9 @@ function RunPanel({
         })}
       </div>
 
-      {/* STEP 2: モード */}
+      {/* STEP 2: 件数・範囲 */}
       <div className="mt-8">
-        <SectionLabel step="2" title="実行モード" subtitle="結果の反映先" />
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {(
-            [
-              {
-                key: "dry-run",
-                title: "お試し",
-                desc: "台帳には書き込まず、結果だけをこの画面で確認します。初回や設定確認におすすめ。",
-              },
-              {
-                key: "factcheck",
-                title: "本番",
-                desc: "実行結果を台帳（Google Sheets）へ反映します。ファクトチェックまで実施。",
-              },
-            ] as const
-          ).map((m) => {
-            const active = mode === m.key;
-            return (
-              <button
-                key={m.key}
-                onClick={() => setMode(m.key)}
-                className={cn(
-                  "rounded-2xl border bg-white p-4 text-left shadow-sm transition-all duration-200",
-                  active
-                    ? "border-zinc-900 ring-1 ring-zinc-900"
-                    : "border-zinc-200/80 hover:border-zinc-300 hover:shadow-md",
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[14px] font-semibold text-zinc-900">
-                    {m.title}
-                  </span>
-                  <span
-                    className={cn(
-                      "flex h-4.5 w-4.5 items-center justify-center rounded-full border transition-colors",
-                      active
-                        ? "border-zinc-900 bg-zinc-900"
-                        : "border-zinc-300 bg-white",
-                    )}
-                  >
-                    {active && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                    )}
-                  </span>
-                </div>
-                <p className="mt-1.5 text-[12px] leading-relaxed text-zinc-500">
-                  {m.desc}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* STEP 3: 件数・範囲 */}
-      <div className="mt-8">
-        <SectionLabel step="3" title="対象範囲" subtitle="処理する会社の件数" />
+        <SectionLabel step="2" title="対象範囲" subtitle="処理する会社の件数" />
         <div className="mt-3 rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <NumberField
