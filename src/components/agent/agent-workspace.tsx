@@ -162,6 +162,9 @@ type Candidate = {
 
 const GW = "/api/agent/gw";
 const ACTIVE_RUN_KEY = "luma_agent_active_run";
+// 営業台帳（GAS組込済み、送信元設定・メニューはこのシート内の「設定」シートで管理）
+const LEDGER_SHEET_URL =
+  "https://docs.google.com/spreadsheets/d/1cuXK1K0GTK0u_J51MF4qQQueP1M_iTUcFBavhOIZr6Q/edit";
 
 /* ------------------------------- 小物 UI ------------------------------- */
 
@@ -336,8 +339,17 @@ export function AgentWorkspace({
             })}
           </div>
 
-          {/* 右側はバランス用のスペーサー */}
-          <div className="hidden w-32 lg:block" />
+          {/* 営業台帳（GAS組込済み）を新タブで開く */}
+          <a
+            href={LEDGER_SHEET_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[13px] font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50"
+          >
+            <Table2 className="h-3.5 w-3.5" />
+            営業台帳を開く
+            <ExternalLink className="h-3 w-3 text-zinc-400" />
+          </a>
         </div>
       </header>
 
