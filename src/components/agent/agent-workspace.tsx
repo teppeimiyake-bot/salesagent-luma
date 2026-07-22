@@ -2,7 +2,7 @@
 // エージェントメイン画面（モノトーン / Apple・Airbnb ライクな操作感）。
 // 旧: Cloud Run の営業リスト自動化ツール UI を iframe 埋め込み → 全面撤去し、
 // Luma ネイティブの実行 UI に一新した。通信は /api/agent/gw 経由の server-to-server。
-// - ワークスペース: 収集先の選択 → モード（お試し/本番） → 実行 → ライブ進捗 → 結果
+// - ワークスペース: 収集先の選択 → 実行（常に本番/factcheck）→ ライブ進捗 → 結果
 // - 実行履歴: Cloud Run 側に残る過去 run の一覧・詳細
 // - 概要: staging 候補ステータスの概況
 // - 候補リスト: staging 候補のレビュー（承認/却下/取り込みは admin のみ）
@@ -1097,8 +1097,6 @@ function RunPanel({
             <div className="text-[13px] font-semibold text-zinc-900">
               {selectedSource?.label ?? "—"}
               <span className="mx-1.5 text-zinc-300">·</span>
-              {mode === "dry-run" ? "お試し" : "本番"}
-              <span className="mx-1.5 text-zinc-300">·</span>
               {limit} 社
             </div>
             <div className="mt-0.5 text-[12px] text-zinc-500">
@@ -1115,7 +1113,7 @@ function RunPanel({
             ) : (
               <Play className="h-4 w-4" />
             )}
-            {mode === "dry-run" ? "お試し実行" : "本番実行"}
+            本番実行
           </button>
         </div>
       </div>
