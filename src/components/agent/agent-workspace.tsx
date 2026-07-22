@@ -424,6 +424,8 @@ function RunPanel({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [parallel, setParallel] = useState<number>(30);
   const [maxLoops, setMaxLoops] = useState<number>(3);
+  // メール/フォーム文面の生成 (STEP3)。現状テンプレは luma ブランドのみ。
+  const [generateMessages, setGenerateMessages] = useState(true);
 
   // 実行状態
   const [runError, setRunError] = useState<string | null>(null);
@@ -624,6 +626,11 @@ function RunPanel({
         parallel,
         max_loops: maxLoops,
       };
+      if (generateMessages) {
+        params.include_step3 = true;
+        params.brand = "luma";
+        params.brief = true;
+      }
       if (selectedSource.supports_seq_range) {
         if (seqFrom !== "") params.seq_from = seqFrom;
         if (seqTo !== "") params.seq_to = seqTo;
@@ -1050,6 +1057,24 @@ function RunPanel({
               />
             )}
           </div>
+
+          <label className="mt-4 flex items-start gap-2.5 rounded-xl border border-zinc-200/80 bg-zinc-50/60 p-3.5">
+            <input
+              type="checkbox"
+              checked={generateMessages}
+              onChange={(e) => setGenerateMessages(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
+            />
+            <span>
+              <span className="block text-[13px] font-medium text-zinc-900">
+                メール・フォーム文面も生成する
+              </span>
+              <span className="block text-[11px] text-zinc-500">
+                Lumaブランドのテンプレを使い、宛先企業ごとに冒頭文を軽く個社化して件名・本文を生成します。
+                オフにすると会社情報の抽出（HP・連絡先の解決）までで止まります。
+              </span>
+            </span>
+          </label>
 
           <button
             onClick={() => setShowAdvanced((v) => !v)}
