@@ -19,6 +19,8 @@ import {
   GitBranch,
   Film,
   PhoneCall,
+  PhoneOutgoing,
+  ExternalLink,
   Merge,
   Wallet,
   Clapperboard,
@@ -36,6 +38,8 @@ const baseGroups = [
       { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard, color: "text-orange-500", activeBg: "bg-orange-500" },
       { href: "/agent", label: "エージェント", icon: Bot, color: "text-indigo-500", activeBg: "bg-indigo-500" },
       { href: "/todos", label: "ToDo", icon: CheckSquare, color: "text-orange-500", activeBg: "bg-orange-500" },
+      // 架電エージェント（Luma 架電管理）へ別タブで遷移する外部リンク
+      { href: "https://callagent-luma.vercel.app", label: "架電エージェント", icon: PhoneOutgoing, color: "text-orange-600", activeBg: "bg-orange-600", external: true },
       { href: "/deals", label: "商談", icon: Briefcase, color: "text-amber-500", activeBg: "bg-amber-500" },
       { href: "/ms", label: "ms管理", icon: PhoneCall, color: "text-amber-600", activeBg: "bg-amber-600" },
       { href: "/ms-outreach", label: "MS送付状況", icon: Send, color: "text-amber-600", activeBg: "bg-amber-600" },
@@ -127,6 +131,22 @@ export function Sidebar({
               {g.items.map((it) => {
                 const active = pathname === it.href || pathname.startsWith(it.href + "/");
                 const Icon = it.icon;
+                // 外部リンク（架電エージェント等）は別タブで開く
+                if ("external" in it && it.external) {
+                  return (
+                    <a
+                      key={it.href}
+                      href={it.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-base transition-all text-zinc-700 hover:bg-zinc-100 font-medium"
+                    >
+                      <Icon className={cn("h-5 w-5", it.color)} />
+                      {it.label}
+                      <ExternalLink className="h-3.5 w-3.5 text-zinc-400 ml-auto" />
+                    </a>
+                  );
+                }
                 return (
                   <Link
                     key={it.href}
