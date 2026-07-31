@@ -33,12 +33,14 @@ import {
   Loader2,
   AlertCircle,
   Table2,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SendGuidePanel } from "@/components/agent/send-guide-panel";
 
 /* ---------------------------------- 型 ---------------------------------- */
 
-type Tab = "workspace" | "history" | "overview" | "candidates";
+type Tab = "workspace" | "history" | "overview" | "candidates" | "guide";
 
 type SourceDefaults = {
   mode?: string;
@@ -279,6 +281,7 @@ export function AgentWorkspace({
     { key: "history", label: "実行履歴", icon: Clock },
     { key: "overview", label: "概要", icon: Layers },
     { key: "candidates", label: "候補リスト", icon: Inbox },
+    { key: "guide", label: "使い方", icon: BookOpen },
   ];
 
   return (
@@ -387,6 +390,12 @@ export function AgentWorkspace({
         {tab === "candidates" && (
           <div className="absolute inset-0 overflow-y-auto">
             <CandidatesPanel isAdmin={isAdmin} onChanged={loadOverview} />
+          </div>
+        )}
+
+        {tab === "guide" && (
+          <div className="absolute inset-0 overflow-y-auto">
+            <SendGuidePanel ledgerUrl={LEDGER_SHEET_URL} />
           </div>
         )}
       </div>
