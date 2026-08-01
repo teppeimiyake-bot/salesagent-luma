@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, prismaUnscoped } from "@/lib/db";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +27,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params;
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    // 統合の取り消しも同様に両社分を戻す必要があるため境界を通さない
+    const result = await prismaUnscoped.$transaction(async (tx) => {
       const merge = await tx.companyMerge.findUnique({ where: { id } });
       if (!merge) throw new Error("マージ履歴が見つかりません");
       if (merge.undoneAt) throw new Error("このマージは既に復元済みです");

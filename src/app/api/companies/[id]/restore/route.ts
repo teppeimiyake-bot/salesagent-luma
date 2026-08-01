@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, prismaUnscoped } from "@/lib/db";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
 
 /**
@@ -35,12 +35,14 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     lte: new Date(deletedAt.getTime() + 2000),
   };
 
-  const result = await prisma.$transaction([
-    prisma.deal.updateMany({
+  // 企業の復元では、その企業にぶら下がる両社の商談をまとめて戻す必要があるため
+  // テナント境界を通さない（prisma を使うと片方の会社の商談だけ復元されてしまう）
+  const result = await prismaUnscoped.$transaction([
+    prismaUnscoped.deal.updateMany({
       where: { companyId: id, deletedAt: range },
       data: { deletedAt: null },
     }),
-    prisma.company.update({
+    prismaUnscoped.company.update({
       where: { id },
       data: { deletedAt: null },
     }),

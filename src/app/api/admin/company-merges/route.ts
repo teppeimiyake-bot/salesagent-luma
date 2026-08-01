@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
+import { prisma, prismaUnscoped } from "@/lib/db";
 import { getSession, getCurrentPermission, hasPermission } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +46,15 @@ export async function GET() {
   return NextResponse.json({ merges });
 }
 
+/**
+ * 企業マスタ（Company / Contact）は Luma・リージー共有だが、
+ * その配下の Deal はテナント所有。企業統合・復元では **両社の商談をまとめて**
+ * 付け替える必要があるため、テナント境界を通さない prismaUnscoped を使う。
+ *
+ * 通常の prisma を使うと Extension が tenant_id で絞り込み、
+ * 「操作した会社の商談だけ付け替わり、もう一方の会社の商談が消えた企業に取り残される」
+ * という復元困難な不整合になる。
+ */
 const mergeSchema = z.object({
   survivingCompanyId: z.string().min(1),
   mergedCompanyIds: z.array(z.string().min(1)).min(1),
@@ -83,7 +92,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    // 企業統合は両社の商談・連絡先をまとめて付け替えるため境界を通さない（下の注記参照）
+    const result = await prismaUnscoped.$transaction(async (tx) => {
       const surviving = await tx.company.findUnique({ where: { id: survivingCompanyId } });
       if (!surviving || surviving.deletedAt) {
         throw new Error("統合先企業が存在しないか、既にアーカイブ済みです");
