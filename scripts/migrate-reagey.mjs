@@ -60,6 +60,17 @@ const INDUSTRY_MAP = {
   other: "その他",
 };
 
+/**
+ * 同一人物だがメールアドレスが会社ごとに違う社員の対応表。
+ * リージー側のメール → Luma 側のメール。
+ *
+ * これが無いと別アカウントとして作られ、全社ビューの担当者別KPIで
+ * 同じ人が2行に分かれてしまう（社長判断 2026-08-01：1アカウントに統合する）。
+ */
+const USER_ALIASES = {
+  "ren.sakai@reeasy.jp": "ren.sakai@luma-create.com",
+};
+
 const src = new pg.Client({ connectionString: srcUrl });
 const dst = new pg.Client({ connectionString: dstUrl });
 await src.connect();
@@ -89,10 +100,12 @@ const dstByEmail = new Map(dstUsers.map((u) => [u.email.toLowerCase(), u.id]));
 const userMap = new Map(); // リージーのuser.id → Luma の user.id
 
 for (const u of srcUsers) {
-  const hit = dstByEmail.get(u.email.toLowerCase());
+  const email = u.email.toLowerCase();
+  const aliasTo = USER_ALIASES[email];
+  const hit = dstByEmail.get(email) ?? (aliasTo ? dstByEmail.get(aliasTo) : undefined);
   if (hit) {
     userMap.set(u.id, hit);
-    bump("既存ユーザーに紐付け");
+    bump(aliasTo && !dstByEmail.get(email) ? "既存ユーザーに統合（メール違い）" : "既存ユーザーに紐付け");
   } else {
     // メールが違う社員（坂井さんの @reeasy.jp）は別アカウントとして作る。
     // 1人1アカウントへの統合はメールのエイリアス対応が要るため v2 で行う。
