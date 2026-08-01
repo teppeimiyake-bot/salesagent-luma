@@ -12,6 +12,7 @@
  * 既存データは upsert で保護（同名があれば color / displayOrder / active を更新するだけ）。
  */
 import { prisma } from "../src/lib/db";
+import { LUMA_TENANT_ID } from "../prisma/tenant-ids";
 
 // Notion登録順そのまま（displayOrder = 1..13）
 const PLAN_PROPOSALS: { name: string; color: string }[] = [
@@ -49,7 +50,7 @@ async function main() {
     i += 1;
     const displayOrder = i;
     await prisma.planProposal.upsert({
-      where: { name: p.name },
+      where: { tenantId_name: { tenantId: LUMA_TENANT_ID, name: p.name } },
       update: { color: p.color, displayOrder, active: true },
       create: { name: p.name, color: p.color, displayOrder, active: true },
     });

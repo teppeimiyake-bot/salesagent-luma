@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     );
   }
   const { role, name } = parsed.data;
-  const exists = await prisma.pmStaff.findUnique({ where: { role_name: { role, name } } });
+  const exists = await prisma.pmStaff.findFirst({ where: { role, name } });
   if (exists) {
     // 既存（無効化済みかもしれない）→ 有効化して返す（重複作成を避ける）
     if (!exists.active) {

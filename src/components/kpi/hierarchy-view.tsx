@@ -60,6 +60,7 @@ type Hierarchy = {
 export function KpiHierarchyView({
   data,
   year, // 会計年度（FY2026 → 2026）
+  fiscalStartMonth, // 会計年度の開始月（Luma=6 / リージー=1）
   isOrgView,
   monthlyWonDeals,
   productMasters = [],
@@ -67,6 +68,7 @@ export function KpiHierarchyView({
 }: {
   data: Hierarchy;
   year: number;
+  fiscalStartMonth: number;
   isOrgView: boolean;
   /** period(YYYY-MM) → その月の受注案件カード一覧（月クリックのドリルダウン用） */
   monthlyWonDeals?: Record<string, WonDealCard[]>;
@@ -86,8 +88,8 @@ export function KpiHierarchyView({
   const remaining = Math.max(0, data.year.targetAmount - data.year.wonAmount);
   const labels = data.monthLabels;
   const now = new Date();
-  const isCurrentFy = year === getFiscalYear(now);
-  const currentMonthIdx = isCurrentFy ? getFiscalMonthIndex(now) : -1;
+  const isCurrentFy = year === getFiscalYear(fiscalStartMonth, now);
+  const currentMonthIdx = isCurrentFy ? getFiscalMonthIndex(fiscalStartMonth, now) : -1;
   const currentMonthLabel = currentMonthIdx >= 0 ? labels[currentMonthIdx] : null;
 
   // 月次グラフ用データ：目標 vs 実績の累積も併記

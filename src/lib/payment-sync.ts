@@ -23,12 +23,17 @@
  *   自動起票には不向きなため、まずスポット行で起票し、定期へは運用で振替える方針。
  *   （依頼は「入金管理タブにレコードが作成・反映される」こと。スポットで満たす。）
  */
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import type { prisma } from "@/lib/db";
 import { isWonYomi } from "@/lib/yomi-status";
 import { grossFromNet } from "@/lib/payments";
 
-/** トランザクションでも通常クライアントでも受けられる最小型 */
-type Db = PrismaClient | Prisma.TransactionClient;
+/**
+ * トランザクションでも通常クライアントでも受けられる最小型。
+ * 通常クライアント側はテナント境界の Extension を適用した型（typeof prisma）を指す。
+ * 素の PrismaClient を指定すると Extension 付きクライアントを渡せなくなるため注意。
+ */
+type Db = typeof prisma | Prisma.TransactionClient;
 
 export type PaymentSyncResult =
   | { created: true; invoiceRecordId: string; reason: "first_won_company" }
@@ -74,7 +79,7 @@ export async function syncWonProductToPayments(
   const sourceKey = `spot::auto::${dp.id}`;
 
   // ルール1：この DealProduct から既に自動生成済みなら何もしない
-  const existingAuto = await db.invoiceRecord.findUnique({
+  const existingAuto = await db.invoiceRecord.findFirst({
     where: { sourceKey },
     select: { id: true },
   });

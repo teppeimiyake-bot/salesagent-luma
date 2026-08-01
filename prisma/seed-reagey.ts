@@ -12,6 +12,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import bcrypt from "bcryptjs";
 import { DEFAULT_LEAD_SOURCES } from "../src/lib/lead-source";
+import { REAGEY_TENANT_ID } from "./tenant-ids";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is not set");
@@ -497,7 +498,7 @@ async function main() {
   // ============================================================
   for (const p of PRODUCTS) {
     const product = await prisma.product.upsert({
-      where: { name: p.name },
+      where: { tenantId_name: { tenantId: REAGEY_TENANT_ID, name: p.name } },
       update: {
         category: p.category,
         description: p.description ?? null,
@@ -532,7 +533,7 @@ async function main() {
   const leadSourceByName = new Map<string, string>(); // name → id
   for (const ls of DEFAULT_LEAD_SOURCES) {
     const created = await prisma.leadSource.upsert({
-      where: { name: ls.name },
+      where: { tenantId_name: { tenantId: REAGEY_TENANT_ID, name: ls.name } },
       update: { sortOrder: ls.sortOrder },
       create: { name: ls.name, sortOrder: ls.sortOrder, active: true },
     });
@@ -550,6 +551,7 @@ async function main() {
 
   for (const c of COMPANIES) {
     // 企業：name で重複防止（既存があれば update）
+    // Company は Luma / リージー 共有の企業マスタなので tenant では絞らない
     const existingCompany = await prisma.company.findFirst({ where: { name: c.name } });
     const company = existingCompany
       ? await prisma.company.update({
@@ -682,7 +684,7 @@ async function main() {
         const probability = yomiToProbability(yomi);
         const amount = c.amount && c.amount > 0 ? c.amount : null;
         // Productマスタを名寄せ
-        const productMaster = await prisma.product.findUnique({ where: { name: productName } });
+        const productMaster = await prisma.product.findUnique({ where: { tenantId_name: { tenantId: REAGEY_TENANT_ID, name: productName } } });
         await prisma.dealProduct.create({
           data: {
             dealId: deal.id,

@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   }
   const name = parsed.data.name.trim();
   // 重複チェック（無効化済みの同名があれば有効化して返す＝重複作成を避ける）
-  const exists = await prisma.industry.findUnique({ where: { name } });
+  const exists = await prisma.industry.findFirst({ where: { name } });
   if (exists) {
     if (!exists.active) {
       const reactivated = await prisma.industry.update({

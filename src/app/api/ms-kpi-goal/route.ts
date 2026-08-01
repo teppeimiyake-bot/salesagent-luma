@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
+import { currentTenantId } from "@/lib/tenant-context";
 import { fyPeriodLabel } from "@/lib/config";
 
 // MS送付のKPI目標（会計年度単位・組織全体の単一目標）の取得。閲覧は全ロール。
@@ -11,7 +12,7 @@ export async function GET(req: Request) {
   const fy = url.searchParams.get("fy");
   if (!fy) return NextResponse.json({ error: "fy required" }, { status: 400 });
   const period = fyPeriodLabel(Number(fy));
-  const goal = await prisma.msKpiGoal.findUnique({ where: { period } });
+  const goal = await prisma.msKpiGoal.findFirst({ where: { period } });
   return NextResponse.json({ goal });
 }
 
@@ -38,7 +39,9 @@ export async function POST(req: Request) {
   }
   const period = fyPeriodLabel(parsed.data.fy);
   const goal = await prisma.msKpiGoal.upsert({
-    where: { period },
+    // upsert の where はユニーク入力しか受けられず Extension が条件を足せないため、
+    // テナントスコープの複合ユニークを明示する（他社の目標を上書きしないための要）
+    where: { tenantId_period: { tenantId: currentTenantId(), period } },
     create: {
       period,
       targetReplyRate: parsed.data.targetReplyRate,

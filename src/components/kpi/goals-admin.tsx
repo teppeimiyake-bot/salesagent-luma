@@ -45,9 +45,11 @@ type SalesUser = { id: string; name: string; avatarColor: string | null };
  */
 export function GoalsAdmin({
   year, // 会計年度（FY2026 → 2026）
+  fiscalStartMonth, // 会計年度の開始月（Luma=6 / リージー=1）。会社ごとに違うのでサーバーから渡す
   users,
 }: {
   year: number;
+  fiscalStartMonth: number;
   users: SalesUser[];
 }) {
   const router = useRouter();
@@ -75,10 +77,10 @@ export function GoalsAdmin({
   const months = useMemo(
     () =>
       Array.from({ length: 12 }, (_, i) => {
-        const { year: y, month } = getFiscalMonth(year, i);
+        const { year: y, month } = getFiscalMonth(fiscalStartMonth, year, i);
         return { period: monthPeriodLabel(y, month), label: `${month}月`, y, month };
       }),
-    [year],
+    [year, fiscalStartMonth],
   );
 
   // 現在の編集対象（owner）の月次目標 period → 金額 マップ
@@ -116,7 +118,7 @@ export function GoalsAdmin({
   // 四半期合計（FY内 Q1〜Q4）
   const quarters = useMemo(() => {
     return [0, 1, 2, 3].map((qi) => {
-      const qMonths = getFiscalQuarterMonths(year, qi).map((m) =>
+      const qMonths = getFiscalQuarterMonths(fiscalStartMonth, year, qi).map((m) =>
         monthPeriodLabel(m.year, m.month),
       );
       const total = qMonths.reduce((s, p) => s + (monthAmounts.get(p) ?? 0), 0);

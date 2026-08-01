@@ -9,13 +9,14 @@ import { getDashboardData, getGoalProgress } from "@/lib/queries";
 import { excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
 import { getSession, hasPermission } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getFiscalStartMonth } from "@/lib/tenant-context";
 import { currentFiscalQuarterPeriod } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  // 現在の会計四半期（Lumaは6月始まり＝5月決算）
-  const PERIOD = currentFiscalQuarterPeriod();
+  // 現在の会計四半期。会計年度は会社ごとに異なる（Luma=6月始まり / リージー=1月始まり）
+  const PERIOD = currentFiscalQuarterPeriod(await getFiscalStartMonth());
   const session = await getSession();
   const me = session
     ? await prisma.user.findUnique({

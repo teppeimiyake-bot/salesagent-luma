@@ -8,6 +8,7 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { LUMA_TENANT_ID } from "./tenant-ids";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is not set");
@@ -38,7 +39,7 @@ async function main() {
   console.log(`[seed-pipeline-stages] upserting ${STAGES.length} stages...`);
   for (const s of STAGES) {
     await prisma.pipelineStage.upsert({
-      where: { value: s.value },
+      where: { tenantId_value: { tenantId: LUMA_TENANT_ID, value: s.value } },
       update: {
         label: s.value,
         group: s.group,

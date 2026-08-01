@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input", detail: parsed.error.flatten() }, { status: 400 });
   }
-  const exists = await prisma.planProposal.findUnique({ where: { name: parsed.data.name } });
+  const exists = await prisma.planProposal.findFirst({ where: { name: parsed.data.name } });
   if (exists) {
     return NextResponse.json({ error: "同名の企画提案が既に存在します" }, { status: 409 });
   }

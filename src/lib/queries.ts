@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
+import { getFiscalStartMonth } from "@/lib/tenant-context";
 import { DealStatus, TaskStatus } from "@prisma/client";
 import {
-  FISCAL_YEAR_START_MONTH,
   fyPeriodLabel,
   fyQuarterPeriodLabel,
   monthPeriodLabel,
@@ -283,7 +283,7 @@ export async function getGoalTargetAmount(
     return goal?.targetAmount ?? 0;
   }
   // 四半期/年度/暦年系：構成月の月次目標を合算
-  const months = periodToMonthPeriods(period);
+  const months = periodToMonthPeriods(await getFiscalStartMonth(), period);
   if (months.length === 0) {
     // 想定外フォーマットは旧来どおりレコード直参照（フォールバック）
     const goal = await prisma.goal.findFirst({
@@ -303,13 +303,13 @@ export async function getGoalTargetAmount(
  * 月次以外（四半期・年度・暦年・暦年四半期）を月次の集合に展開する。
  * 月次ラベル・未対応ラベルは空配列を返す。
  */
-export function periodToMonthPeriods(period: string): string[] {
+export function periodToMonthPeriods(startMonth: number, period: string): string[] {
   // 会計年度（FY2026）→ 構成12ヶ月
   const fyOnly = /^FY(\d{4})$/i.exec(period);
   if (fyOnly) {
     const fy = Number(fyOnly[1]);
     return Array.from({ length: 12 }, (_, i) => {
-      const { year, month } = getFiscalMonth(fy, i);
+      const { year, month } = getFiscalMonth(startMonth, fy, i);
       return monthPeriodLabel(year, month);
     });
   }
@@ -318,7 +318,7 @@ export function periodToMonthPeriods(period: string): string[] {
   if (fyQuarter) {
     const fy = Number(fyQuarter[1]);
     const q = Number(fyQuarter[2]);
-    return getFiscalQuarterMonths(fy, q - 1).map((m) =>
+    return getFiscalQuarterMonths(startMonth, fy, q - 1).map((m) =>
       monthPeriodLabel(m.year, m.month),
     );
   }
@@ -357,7 +357,7 @@ export async function getGoalProgress(period: string, userId?: string) {
     ...(userId ? { ownerUserId: userId } : {}),
     ...ACTIVE_DEAL_FILTER,
   };
-  const range = parsePeriodToRange(period);
+  const range = parsePeriodToRange(await getFiscalStartMonth(), period);
 
   const wonDeals = await prisma.deal.findMany({
     where: {
@@ -399,14 +399,14 @@ export async function getGoalProgress(period: string, userId?: string) {
 //   「2026-06」    = 暦月（fiscal年度とは無関係に YYYY-MM）
 // 後方互換：旧表記「2026」「2026-Q1」も暦年ベースで受け付ける
 // ============================================================
-export function parsePeriodToRange(period: string): { start: Date; end: Date } | null {
+export function parsePeriodToRange(fiscalStartMonth: number, period: string): { start: Date; end: Date } | null {
   // 会計年度（FY2026）
   const fyOnly = /^FY(\d{4})$/i.exec(period);
   if (fyOnly) {
     const fy = Number(fyOnly[1]);
-    const startMonth = FISCAL_YEAR_START_MONTH - 1; // 0-indexed
+    const startMonth = fiscalStartMonth - 1; // 0-indexed
     const startYear = fy;
-    const endYear = FISCAL_YEAR_START_MONTH === 1 ? fy : fy + 1;
+    const endYear = fiscalStartMonth === 1 ? fy : fy + 1;
     const endMonth = (startMonth - 1 + 12) % 12;
     const endDay = new Date(Date.UTC(endYear, endMonth + 1, 0)).getUTCDate();
     return {
@@ -419,7 +419,7 @@ export function parsePeriodToRange(period: string): { start: Date; end: Date } |
   if (fyQuarter) {
     const fy = Number(fyQuarter[1]);
     const q = Number(fyQuarter[2]);
-    const months = getFiscalQuarterMonths(fy, q - 1);
+    const months = getFiscalQuarterMonths(fiscalStartMonth, fy, q - 1);
     const first = months[0];
     const last = months[2];
     const lastDay = new Date(Date.UTC(last.year, last.month, 0)).getUTCDate();
@@ -483,12 +483,13 @@ export async function getGoalsHierarchy(fy: number, userId?: string) {
   const yearPeriod = fyPeriodLabel(fy);
   const quarterPeriods = [1, 2, 3, 4].map((q) => fyQuarterPeriodLabel(fy, q));
   // FY内の12ヶ月（暦月のYYYY-MM形式）
+  const startMonth = await getFiscalStartMonth();
   const monthPeriods = Array.from({ length: 12 }, (_, i) => {
-    const { year, month } = getFiscalMonth(fy, i);
+    const { year, month } = getFiscalMonth(startMonth, fy, i);
     return monthPeriodLabel(year, month);
   });
   const monthLabels = Array.from({ length: 12 }, (_, i) => {
-    const { month } = getFiscalMonth(fy, i);
+    const { month } = getFiscalMonth(startMonth, fy, i);
     return `${month}月`;
   });
 
@@ -500,10 +501,10 @@ export async function getGoalsHierarchy(fy: number, userId?: string) {
 
   // 残月数：今がFY内なら（12 - 経過月数）。FY外なら 0 か 12（過去FYなら0）。
   const now = new Date();
-  const currentFy = getFiscalYear(now);
+  const currentFy = getFiscalYear(startMonth, now);
   let remainingMonths = 0;
   if (fy === currentFy) {
-    const passed = getFiscalMonthIndex(now) + 1; // 今月を含めた経過月数（1〜12）
+    const passed = getFiscalMonthIndex(startMonth, now) + 1; // 今月を含めた経過月数（1〜12）
     remainingMonths = Math.max(0, 12 - passed);
   } else if (fy > currentFy) {
     remainingMonths = 12;
@@ -610,8 +611,9 @@ export async function getMonthlyWonDealsByPeriod(
   });
 
   // 12ヶ月分の period と暦月レンジを用意（getGoalsHierarchy と同じ並び）
+  const startMonth = await getFiscalStartMonth();
   const monthPeriods = Array.from({ length: 12 }, (_, i) => {
-    const { year, month } = getFiscalMonth(fy, i);
+    const { year, month } = getFiscalMonth(startMonth, fy, i);
     return monthPeriodLabel(year, month);
   });
   const result: Record<string, WonDealCard[]> = {};
@@ -633,7 +635,7 @@ export async function getMonthlyWonDealsByPeriod(
           : null;
     // この計上日が属する月の period を見つける（KPIと同じ暦月レンジ判定）
     const period = monthPeriods.find((p) => {
-      const range = parsePeriodToRange(p);
+      const range = parsePeriodToRange(startMonth, p);
       return range && bd >= range.start && bd <= range.end;
     });
     if (!period) continue; // FY外（前年5月以前 / 翌年6月以降）はスキップ

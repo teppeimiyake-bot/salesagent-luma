@@ -112,7 +112,8 @@ async function main() {
 
     // ---- 週次実績 upsert ----
     for (const e of w.entries) {
-      fySet.add(getFiscalYear(new Date(Date.UTC(e.year, e.month - 1, 1))));
+      // このスクリプトは Luma の実績取り込み専用なので開始月は 6 で固定
+      fySet.add(getFiscalYear(6, new Date(Date.UTC(e.year, e.month - 1, 1))));
       await prisma.msWeeklyEntry.upsert({
         where: {
           workerId_year_month_weekOfMonth: {

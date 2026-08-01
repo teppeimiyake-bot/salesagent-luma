@@ -15,6 +15,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { DEFAULT_LEAD_SOURCES } from "../src/lib/lead-source";
+import { LUMA_TENANT_ID } from "./tenant-ids";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is not set");
@@ -58,7 +59,7 @@ async function main() {
   // ============================================================
   for (const ls of DEFAULT_LEAD_SOURCES) {
     await prisma.leadSource.upsert({
-      where: { name: ls.name },
+      where: { tenantId_name: { tenantId: LUMA_TENANT_ID, name: ls.name } },
       update: { sortOrder: ls.sortOrder, active: true },
       create: { name: ls.name, sortOrder: ls.sortOrder, active: true },
     });
@@ -70,7 +71,7 @@ async function main() {
   // ============================================================
   for (const s of STAGES) {
     await prisma.pipelineStage.upsert({
-      where: { value: s.value },
+      where: { tenantId_value: { tenantId: LUMA_TENANT_ID, value: s.value } },
       update: {
         label: s.value,
         group: s.group,

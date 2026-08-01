@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     );
   }
   // 重複チェック
-  const exists = await prisma.leadSource.findUnique({ where: { name: parsed.data.name } });
+  const exists = await prisma.leadSource.findFirst({ where: { name: parsed.data.name } });
   if (exists) {
     return NextResponse.json({ error: "同名のリード獲得経由が既に存在します" }, { status: 409 });
   }

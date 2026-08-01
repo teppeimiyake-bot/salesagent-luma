@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { getFiscalStartMonth } from "@/lib/tenant-context";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
 import { getFiscalQuarterMonths } from "@/lib/config";
 
@@ -14,14 +15,15 @@ export async function GET(req: Request) {
 
   let monthFilters: { year: number; month: number }[] | undefined;
   if (fy) {
+    const startMonth = await getFiscalStartMonth();
     const fyNum = Number(fy);
     if (q) {
       // 四半期(1〜4) → quarterIndex(0〜3)
-      monthFilters = getFiscalQuarterMonths(fyNum, Number(q) - 1);
+      monthFilters = getFiscalQuarterMonths(startMonth, fyNum, Number(q) - 1);
     } else {
       monthFilters = [];
       for (let qi = 0; qi < 4; qi++) {
-        monthFilters.push(...getFiscalQuarterMonths(fyNum, qi));
+        monthFilters.push(...getFiscalQuarterMonths(startMonth, fyNum, qi));
       }
     }
   }

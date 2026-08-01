@@ -32,6 +32,7 @@
  */
 
 import { prisma } from "../src/lib/db";
+import { LUMA_TENANT_ID } from "../prisma/tenant-ids";
 
 // ============================================================
 // マスタ定義
@@ -172,7 +173,7 @@ async function main() {
 
     for (const cat of CATEGORIES) {
       const product = await tx.product.upsert({
-        where: { name: cat.name },
+        where: { tenantId_name: { tenantId: LUMA_TENANT_ID, name: cat.name } },
         update: {
           description: cat.description,
           active: true,

@@ -43,6 +43,7 @@ import {
   type PipelineStageRow,
   type StageGroup,
 } from "@/lib/pipeline-stage";
+import { cn } from "@/lib/utils";
 import { leadSourceColor } from "@/lib/lead-source";
 import { IndustryPicker } from "@/components/companies/industry-picker";
 
@@ -53,6 +54,8 @@ type Company = {
   websiteUrl?: string | null;
 };
 type SalesUser = { id: string; name: string; avatarColor?: string | null };
+/** 登録先の会社（テナント）。企業マスタは2社共有のため企業選択とは独立している */
+type TenantOption = { id: string; code: string; name: string; shortName: string; canWrite: boolean };
 type LeadSource = { id: string; name: string; active: boolean; sortOrder: number };
 type ExistingDeal = { id: string; title: string; productCount: number };
 type Contact = {
@@ -157,6 +160,10 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
   const [websiteUrlForExisting, setWebsiteUrlForExisting] = useState("");
 
   // UI 状態
+  // 登録先の会社（Luma / リージー）。企業マスタは2社共有なので、企業とは別に選ぶ。
+  const [tenants, setTenants] = useState<TenantOption[]>([]);
+  const [tenantId, setTenantId] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [existingDealForCompany, setExistingDealForCompany] = useState<ExistingDeal | null>(null);
@@ -183,14 +190,31 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
     }
 
     (async () => {
-      const [c, u, ls, ps] = await Promise.all([
+      const [c, u, ls, ps, tn] = await Promise.all([
         loadJson("/api/companies"),
         loadJson("/api/users"),
         loadJson("/api/lead-sources"),
         loadJson("/api/pipeline-stages"),
+        loadJson("/api/tenant/mine"),
       ]);
       if (cancelled) return;
       setMasterError(null);
+
+      // 登録先の会社（Luma / リージー）。所属が1社なら選択UIは出さず自動で決まる。
+      const tenantPayload = tn as
+        | { tenants?: TenantOption[]; activeTenantId?: string | null }
+        | null;
+      const tenantList = (tenantPayload?.tenants ?? []).filter((t) => t.canWrite);
+      setTenants(tenantList);
+      // 既定は「いま見ているタブの会社」。全社ビュー中(activeTenantId=null)は未選択にして選ばせる。
+      const active = tenantPayload?.activeTenantId ?? null;
+      setTenantId(
+        active && tenantList.some((t) => t.id === active)
+          ? active
+          : tenantList.length === 1
+            ? tenantList[0].id
+            : "",
+      );
 
       const companiesData = (c as { companies?: Company[] } | null)?.companies ?? [];
       const usersData =
@@ -453,6 +477,11 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
       setSubmitError("企業を選択してください");
       return;
     }
+    // 2社以上に所属している場合のみ、どちらの会社の商談かを選ばせる
+    if (tenants.length > 1 && !tenantId) {
+      setSubmitError("どちらの会社の商談かを選択してください");
+      return;
+    }
     if (!ownerUserId) {
       setSubmitError("担当者は必須です");
       return;
@@ -528,6 +557,8 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // どちらの会社の商談か（サーバー側で所属を検証してから作成する）
+          tenantId: tenantId || undefined,
           companyId,
           title,
           ownerUserId,
@@ -698,6 +729,43 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-5">
+          {/* 0. 登録先の会社（Luma / リージー）。所属が1社だけの人には出さない。
+                企業マスタは2社共有なので「どちらの会社の商談か」はここで決める。 */}
+          {tenants.length > 1 && (
+            <section className="space-y-2 rounded-lg border-2 border-zinc-200 bg-zinc-50 p-4">
+              <Label className="text-sm font-bold flex items-center gap-1.5">
+                <Building2 className="h-4 w-4 text-zinc-600" />
+                どちらの会社の商談か {required}
+              </Label>
+              <div className="flex gap-2">
+                {tenants.map((t) => {
+                  const selected = t.id === tenantId;
+                  const isLuma = t.code === "luma";
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setTenantId(t.id)}
+                      className={cn(
+                        "flex-1 rounded-md border-2 px-3 py-2.5 text-sm font-bold transition-all",
+                        selected
+                          ? isLuma
+                            ? "border-orange-500 bg-orange-500 text-white shadow-sm"
+                            : "border-emerald-700 bg-emerald-700 text-white shadow-sm"
+                          : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300",
+                      )}
+                    >
+                      {t.name}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-zinc-500">
+                選んだ会社の商談一覧・KPIにのみ表示されます。企業マスタは2社で共通です。
+              </p>
+            </section>
+          )}
+
           {/* 1. 企業選択 */}
           <section className="space-y-2 rounded-lg border-2 border-orange-200 bg-orange-50/30 p-4">
             <Label className="text-sm font-bold flex items-center gap-1.5">

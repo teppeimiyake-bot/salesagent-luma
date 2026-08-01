@@ -10,7 +10,71 @@ datasource db {
 }
 
 // ============================================================
+// Tenant（自社 = 営業主体の法人）
+// ------------------------------------------------------------
+// 株式会社Luma / 株式会社リージー を1つのDB・1つの管理画面で扱うための
+// テナント境界。Luma とリージーは別法人であり、会計年度も異なるため、
+// 期間集計に関わる設定はここに持たせる（旧 src/lib/config.ts の定数を置換）。
+//
+// テナント所有テーブルは tenant_id を持ち、src/lib/db.ts の Prisma Extension が
+// 全クエリに自動で tenant_id 条件を注入する（書き漏れによる越境を防ぐ）。
+// ============================================================
+model Tenant {
+  id        String   @id @default(uuid())
+  // 内部コード（"luma" | "reagey"）。URL・環境変数・シード等から参照する不変キー
+  code      String   @unique
+  // 正式名称（株式会社Luma / 株式会社リージー）
+  name      String
+  // 画面表示用の短縮名（Luma / リージー）
+  shortName String   @map("short_name")
+  // 会計年度の開始月（1〜12）。Luma=6（5月決算）／リージー=1（12月決算）
+  fiscalYearStartMonth Int @default(1) @map("fiscal_year_start_month")
+  // テナントごとのテーマ色（HEX）。誤テナント操作を防ぐため画面全体の基調色に使う
+  themeColor String? @map("theme_color")
+  logoUrl    String? @map("logo_url")
+  active     Boolean @default(true)
+  sortOrder  Int     @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  userTenants UserTenant[]
+
+  @@map("tenants")
+}
+
+// ============================================================
+// UserTenant（社員 × テナントの所属と権限）
+// ------------------------------------------------------------
+// 社長・冨永は Luma / リージー 両方に所属する。権限はテナントごとに異なりうるため
+// permission / role は User ではなくこちらを正本とする（User側は互換のため残置）。
+// ============================================================
+model UserTenant {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  tenantId   String   @map("tenant_id")
+  // このテナントにおける権限（admin / user / viewer）
+  permission String   @default("user")
+  // このテナントにおける役職（sales / manager）
+  role       String?  @default("sales")
+  // ログイン直後に選択される初期テナント（ユーザーごとに1件だけ true）
+  isDefault  Boolean  @default(false) @map("is_default")
+  // 全社統合ビュー（Luma＋リージー合算）の閲覧可否。原則 admin のみ true
+  crossTenantRead Boolean @default(false) @map("cross_tenant_read")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("user_tenants")
+}
+
+// ============================================================
 // User（自社の営業担当）
+// ------------------------------------------------------------
+// User は テナント横断の共有マスタ（1人が複数テナントに所属しうる）。
+// 実効権限は UserTenant を参照すること。User.permission / User.role は
+// 移行期の互換のために残置しているが、新規ロジックでは参照しない。
 // ============================================================
 model User {
   id           String   @id @default(uuid())
@@ -38,6 +102,7 @@ model User {
   accounts         Account[]
   sessions         Session[]
   createdQuotes    Quote[]
+  userTenants      UserTenant[]
 
   @@map("users")
 }
@@ -101,7 +166,12 @@ model VerificationToken {
 // ============================================================
 model Product {
   id          String   @id @default(uuid())
-  name        String   @unique
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
+  name        String
   category    String?  // 旧フィールド（互換のため残置・UI不参照）
   description String?  @db.Text
   active      Boolean  @default(true)
@@ -110,6 +180,7 @@ model Product {
   plans        ProductPlan[]
   dealProducts DealProduct[]
 
+  @@unique([tenantId, name])
   @@map("products")
 }
 
@@ -119,6 +190,11 @@ model Product {
 // ============================================================
 model ProductPlan {
   id          String  @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   productId   String  @map("product_id")
   name        String
   basePrice   Int?    @map("base_price")
@@ -131,6 +207,7 @@ model ProductPlan {
 
   @@unique([productId, name])
   @@index([productId])
+  @@index([tenantId])
   @@map("product_plans")
 }
 
@@ -166,6 +243,14 @@ model Company {
   source           String?                                       // 取得元媒体（mynavi 等）
   sourceKey        String?  @unique @map("source_key")           // agent由来会社の冪等キー
 
+  // ── マルチテナント ──────────────────────────────────────
+  // Company は「テナント所有」ではなく Luma / リージー 共有の企業マスタ。
+  // リージーの顧客47社中24社が Luma にも存在し、リージーのリードソースに
+  // 「Luma顧客企業」が実在する（=相互送客が実務化している）ため、分離複製せず共有する。
+  // createdByTenantId は起票元テナント。一覧のデフォルト絞り込みと監査に使う。
+  // （テナント越しの閲覧制御は「自テナントの商談を持つ企業 ∪ 自テナント起票の企業」で行う）
+  createdByTenantId String? @map("created_by_tenant_id")
+
   contacts Contact[]
   deals    Deal[]
   invoiceRecords    InvoiceRecord[]
@@ -178,6 +263,7 @@ model Company {
 
   @@index([deletedAt])
   @@index([mergedIntoId])
+  @@index([createdByTenantId])
   @@map("companies")
 }
 
@@ -248,6 +334,11 @@ model Contact {
 // ============================================================
 model AgentRun {
   id         String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   source     String   // 取得元媒体（mynavi / rikunabi / ...）
   agentRunId String?  @map("agent_run_id") // Cloud Run 側の run_HHMMSS
   createdAt  DateTime @default(now()) @map("created_at")
@@ -255,13 +346,19 @@ model AgentRun {
   candidates AgentCandidate[]
 
   @@index([source])
+  @@index([tenantId])
   @@map("agent_runs")
 }
 
 model AgentCandidate {
   id               String    @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   runId            String    @map("run_id")
-  sourceKey        String    @unique @map("source_key") // 冪等キー（媒体+媒体内ID等）
+  sourceKey        String    @map("source_key") // 冪等キー（媒体+媒体内ID等）
   companyName      String    @map("company_name")
   dedupeKey        String    @map("dedupe_key") // normalizeName(companyName)
   websiteUrl       String?   @map("website_url")
@@ -288,11 +385,17 @@ model AgentCandidate {
   @@index([runId])
   @@index([reviewStatus])
   @@index([dedupeKey])
+  @@unique([tenantId, sourceKey])
   @@map("agent_candidates")
 }
 
 model AgentEvidence {
   id           String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   candidateId  String   @map("candidate_id")
   evidenceJson Json     @map("evidence_json") // 根拠URL/テキスト
   createdAt    DateTime @default(now()) @map("created_at")
@@ -300,11 +403,17 @@ model AgentEvidence {
   candidate AgentCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
   @@index([candidateId])
+  @@index([tenantId])
   @@map("agent_evidence")
 }
 
 model AgentGeneratedMessage {
   id          String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   candidateId String   @map("candidate_id")
   subject     String?
   body        String?  @db.Text
@@ -313,6 +422,7 @@ model AgentGeneratedMessage {
   candidate AgentCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
   @@index([candidateId])
+  @@index([tenantId])
   @@map("agent_generated_messages")
 }
 
@@ -321,6 +431,11 @@ model AgentGeneratedMessage {
 // ============================================================
 model Deal {
   id             String      @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   companyId      String      @map("company_id")
   ownerUserId    String?     @map("owner_user_id")  // Deal全体の主担当（DealProduct単位の担当者は別）
   title          String      // 商談タイトル（自由記述）
@@ -371,6 +486,7 @@ model Deal {
   @@index([contractDate])
   @@index([leadSourceId])
   @@index([appointmentDate])
+  @@index([tenantId])
   @@map("deals")
 }
 
@@ -380,7 +496,12 @@ model Deal {
 // ============================================================
 model PipelineStage {
   id        String   @id @default(uuid())
-  value     String   @unique // DBに保管される内部キー（ラベル兼用）
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
+  value     String   // DBに保管される内部キー（ラベル兼用）
   label     String   // UI表示
   group     String   // before / after / contract
   badgeBg   String   @map("badge_bg")   // Tailwind class（例 bg-emerald-100）
@@ -390,6 +511,7 @@ model PipelineStage {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([group, sortOrder])
+  @@unique([tenantId, value])
   @@map("pipeline_stages")
 }
 
@@ -400,13 +522,19 @@ model PipelineStage {
 // ============================================================
 model PlanProposal {
   id           String   @id @default(uuid())
-  name         String   @unique
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
+  name         String
   color        String   @default("default") // Notion multi_select 色名（blue / brown / orange ...）
   displayOrder Int      @default(0) @map("display_order")
   active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @map("created_at")
 
   @@index([displayOrder])
+  @@unique([tenantId, name])
   @@map("plan_proposals")
 }
 
@@ -415,13 +543,19 @@ model PlanProposal {
 // ============================================================
 model LeadSource {
   id        String   @id @default(uuid())
-  name      String   @unique
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
+  name      String   
   active    Boolean  @default(true)
   sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at")
 
   deals Deal[]
 
+  @@unique([tenantId, name])
   @@map("lead_sources")
 }
 
@@ -437,11 +571,17 @@ model LeadSource {
 // ============================================================
 model Industry {
   id        String   @id @default(uuid())
-  name      String   @unique
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
+  name      String   
   active    Boolean  @default(true)
   sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at")
 
+  @@unique([tenantId, name])
   @@map("industries")
 }
 
@@ -450,6 +590,11 @@ model Industry {
 // ============================================================
 model DealProduct {
   id           String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   dealId       String   @map("deal_id")
   productId    String?  @map("product_id")  // Productマスタへの参照（nullable）
   productName  String   @map("product_name") // キャッシュ表示用
@@ -475,6 +620,7 @@ model DealProduct {
   @@index([dealId])
   @@index([productId])
   @@index([ownerUserId])
+  @@index([tenantId])
   @@map("deal_products")
 }
 
@@ -493,6 +639,11 @@ enum DealStatus {
 // ============================================================
 model Meeting {
   id            String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   dealId        String   @map("deal_id")
   meetingDate   DateTime @default(now()) @map("meeting_date")
   // 商談回ラベル（「第3回 役員レビュー」など。未指定時は通し番号で自動生成）
@@ -520,6 +671,7 @@ model Meeting {
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
   @@index([dealId])
+  @@index([tenantId])
   @@map("meetings")
 }
 
@@ -528,6 +680,11 @@ model Meeting {
 // ============================================================
 model Task {
   id              String     @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   dealId          String     @map("deal_id")
   title           String
   description     String?    @db.Text
@@ -545,6 +702,7 @@ model Task {
 
   @@index([dealId])
   @@index([status])
+  @@index([tenantId])
   @@map("tasks")
 }
 
@@ -560,6 +718,11 @@ enum TaskStatus {
 // ============================================================
 model Document {
   id             String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   name           String
   category       String   // proposal / contract / case_study / template / quote / other
   // file = アップロード実体（fileUrl=ストレージURL） / url = 外部リンクのみ（fileUrl=外部URL）
@@ -590,6 +753,7 @@ model Document {
   @@index([scope])
   @@index([dealId])
   @@index([dealProductId])
+  @@index([tenantId])
   @@map("documents")
 }
 
@@ -601,6 +765,11 @@ model Document {
 // ============================================================
 model Quote {
   id            String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   dealId        String   @map("deal_id")
   // 見積の出所 DealProduct（プラン/企画案）。任意（手組みの見積も許容）。
   dealProductId String?  @map("deal_product_id")
@@ -632,6 +801,7 @@ model Quote {
 
   @@index([dealId])
   @@index([dealProductId])
+  @@index([tenantId])
   @@map("quotes")
 }
 
@@ -640,6 +810,11 @@ model Quote {
 // ============================================================
 model QuoteLine {
   id        String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   quoteId   String   @map("quote_id")
   name      String   // 品目（委託業務名・プラン名等）
   detail    String?  // 補足
@@ -650,6 +825,7 @@ model QuoteLine {
   quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 
   @@index([quoteId])
+  @@index([tenantId])
   @@map("quote_lines")
 }
 
@@ -658,6 +834,11 @@ model QuoteLine {
 // ============================================================
 model ChatMessage {
   id        String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   userId    String   @map("user_id")
   scope     String   // global / deal:<id>
   role      String   // user / assistant / system
@@ -667,6 +848,7 @@ model ChatMessage {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, scope])
+  @@index([tenantId])
   @@map("chat_messages")
 }
 
@@ -675,6 +857,11 @@ model ChatMessage {
 // ============================================================
 model RoleplaySession {
   id          String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   dealId      String   @map("deal_id")
   level       Int      @default(2) // 1=初級 / 2=中級 / 3=上級
   personaName String?  @map("persona_name") // 顧客アバター用
@@ -687,6 +874,7 @@ model RoleplaySession {
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
   @@index([dealId])
+  @@index([tenantId])
   @@map("roleplay_sessions")
 }
 
@@ -695,6 +883,11 @@ model RoleplaySession {
 // ============================================================
 model AiLog {
   id        String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   dealId    String   @map("deal_id")
   step      String
   input     Json
@@ -706,6 +899,7 @@ model AiLog {
 
   @@index([dealId])
   @@index([step])
+  @@index([tenantId])
   @@map("ai_logs")
 }
 
@@ -714,6 +908,11 @@ model AiLog {
 // ============================================================
 model Invite {
   id           String    @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   email        String
   token        String    @unique
   name         String?
@@ -727,6 +926,7 @@ model Invite {
 
   @@index([email])
   @@index([token])
+  @@index([tenantId])
   @@map("invites")
 }
 
@@ -735,6 +935,11 @@ model Invite {
 // ============================================================
 model Goal {
   id           String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   ownerUserId  String?  @map("owner_user_id") // null = 組織全体
   period       String   // 2026-Q2 / 2026-04 などフリーフォーマット
   targetAmount Int      @map("target_amount")
@@ -744,6 +949,7 @@ model Goal {
 
   @@index([ownerUserId])
   @@index([period])
+  @@index([tenantId])
   @@map("goals")
 }
 
@@ -755,6 +961,11 @@ model Goal {
 // ============================================================
 model InvoiceRecord {
   id            String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   // 顧客名（CSV原文。重複企業の表記ゆれをそのまま保持。照合用は normalizeName で別途）
   customerName  String   @map("customer_name")
   // 任意FK（顧客名マッチで紐付け。未マッチは null のまま）
@@ -777,7 +988,7 @@ model InvoiceRecord {
 
   note          String?  @db.Text
   // 投入シードの冪等キー（CSV由来の安定識別子。重複行を区別するため customerName+amountNet 等で生成）
-  sourceKey     String?  @unique @map("source_key")
+  sourceKey     String?   @map("source_key")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -790,6 +1001,7 @@ model InvoiceRecord {
   @@index([dealProductId])
   @@index([invoiceStatus])
   @@index([paymentStatus])
+  @@unique([tenantId, sourceKey])
   @@map("invoice_records")
 }
 
@@ -823,6 +1035,11 @@ enum PaymentRecvStatus {
 // ============================================================
 model RecurringBilling {
   id            String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   customerName  String   @map("customer_name")
   companyId     String?  @map("company_id")
   dealId        String?  @map("deal_id")
@@ -834,7 +1051,7 @@ model RecurringBilling {
   endDate       DateTime? @map("end_date")       // 契約終了日
 
   note          String?  @db.Text
-  sourceKey     String?  @unique @map("source_key")
+  sourceKey     String?   @map("source_key")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -846,6 +1063,7 @@ model RecurringBilling {
   @@index([companyId])
   @@index([dealId])
   @@index([dealProductId])
+  @@unique([tenantId, sourceKey])
   @@map("recurring_billings")
 }
 
@@ -855,6 +1073,11 @@ model RecurringBilling {
 // ============================================================
 model RecurringBillingPeriod {
   id          String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   billingId   String   @map("billing_id")
   // 対象年月。YYYYMM の整数（例 202506）。並び替え・範囲検索が容易。
   yearMonth   Int      @map("year_month")
@@ -868,6 +1091,7 @@ model RecurringBillingPeriod {
   @@unique([billingId, yearMonth])
   @@index([billingId])
   @@index([yearMonth])
+  @@index([tenantId])
   @@map("recurring_billing_periods")
 }
 
@@ -877,6 +1101,11 @@ model RecurringBillingPeriod {
 // ============================================================
 model ProductionProject {
   id            String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   dealId        String   @map("deal_id")
   // 受注商材（DealProduct）に1:1で紐付け。
   dealProductId String?  @unique @map("deal_product_id")
@@ -916,6 +1145,7 @@ model ProductionProject {
   @@index([companyId])
   @@index([category])
   @@index([status])
+  @@index([tenantId])
   @@map("production_projects")
 }
 
@@ -936,6 +1166,11 @@ enum ProductionStatus {
 // ============================================================
 model SnsAccount {
   id                  String       @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   productionProjectId String       @map("production_project_id")
   platform            SnsPlatform
   accountId           String?      @map("account_id")
@@ -949,6 +1184,7 @@ model SnsAccount {
 
   @@unique([productionProjectId, platform])
   @@index([productionProjectId])
+  @@index([tenantId])
   @@map("sns_accounts")
 }
 
@@ -968,6 +1204,11 @@ enum SnsPlatform {
 // 送付代行ワーカーのマスタ（既存 User とは紐付けない独立マスタ）
 model MsWorker {
   id        String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   // 表示用コード（"001" など。スプレッドシート上の連番に対応。任意）
   code      String?
   name      String   // "フローラ三宮さん" など
@@ -980,6 +1221,7 @@ model MsWorker {
 
   weeklyEntries MsWeeklyEntry[]
 
+  @@index([tenantId])
   @@map("ms_workers")
 }
 
@@ -988,6 +1230,11 @@ model MsWorker {
 // アポ率(=返信率) は sent/appointments から自動計算（保存しない）。
 model MsWeeklyEntry {
   id            String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   workerId      String   @map("worker_id")
   // 暦年・暦月（会計年度ではなく実際の年月）。集計時に lib/config の会計年度ヘルパーで束ねる。
   year          Int
@@ -1007,6 +1254,7 @@ model MsWeeklyEntry {
   @@unique([workerId, year, month, weekOfMonth])
   @@index([workerId])
   @@index([year, month])
+  @@index([tenantId])
   @@map("ms_weekly_entries")
 }
 
@@ -1015,14 +1263,20 @@ model MsWeeklyEntry {
 // 達成率 = 実績アポ率 ÷ targetReplyRate で表示する。
 model MsKpiGoal {
   id              String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   // 会計年度の period ラベル（"FY2026"）。組織全体の単一目標。
-  period          String   @unique
+  period          String
   targetReplyRate Float    @map("target_reply_rate") // 目標返信率(=目標アポ率) 例: 0.005
   // 任意の月次送信数目標など（将来拡張用・現状は返信率のみ運用）
   targetSent      Int?     @map("target_sent")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
+  @@unique([tenantId, period])
   @@map("ms_kpi_goals")
 }
 
@@ -1036,6 +1290,11 @@ model MsKpiGoal {
 // ============================================================
 model PmStaff {
   id        String   @id @default(uuid())
+  // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
+  // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
+  // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
+  // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
+  tenantId  String   @default("") @map("tenant_id")
   // 役割。1人が複数役割を兼ねる場合は role 別に複数レコードを持つ。
   role      String
   name      String
@@ -1043,8 +1302,7 @@ model PmStaff {
   sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@unique([role, name])
   @@index([role])
+  @@unique([tenantId, role, name])
   @@map("pm_staff")
 }

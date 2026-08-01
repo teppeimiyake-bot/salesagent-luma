@@ -90,7 +90,7 @@ export async function POST(req: Request) {
         matchStatus,
       };
 
-      const existing = await tx.agentCandidate.findUnique({
+      const existing = await tx.agentCandidate.findFirst({
         where: { sourceKey: c.sourceKey },
       });
       let candidateId: string;

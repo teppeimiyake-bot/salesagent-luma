@@ -18,6 +18,8 @@ import { isExcludedFromNextAction } from "@/lib/deal-status";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getFiscalYear, fyDisplayLabel } from "@/lib/config";
+import { listMyTenants, getRequestTenant, runAsUserTenant } from "@/lib/tenant-context";
+import { KpiTenantTabs } from "@/components/kpi/kpi-tenant-tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle } from "lucide-react";
@@ -28,7 +30,7 @@ export const dynamic = "force-dynamic";
 export default async function KpiPage({
   searchParams,
 }: {
-  searchParams: Promise<{ owner?: string; year?: string }>;
+  searchParams: Promise<{ owner?: string; year?: string; tenant?: string }>;
 }) {
   const session = await getSession();
   const me = session
@@ -41,20 +43,30 @@ export default async function KpiPage({
   // 受注企業カード上のプロダクト編集（追加/変更/金額修正）は user/admin のみ
   const canEditProducts = me?.permission === "admin" || me?.permission === "user";
 
-  // 受注企業カードのプロダクト追加/変更に使う商材マスタ（カテゴリ＋プラン）
-  const productMasters = await prisma.product.findMany({
-    where: { active: true },
-    orderBy: { name: "asc" },
-    include: {
-      plans: {
-        where: { active: true },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        select: { id: true, name: true, basePrice: true },
-      },
-    },
-  });
-
   const sp = await searchParams;
+
+  // ── 表示対象の会社（Luma / リージー）─────────────────────────
+  // KPI は会社ごとに完全に分けて見る。サイドバーのタブ（＝商談の登録先）とは独立させ、
+  // URL の ?tenant= で切り替える。経営視点で2社の数字を続けて確認するための作り。
+  // 会計年度が会社ごとに違う（Luma=6月始まり / リージー=1月始まり）ため、合算はしない。
+  const myTenants = await listMyTenants();
+  const activeCtx = await getRequestTenant();
+  const selectedTenant =
+    myTenants.find((t) => t.code === sp.tenant) ??
+    myTenants.find((t) => t.id === activeCtx?.tenantId) ??
+    myTenants[0];
+
+  if (!selectedTenant) {
+    return (
+      <>
+        <Header title="KPI" subtitle="表示できる会社がありません" />
+        <div className="px-8 py-6 text-sm text-zinc-600">
+          所属している会社がありません。管理者に権限の確認を依頼してください。
+        </div>
+      </>
+    );
+  }
+
   // URLに owner が無ければ全員、"all"=全員、"me"=自分、その他=個別ユーザーID
   const ownerParam = sp.owner ?? "all";
   const userId =
@@ -64,18 +76,52 @@ export default async function KpiPage({
         ? undefined
         : ownerParam;
   const isOrgView = !userId;
-  // year パラメータは会計年度（FY2026 → 2026）。未指定時は現在の会計年度。
-  const year = sp.year ? Number(sp.year) : getFiscalYear();
 
-  const [{ kpi, deals }, series, hierarchy, monthlyWonDeals, users, fullyLostDealIds] =
-    await Promise.all([
-      getDashboardData({ userId }),
-      getKpiTimeseries(userId),
-      getGoalsHierarchy(year, userId),
-      getMonthlyWonDealsByPeriod(year, userId),
-      getSalesUsers(),
-      getFullyLostDealIds(),
-    ]);
+  const startMonth = selectedTenant.fiscalYearStartMonth;
+  // year パラメータは会計年度（FY2026 → 2026）。未指定時は選択中の会社の現在年度。
+  const year = sp.year ? Number(sp.year) : getFiscalYear(startMonth);
+
+  // 選択した会社のコンテキストでデータを引く。
+  // これにより Prisma Extension が全クエリを その会社に絞り、
+  // getGoalsHierarchy 等の中の会計年度計算もその会社の開始月で行われる。
+  const loaded = await runAsUserTenant(selectedTenant.id, async () => {
+    // 受注企業カードのプロダクト追加/変更に使う商材マスタ（カテゴリ＋プラン）
+    const productMasters = await prisma.product.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      include: {
+        plans: {
+          where: { active: true },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          select: { id: true, name: true, basePrice: true },
+        },
+      },
+    });
+    const [dashboard, series, hierarchy, monthlyWonDeals, users, fullyLostDealIds] =
+      await Promise.all([
+        getDashboardData({ userId }),
+        getKpiTimeseries(userId),
+        getGoalsHierarchy(year, userId),
+        getMonthlyWonDealsByPeriod(year, userId),
+        getSalesUsers(),
+        getFullyLostDealIds(),
+      ]);
+    return { productMasters, dashboard, series, hierarchy, monthlyWonDeals, users, fullyLostDealIds };
+  });
+
+  if (!loaded) {
+    return (
+      <>
+        <Header title="KPI" subtitle="表示できません" />
+        <div className="px-8 py-6 text-sm text-zinc-600">
+          この会社のKPIを閲覧する権限がありません。
+        </div>
+      </>
+    );
+  }
+
+  const { productMasters, series, hierarchy, monthlyWonDeals, users, fullyLostDealIds } = loaded;
+  const { kpi, deals } = loaded.dashboard;
   const fullyLostSet = new Set(fullyLostDealIds);
 
   // ヨミがAヨミ以上（受注に近い）かつ Next Action未設定の Deal をアラート対象に
@@ -102,9 +148,10 @@ export default async function KpiPage({
       <Header
         title="KPI"
         subtitle={
-          isOrgView
-            ? `組織全体のパフォーマンス｜${fyDisplayLabel(year)}`
-            : `個人パフォーマンス｜${fyDisplayLabel(year)}`
+          // 2社を扱う場合はどちらの数字を見ているかを必ず出す
+          `${myTenants.length > 1 ? `${selectedTenant.shortName}｜` : ""}${
+            isOrgView ? "組織全体のパフォーマンス" : "個人パフォーマンス"
+          }｜${fyDisplayLabel(startMonth, year)}`
         }
       />
       <div className="px-8 py-3 border-b border-zinc-200 bg-white space-y-2">
@@ -118,13 +165,18 @@ export default async function KpiPage({
             </div>
           )}
         </div>
-        <YearTabs currentFy={getFiscalYear()} selectedYear={year} />
+        <div className="flex items-center gap-4 flex-wrap">
+          {/* 会社タブ（Luma / リージー）。所属が1社なら表示されない */}
+          <KpiTenantTabs tenants={myTenants} selectedCode={selectedTenant.code} />
+          <YearTabs currentFy={getFiscalYear(startMonth)} selectedYear={year} />
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-zinc-50">
         {/* 年間KGI / 四半期KPI / 月次KPI を一画面で俯瞰 */}
         <KpiHierarchyView
           data={hierarchy}
           year={year}
+          fiscalStartMonth={startMonth}
           isOrgView={isOrgView}
           monthlyWonDeals={monthlyWonDeals}
           productMasters={productMasters.map((p) => ({
@@ -140,7 +192,7 @@ export default async function KpiPage({
         <KpiCharts data={series} />
 
         {/* admin 限定：KPI目標管理（年/四半期/月のタブ切替） */}
-        {isAdmin && <GoalsAdmin year={year} users={users} />}
+        {isAdmin && <GoalsAdmin year={year} fiscalStartMonth={startMonth} users={users} />}
 
         <Card>
           <CardHeader className="pb-3">

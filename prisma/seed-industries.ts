@@ -11,6 +11,7 @@
  */
 import { prisma } from "../src/lib/db";
 import { INDUSTRY_OPTIONS, parseIndustries } from "../src/lib/industry";
+import { LUMA_TENANT_ID } from "./tenant-ids";
 
 async function main() {
   const url = process.env.DATABASE_URL ?? "";
@@ -46,7 +47,7 @@ async function main() {
   let skipped = 0;
   for (let i = 0; i < finalOrder.length; i++) {
     const name = finalOrder[i];
-    const exists = await prisma.industry.findUnique({ where: { name } });
+    const exists = await prisma.industry.findUnique({ where: { tenantId_name: { tenantId: LUMA_TENANT_ID, name } } });
     if (exists) {
       skipped++;
       continue;

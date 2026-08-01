@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const exists = await prisma.pipelineStage.findUnique({
+  const exists = await prisma.pipelineStage.findFirst({
     where: { value: parsed.data.value },
   });
   if (exists) {

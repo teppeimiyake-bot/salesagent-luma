@@ -9,6 +9,7 @@ import { getSalesUsers, getGoalProgress } from "@/lib/queries";
 import { formatJPY } from "@/lib/utils";
 import { OwnerBadge } from "@/components/ui/owner-badge";
 import { NewMemberDialog } from "@/components/team/new-member-dialog";
+import { getFiscalStartMonth } from "@/lib/tenant-context";
 import { currentFiscalQuarterPeriod } from "@/lib/config";
 import Link from "next/link";
 import { Crown, Users } from "lucide-react";
@@ -77,7 +78,7 @@ async function buildRows(
 }
 
 export default async function TeamPage() {
-  const PERIOD = currentFiscalQuarterPeriod();
+  const PERIOD = currentFiscalQuarterPeriod(await getFiscalStartMonth());
   const session = await getSession();
   const me = session
     ? await prisma.user.findUnique({

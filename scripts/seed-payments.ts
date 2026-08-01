@@ -25,6 +25,7 @@ import {
   ym,
 } from "../src/lib/payments";
 import { normalizeName } from "../src/lib/company-dedup";
+import { LUMA_TENANT_ID } from "../prisma/tenant-ids";
 
 const url = process.env.DATABASE_URL ?? "";
 if (!url.includes("salesagent_luma") && process.env.SEED_ALLOW_PROD !== "1") {
@@ -168,7 +169,7 @@ async function seedSpot(companyIndex: Map<string, string[]>) {
     //   link-sheet-payments.ts が手動エイリアスも使って解決した紐付けを温存するため。
     //   新規作成時のみ、正規化名で一意に絞れた companyId をセット（曖昧時は null）。
     await prisma.invoiceRecord.upsert({
-      where: { sourceKey },
+      where: { tenantId_sourceKey: { tenantId: LUMA_TENANT_ID, sourceKey } },
       create: { ...sheetData, companyId, sourceKey },
       update: sheetData,
     });
@@ -197,7 +198,7 @@ async function seedRecurring(companyIndex: Map<string, string[]>) {
 
     // 再同期では FK（companyId/dealId/dealProductId）を上書きしない（link-sheet-payments の紐付けを温存）。
     const billing = await prisma.recurringBilling.upsert({
-      where: { sourceKey },
+      where: { tenantId_sourceKey: { tenantId: LUMA_TENANT_ID, sourceKey } },
       create: { customerName, companyId, initialFee, monthlyFee, startDate, endDate, sourceKey },
       update: { customerName, initialFee, monthlyFee, startDate, endDate },
     });

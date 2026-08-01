@@ -43,6 +43,7 @@ import { Pool } from "pg";
 import { isWonYomi } from "../src/lib/yomi-status";
 import { categoryFromDealProduct } from "../src/lib/product-categories";
 import { grossFromNet } from "../src/lib/payments";
+import { LUMA_TENANT_ID } from "../prisma/tenant-ids";
 
 const url = process.env.DATABASE_URL ?? "";
 if (!url.includes("salesagent_luma") && process.env.SEED_ALLOW_PROD !== "1") {
@@ -208,7 +209,7 @@ async function backfillSpot(wonSpot: WonProduct[]) {
     const carry = assign.get(p.id) ?? null;
     const sourceKey = `dpid::${p.id}`;
     const existing = await prisma.invoiceRecord.findUnique({
-      where: { sourceKey },
+      where: { tenantId_sourceKey: { tenantId: LUMA_TENANT_ID, sourceKey } },
       select: {
         id: true,
         paymentTiming: true,
@@ -258,7 +259,7 @@ async function backfillSpot(wonSpot: WonProduct[]) {
 
     if (!DRY) {
       await prisma.invoiceRecord.upsert({
-        where: { sourceKey },
+        where: { tenantId_sourceKey: { tenantId: LUMA_TENANT_ID, sourceKey } },
         create: {
           sourceKey,
           customerName: data.customerName as string,
@@ -354,7 +355,7 @@ async function backfillRecurring(wonSns: WonProduct[]) {
     const carry = assign.get(p.id) ?? null;
     const sourceKey = `dpid::${p.id}`;
     const existing = await prisma.recurringBilling.findUnique({
-      where: { sourceKey },
+      where: { tenantId_sourceKey: { tenantId: LUMA_TENANT_ID, sourceKey } },
       select: {
         id: true,
         initialFee: true,
@@ -389,7 +390,7 @@ async function backfillRecurring(wonSns: WonProduct[]) {
 
     if (!DRY) {
       const billing = await prisma.recurringBilling.upsert({
-        where: { sourceKey },
+        where: { tenantId_sourceKey: { tenantId: LUMA_TENANT_ID, sourceKey } },
         create: {
           sourceKey,
           customerName: data.customerName as string,

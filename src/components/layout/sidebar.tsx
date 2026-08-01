@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { TenantTabs, ALL_TENANTS_CODE } from "@/components/layout/tenant-tabs";
+import type { MyTenant } from "@/lib/tenant-context";
 import {
   LayoutDashboard,
   Briefcase,
@@ -80,13 +82,52 @@ const adminGroup = {
   ],
 };
 
+/**
+ * サイドバー最上部のブランド表示。選択中の会社タブで切り替わる。
+ * 「いまどちらの会社を操作しているか」を常に目に入る位置で示し、誤起票を防ぐ。
+ * Tailwind は動的クラス名を解決できないため静的な文字列で持つ。
+ */
+const BRAND: Record<
+  string,
+  { gradient: string; corporateName: string; title: string; subtitle: string; tagline: string }
+> = {
+  luma: {
+    gradient: "from-orange-500 via-orange-500 to-amber-500",
+    corporateName: "株式会社Luma",
+    title: "Luma",
+    subtitle: "Sales Agent",
+    tagline: "受注を取りにいくAI",
+  },
+  reagey: {
+    gradient: "from-emerald-700 via-emerald-600 to-teal-600",
+    corporateName: "株式会社リージー",
+    title: "Reagey",
+    subtitle: "Sales Agent",
+    tagline: "採用ブランディングの受注をつくる",
+  },
+  [ALL_TENANTS_CODE]: {
+    gradient: "from-zinc-700 via-zinc-600 to-zinc-500",
+    corporateName: "全社ビュー（閲覧のみ）",
+    title: "Luma",
+    subtitle: "＋ リージー",
+    tagline: "2社合算の実績を見る",
+  },
+};
+
 export function Sidebar({
   user,
+  tenants = [],
+  activeTenantCode = "luma",
+  canViewAllTenants = false,
 }: {
   user: { name: string; email: string; avatarColor: string | null; avatarUrl?: string | null; permission: string } | null;
+  tenants?: MyTenant[];
+  activeTenantCode?: string;
+  canViewAllTenants?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const brand = BRAND[activeTenantCode] ?? BRAND.luma;
   const isAdmin = user?.permission === "admin";
   // adminOnly のアイテム（入金管理など）は非adminには出さない
   const visibleBaseGroups = baseGroups.map((g) => ({
@@ -103,9 +144,9 @@ export function Sidebar({
 
   return (
     <aside className="w-72 shrink-0 border-r border-zinc-200 bg-gradient-to-b from-white to-zinc-50 flex flex-col">
-      <div className="px-5 py-5 border-b border-zinc-200 bg-gradient-to-br from-orange-500 via-orange-500 to-amber-500">
+      <div className={cn("px-5 py-5 border-b border-zinc-200 bg-gradient-to-br", brand.gradient)}>
         <div className="text-[10px] font-semibold tracking-widest text-white/80 uppercase mb-1.5">
-          株式会社Luma
+          {brand.corporateName}
         </div>
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-white/20 backdrop-blur p-2 shadow-lg">
@@ -113,13 +154,16 @@ export function Sidebar({
           </div>
           <div>
             <div className="font-bold tracking-tight text-base text-white leading-tight">
-              Luma
-              <span className="ml-1 text-white/90">Sales Agent</span>
+              {brand.title}
+              <span className="ml-1 text-white/90">{brand.subtitle}</span>
             </div>
-            <div className="text-[10px] text-white/70 -mt-0.5">受注を取りにいくAI</div>
+            <div className="text-[10px] text-white/70 -mt-0.5">{brand.tagline}</div>
           </div>
         </div>
       </div>
+
+      {/* 会社タブ（Luma / リージー / 全社）。所属が1社のみなら表示されない */}
+      <TenantTabs tenants={tenants} activeCode={activeTenantCode} canViewAll={canViewAllTenants} />
 
       <nav className="flex-1 p-3 overflow-y-auto">
         {groups.map((g) => (
