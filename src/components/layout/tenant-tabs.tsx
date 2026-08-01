@@ -18,7 +18,12 @@ import type { MyTenant } from "@/lib/tenant-context";
 const THEME: Record<string, { activeBg: string; activeText: string; dot: string }> = {
   luma: { activeBg: "bg-orange-500", activeText: "text-white", dot: "bg-orange-500" },
   reagey: { activeBg: "bg-emerald-700", activeText: "text-white", dot: "bg-emerald-700" },
-  __all__: { activeBg: "bg-zinc-700", activeText: "text-white", dot: "bg-zinc-700" },
+  // 全社は2社の色を混ぜたグラデーション
+  __all__: {
+    activeBg: "bg-gradient-to-r from-orange-500 to-emerald-600",
+    activeText: "text-white",
+    dot: "bg-gradient-to-r from-orange-500 to-emerald-600",
+  },
 };
 
 export const ALL_TENANTS_CODE = "__all__";

@@ -101,18 +101,41 @@ const BRAND: Record<
   reagey: {
     gradient: "from-emerald-700 via-emerald-600 to-teal-600",
     corporateName: "株式会社リージー",
-    title: "Reagey",
+    title: "Re;Easy",
     subtitle: "Sales Agent",
     tagline: "採用ブランディングの受注をつくる",
   },
+  // 全社は2社の色を混ぜる（Luma のオレンジ → リージーの緑）
   [ALL_TENANTS_CODE]: {
-    gradient: "from-zinc-700 via-zinc-600 to-zinc-500",
+    gradient: "from-orange-500 via-amber-500 to-emerald-600",
     corporateName: "全社ビュー（閲覧のみ）",
     title: "Luma",
-    subtitle: "＋ リージー",
+    subtitle: "＋ Re;Easy",
     tagline: "2社合算の実績を見る",
   },
 };
+
+/**
+ * 会社ごとの基調色。
+ * ナビの色は Luma のブランドカラー（オレンジ〜アンバー〜イエロー）で組んであるので、
+ * リージーを見ているときは対応する緑系に振り替えて画面全体を緑基調にする。
+ * 機能ごとに割り当てた他の色（sky / pink / violet 等）はそのまま残す。
+ */
+const REAGEY_ACCENT: Record<string, string> = {
+  "text-orange-500": "text-emerald-600",
+  "bg-orange-500": "bg-emerald-600",
+  "text-orange-600": "text-emerald-700",
+  "bg-orange-600": "bg-emerald-700",
+  "text-amber-500": "text-teal-500",
+  "bg-amber-500": "bg-teal-500",
+  "text-amber-600": "text-teal-600",
+  "bg-amber-600": "bg-teal-600",
+  "text-yellow-600": "text-green-600",
+  "bg-yellow-600": "bg-green-600",
+};
+
+const accent = (cls: string, code: string) =>
+  code === "reagey" ? (REAGEY_ACCENT[cls] ?? cls) : cls;
 
 export function Sidebar({
   user,
@@ -185,7 +208,7 @@ export function Sidebar({
                       rel="noopener noreferrer"
                       className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-base transition-all text-zinc-700 hover:bg-zinc-100 font-medium"
                     >
-                      <Icon className={cn("h-5 w-5", it.color)} />
+                      <Icon className={cn("h-5 w-5", accent(it.color, activeTenantCode))} />
                       {it.label}
                       <ExternalLink className="h-3.5 w-3.5 text-zinc-400 ml-auto" />
                     </a>
@@ -198,11 +221,13 @@ export function Sidebar({
                     className={cn(
                       "flex items-center gap-3 px-3 py-2.5 rounded-lg text-base transition-all",
                       active
-                        ? `${it.activeBg} text-white shadow-md font-semibold`
+                        ? `${accent(it.activeBg, activeTenantCode)} text-white shadow-md font-semibold`
                         : "text-zinc-700 hover:bg-zinc-100 font-medium",
                     )}
                   >
-                    <Icon className={cn("h-5 w-5", active ? "text-white" : it.color)} />
+                    <Icon
+                      className={cn("h-5 w-5", active ? "text-white" : accent(it.color, activeTenantCode))}
+                    />
                     {it.label}
                   </Link>
                 );

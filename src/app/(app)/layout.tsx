@@ -16,7 +16,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getRequestTenant(),
   ]);
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-50">
+    // data-tenant で画面全体の基調色が切り替わる（globals.css の末尾を参照）。
+    // Luma=オレンジ / リージー=緑。全社ビューは Luma の色のまま（合算表示のため）。
+    <div className="flex h-screen overflow-hidden bg-zinc-50" data-tenant={ctx?.code ?? "luma"}>
       <Sidebar
         user={user}
         tenants={tenants}

@@ -103,7 +103,8 @@ export default async function CompaniesPage({
                 showAll ? "text-zinc-600 hover:bg-white" : "bg-zinc-800 text-white",
               )}
             >
-              {ctx?.code === "reagey" ? "リージーの取引先" : "Lumaの取引先"}
+              {/* 表示名は会社設定（tenants.short_name）に従う */}
+              {`${myTenants.find((t) => t.id === tenantId)?.shortName ?? "自社"}の取引先`}
             </Link>
             <Link
               href="/companies?scope=all"
