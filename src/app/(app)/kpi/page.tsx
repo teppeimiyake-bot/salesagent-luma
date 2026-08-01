@@ -11,8 +11,10 @@ import {
   getKpiTimeseries,
   getGoalsHierarchy,
   getMonthlyWonDealsByPeriod,
+  getKpiRollup,
   getSalesUsers,
 } from "@/lib/queries";
+import { MetricRollupView } from "@/components/kpi/metric-rollup-view";
 import { getFullyLostDealIds } from "@/lib/deal-status-server";
 import { isExcludedFromNextAction } from "@/lib/deal-status";
 import { getSession } from "@/lib/auth";
@@ -97,16 +99,17 @@ export default async function KpiPage({
         },
       },
     });
-    const [dashboard, series, hierarchy, monthlyWonDeals, users, fullyLostDealIds] =
+    const [dashboard, series, hierarchy, monthlyWonDeals, rollup, users, fullyLostDealIds] =
       await Promise.all([
         getDashboardData({ userId }),
         getKpiTimeseries(userId),
         getGoalsHierarchy(year, userId),
         getMonthlyWonDealsByPeriod(year, userId),
+        getKpiRollup(year, userId),
         getSalesUsers(),
         getFullyLostDealIds(),
       ]);
-    return { productMasters, dashboard, series, hierarchy, monthlyWonDeals, users, fullyLostDealIds };
+    return { productMasters, dashboard, series, hierarchy, monthlyWonDeals, rollup, users, fullyLostDealIds };
   });
 
   if (!loaded) {
@@ -120,7 +123,7 @@ export default async function KpiPage({
     );
   }
 
-  const { productMasters, series, hierarchy, monthlyWonDeals, users, fullyLostDealIds } = loaded;
+  const { productMasters, series, hierarchy, monthlyWonDeals, rollup, users, fullyLostDealIds } = loaded;
   const { kpi, deals } = loaded.dashboard;
   const fullyLostSet = new Set(fullyLostDealIds);
 
@@ -187,6 +190,9 @@ export default async function KpiPage({
           }))}
           canEditProducts={canEditProducts}
         />
+
+        {/* 指標別の積み上げ集計（月次を正本に四半期・年間KGIへ反映） */}
+        <MetricRollupView data={rollup} isOrgView={isOrgView} />
 
         <KpiCards kpi={kpi} />
         <KpiCharts data={series} />

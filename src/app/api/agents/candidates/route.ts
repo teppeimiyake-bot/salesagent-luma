@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { isValidAgentToken } from "@/lib/agent-auth";
+import { runAsTenant } from "@/lib/tenant-context";
 import { normalizeName, domainOf } from "@/lib/company-dedup";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,23 @@ export async function POST(req: Request) {
   }
   const { source, agentRunId, candidates } = parsed.data;
 
-  const result = await prisma.$transaction(async (tx) => {
+  // 外部エージェント（Cloud Run）からの取り込みはログインセッションが無く、
+  // Cookie から会社を決められない。営業リストエージェントは Luma の施策なので
+  // Luma のコンテキストを明示して実行する。
+  // （runAsTenant で包まないと TENANT_STRICT=1 の運用で落ちる）
+  const result = await runAsTenant("luma", () => ingestCandidates(source, agentRunId, candidates));
+
+  return NextResponse.json({ ok: true, ...result });
+}
+
+type Candidates = z.infer<typeof bodySchema>["candidates"];
+
+async function ingestCandidates(
+  source: string,
+  agentRunId: string | null | undefined,
+  candidates: Candidates,
+) {
+  return prisma.$transaction(async (tx) => {
     const run = await tx.agentRun.create({
       data: { source, agentRunId: agentRunId ?? null },
     });
@@ -140,6 +157,4 @@ export async function POST(req: Request) {
       total: candidates.length,
     };
   });
-
-  return NextResponse.json({ ok: true, ...result });
 }

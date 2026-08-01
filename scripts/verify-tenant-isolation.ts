@@ -177,8 +177,32 @@ async function main() {
       ? ok("商談に紐づけて作った商材にも同じ tenant_id が入る")
       : ng(`ネストした商材の tenant_id が ${nested.products[0]?.tenantId}`);
 
-    // 7. 共有マスタは絞られないこと
-    console.log("\n[7] 共有マスタ（企業）");
+    // 7. 生SQL（Prisma Extension が効かない唯一の経路）
+    console.log("\n[7] 生SQL（deal-status-server.ts）");
+    const { getFullyLostDealIds } = await import("../src/lib/deal-status-server");
+    // リージーに完全失注の商談を1件作る（商材が全てNG）
+    const lostDeal = await runWithTenant(ctx(REAGEY_TENANT_ID), () =>
+      prisma.deal.create({
+        data: {
+          companyId: testCompany.id,
+          title: "__verify_lost__",
+          products: { create: { productName: "採用ブランディング", yomiStatus: "NG" } },
+        },
+      }),
+    );
+    createdDealIds.push(lostDeal.id);
+
+    const lostFromReagey = await runWithTenant(ctx(REAGEY_TENANT_ID), () => getFullyLostDealIds());
+    const lostFromLuma = await runWithTenant(ctx(LUMA_TENANT_ID), () => getFullyLostDealIds());
+    lostFromReagey.includes(lostDeal.id)
+      ? ok("生SQL: 自テナントの完全失注商談は取得できる")
+      : ng("生SQL: 自テナントの商談が取得できない");
+    !lostFromLuma.includes(lostDeal.id)
+      ? ok("生SQL: 他テナントの商談は混ざらない（tenant_id 条件が効いている）")
+      : ng("生SQL: 他テナントの商談IDが混入した — $queryRaw に tenant_id 条件が無い");
+
+    // 8. 共有マスタは絞られないこと
+    console.log("\n[8] 共有マスタ（企業）");
     const companiesFromReagey = await runWithTenant(ctx(REAGEY_TENANT_ID), () =>
       prisma.company.findFirst({ where: { id: testCompany.id } }),
     );

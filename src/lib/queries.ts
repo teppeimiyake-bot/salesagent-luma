@@ -671,3 +671,122 @@ export async function getMonthlyWonDealsByPeriod(
   return result;
 }
 
+
+// ============================================================
+// 指標別 KPI ロールアップ（月次を正本に四半期・年間へ積み上げる）
+// ------------------------------------------------------------
+// 「月次で入れた数字を合算して四半期目標・年間KGIに反映させたい」という
+// 社長要望で作った集計。リージー版で先に作り、統合にあたって Luma へ移植した。
+//
+// 会計年度の開始月は会社ごとに異なる（Luma=6月 / リージー=1月）ため、
+// 期間の区切りは getFiscalStartMonth() から取る。
+// ============================================================
+
+/**
+ * FY内12ヶ月の基礎実績（売上・商談数・受注数）を月インデックス順に返す。
+ *
+ * 受注の判定は Luma の慣習に合わせ isWonProduct / isWonDeal を使う。
+ * Luma のヨミは「【映像】受注」のようにプレフィックスが付くため、
+ * 文字列の厳密一致では受注を取りこぼす。
+ */
+export async function getMonthlyKpiBases(
+  fy: number,
+  userId?: string,
+): Promise<import("@/lib/kpi-rollup").MonthlyBase[]> {
+  const startMonth = await getFiscalStartMonth();
+  const where = {
+    ...(userId ? { ownerUserId: userId } : {}),
+    ...ACTIVE_DEAL_FILTER,
+  };
+
+  // FY全体を1回で取り、メモリ上で月別に振り分ける
+  const fyStart = getFiscalMonth(startMonth, fy, 0);
+  const fyEnd = getFiscalMonth(startMonth, fy, 11);
+  const rangeStart = new Date(Date.UTC(fyStart.year, fyStart.month - 1, 1, 0, 0, 0));
+  const rangeEnd = new Date(Date.UTC(fyEnd.year, fyEnd.month, 0, 23, 59, 59));
+
+  const [wonDeals, createdDeals] = await Promise.all([
+    // 受注実績（受注計上日ベース）
+    prisma.deal.findMany({
+      where: { ...where, contractDate: { gte: rangeStart, lte: rangeEnd } },
+      select: {
+        contractDate: true,
+        products: { select: { amount: true, yomiStatus: true } },
+      },
+    }),
+    // 新規商談数（作成日ベース）
+    prisma.deal.findMany({
+      where: { ...where, createdAt: { gte: rangeStart, lte: rangeEnd } },
+      select: { createdAt: true },
+    }),
+  ]);
+
+  // 会計年度内の月インデックス（0〜11）。範囲外は -1。
+  const monthIndexOf = (d: Date): number => {
+    for (let i = 0; i < 12; i++) {
+      const fm = getFiscalMonth(startMonth, fy, i);
+      if (d.getUTCFullYear() === fm.year && d.getUTCMonth() + 1 === fm.month) return i;
+    }
+    return -1;
+  };
+
+  const bases: import("@/lib/kpi-rollup").MonthlyBase[] = Array.from(
+    { length: 12 },
+    () => ({ revenue: 0, dealCount: 0, wonCount: 0 }),
+  );
+
+  for (const d of wonDeals) {
+    if (!d.contractDate) continue;
+    const idx = monthIndexOf(d.contractDate);
+    if (idx < 0) continue;
+    const products = d.products as DealProductLite[];
+    if (!isWonDeal(products)) continue;
+    bases[idx].revenue += wonAmount(products);
+    bases[idx].wonCount += 1;
+  }
+  for (const d of createdDeals) {
+    const idx = monthIndexOf(d.createdAt);
+    if (idx >= 0) bases[idx].dealCount += 1;
+  }
+  return bases;
+}
+
+/**
+ * 指標別ロールアップ（月次 → 四半期 → 年間）を組み立てる。
+ * 上位期間の目標が明示設定されていればそれを優先し、無ければ月次目標の合算で補う。
+ */
+export async function getKpiRollup(fy: number, userId?: string) {
+  const { buildKpiRollup } = await import("@/lib/kpi-rollup");
+  const startMonth = await getFiscalStartMonth();
+
+  const yearPeriod = fyPeriodLabel(fy);
+  const quarterPeriods = [1, 2, 3, 4].map((q) => fyQuarterPeriodLabel(fy, q));
+  const monthPeriods = Array.from({ length: 12 }, (_, i) => {
+    const { year, month } = getFiscalMonth(startMonth, fy, i);
+    return monthPeriodLabel(year, month);
+  });
+  const monthLabels = Array.from({ length: 12 }, (_, i) => {
+    const { month } = getFiscalMonth(startMonth, fy, i);
+    return `${month}月`;
+  });
+
+  const [bases, goals] = await Promise.all([
+    getMonthlyKpiBases(fy, userId),
+    prisma.goal.findMany({
+      where: {
+        ownerUserId: userId ?? null,
+        period: { in: [yearPeriod, ...quarterPeriods, ...monthPeriods] },
+      },
+      select: { period: true, targetAmount: true },
+    }),
+  ]);
+
+  const targets = new Map<string, number>();
+  for (const g of goals) targets.set(g.period, g.targetAmount);
+
+  return buildKpiRollup(fy, bases, monthLabels, targets, {
+    year: yearPeriod,
+    quarters: quarterPeriods,
+    months: monthPeriods,
+  });
+}

@@ -198,12 +198,69 @@ node scripts/run-sql.cjs .env.production.local prisma/migrations-manual/2026-08-
 
 ## リージーのデータ投入（Phase 5）の前に必要な残作業
 
-| # | 作業 | なぜ必要か |
+| # | 作業 | 状態 |
 |---|---|---|
-| 1 | 生SQL 3箇所（`src/lib/deal-status-server.ts`）に `tenant_id` 条件を追加 | Prisma Extension が効かない唯一の経路。ここだけ2社のデータが混ざる |
-| 2 | `TENANT_STRICT=1` に切り替え | 会社が決まらないまま動く箇所を例外にする。いまは Luma にフォールバックしている |
-| 3 | バッチ・cron を `runAsTenant()` で包む | 2 を有効にすると、リクエスト外から動く処理が落ちるため |
-| 4 | Luma側の重複企業を統合（エンビジョン2件・澤村2件） | リージーの商談が誤った企業にぶら下がるのを防ぐ |
-| 5 | リージー独自3コンポーネントの移植 | `kpi-rollup` / `metric-rollup-view` / `monthly-won-board` |
+| 1 | 生SQL 3箇所（`src/lib/deal-status-server.ts`）に `tenant_id` 条件を追加 | **完了**（`tenantSqlFilter()`。検証は `verify-tenant-isolation.ts` の[7]） |
+| 2 | セッション外の経路を `runAsTenant()` で包む | **完了**（`/api/agents/candidates` を Luma 固定に。Vercel cron は無し） |
+| 3 | 会計年度のテナント化（Luma=6月 / リージー=1月） | **完了** |
+| 4 | `TENANT_STRICT=1` に切り替え | 検証済み・**本番反映は Phase 5 直前**（下記） |
+| 5 | Luma側の重複企業の整理 | 澤村＝**別会社として記録済み**／エンビジョン＝**要作業**（下記） |
+| 6 | リージー独自コンポーネントの移植 | **完了**（下記） |
 
-会計年度のテナント化（Luma=6月 / リージー=1月）は**対応済み**。
+### 4. TENANT_STRICT=1 について
+
+`TENANT_STRICT=1` にすると、会社が決まらないまま テナント所有テーブルを触った箇所が
+例外になる（いまは Luma にフォールバックして警告ログを出すだけ）。
+
+strict モードの dev サーバーに対して全画面・全APIを叩く検証を用意した:
+
+```powershell
+# 別ウィンドウで strict の dev サーバーを起動
+$env:DATABASE_URL = (Select-String .env.staging -Pattern '^DATABASE_URL="(.+)"').Matches.Groups[1].Value
+$env:TENANT_STRICT = "1"
+npx next dev -p 3004
+
+# 別ウィンドウで
+node scripts/verify-tenant-strict.mjs 3004
+node scripts/verify-deal-create-tenant.mjs 3004
+```
+
+2026-08-01 時点で **27ページ・16API すべて通過**、商談作成の会社選択も HTTP 経由で確認済み。
+ただし本番で有効にすると、万一の見落としがそのまま機能停止になる。1社運用のうちは
+フォールバックで実害が無いため、**Vercel の環境変数に入れるのは Phase 5 の直前**とする。
+
+### 5. Luma側の重複企業
+
+**澤村（対応済み）**
+
+「株式会社澤村」と「澤村株式会社」は名前が似ているだけの**別会社**（社長確認 2026-08-01）。
+統合してはいけないため `company_merge_dismissed` に登録し、重複候補に二度と出ないようにした
+（台本 `2026-08-01_04_dismiss_sawamura_pair.sql`）。
+
+**エンビジョン（残作業・画面から実施）**
+
+| 企業 | 商談 | 受注 | 連絡先 | HP | 登録日 |
+|---|---:|---:|---:|---|---|
+| 株式会社エンビジョン（`0f5eafd8…`） | 1 | 0 | 3 | envision-inc.jp | 2026-05-03 |
+| 株式会社エンビジョン（`d054e48c…`） | 0 | 0 | 1 | envision-inc.jp | 2026-06-09 |
+
+社名もHPも完全に一致しており、実態としての重複。古いほう（商談1・連絡先3）に寄せる。
+
+統合は本番の管理画面 `/admin/company-merges` から実施する。
+（統合APIはログインセッションを要するためスクリプトからは叩けない。
+また CompanyMerge のスナップショット生成をSQLで再現するのは危険なので、必ず画面から行う）
+スナップショットが残るので、間違えても画面から元に戻せる。
+
+### 6. 移植したコンポーネント
+
+リージー版にしか無かった KPI 機能のうち、**`MetricRollupView` のみ移植**した
+（`src/lib/kpi-rollup.ts` + `src/components/kpi/metric-rollup-view.tsx` + `getKpiRollup()`）。
+月次実績を正本に、四半期・年間KGIへ自動で積み上げる集計。
+
+`MonthlyWonBoard` は移植していない。Luma の `KpiHierarchyView` が月クリックでの
+受注企業ドリルダウンを内蔵しており、同等機能が既にあるため。
+
+移植時の注意（踏むと数字が0になる）:
+リージー版は受注判定が `yomiStatus === "受注"` の厳密一致だが、**Luma のヨミは
+「【映像】受注」のようにプレフィックスが付く**ため、そのままでは受注を取りこぼす。
+Luma 側では `isWonDeal` / `wonAmount`（`@/lib/deal-aggregations`）を使うよう書き換えてある。

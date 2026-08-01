@@ -6,6 +6,28 @@
  */
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { currentTenant, getRequestTenant } from "@/lib/tenant-context";
+
+/**
+ * 生SQL用のテナント条件（Luma / リージー）
+ * ------------------------------------------------------------
+ * このファイルの $queryRaw は Prisma Client Extension を通らないため、
+ * 自動の tenant_id 注入が効かない **唯一の経路**。ここだけは手で条件を足す。
+ *
+ * 足さないと他社の Deal ID まで返ってしまう。ID の羅列なので内容は漏れないが、
+ * 除外リストが他社分で膨らみ、将来の判定にも混入するため塞いでおく。
+ *
+ * 全社統合ビュー時は条件を入れない（両社を合算して見るモードのため）。
+ * テナントが決まらない場合（バッチ等）も条件なしで従来どおり動かす。
+ * TENANT_STRICT=1 の運用に入ったら、そもそも呼び出し側が runAsTenant() で
+ * 包まれているはずなので条件は必ず付く。
+ */
+async function tenantSqlFilter(alias: string): Promise<Prisma.Sql> {
+  const ctx = currentTenant() ?? (await getRequestTenant());
+  if (!ctx || ctx.crossTenant || !ctx.tenantId) return Prisma.empty;
+  // alias は呼び出し側のリテラル（"d"）のみ。外部入力は入らない。
+  return Prisma.sql`AND ${Prisma.raw(alias)}.tenant_id = ${ctx.tenantId}`;
+}
 
 /**
  * 「完全失注」の Deal ID 一覧を返す。
@@ -17,10 +39,12 @@ import { Prisma } from "@prisma/client";
  * テーブル/カラム名は schema.prisma の @@map / @map に従い snake_case。
  */
 export async function getFullyLostDealIds(): Promise<string[]> {
+  const tenantFilter = await tenantSqlFilter("d");
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT d.id
     FROM deals d
     WHERE d.deleted_at IS NULL
+      ${tenantFilter}
       AND EXISTS (SELECT 1 FROM deal_products dp WHERE dp.deal_id = d.id)
       AND NOT EXISTS (
         SELECT 1 FROM deal_products dp
@@ -45,10 +69,12 @@ export async function getFullyLostDealIds(): Promise<string[]> {
  *       部分一致（~）で判定する。yomi-status.ts の isWonYomi() と整合させること。
  */
 export async function getFullyWonDealIds(): Promise<string[]> {
+  const tenantFilter = await tenantSqlFilter("d");
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT d.id
     FROM deals d
     WHERE d.deleted_at IS NULL
+      ${tenantFilter}
       AND EXISTS (SELECT 1 FROM deal_products dp WHERE dp.deal_id = d.id)
       AND NOT EXISTS (
         SELECT 1 FROM deal_products dp
@@ -72,10 +98,12 @@ export async function getFullyWonDealIds(): Promise<string[]> {
  *   ToDo / Next Action から除外する。getFullyWonDealIds() ∪ getFullyLostDealIds() の上位集合。
  */
 export async function getFullyClosedDealIds(): Promise<string[]> {
+  const tenantFilter = await tenantSqlFilter("d");
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT d.id
     FROM deals d
     WHERE d.deleted_at IS NULL
+      ${tenantFilter}
       AND EXISTS (SELECT 1 FROM deal_products dp WHERE dp.deal_id = d.id)
       AND NOT EXISTS (
         SELECT 1 FROM deal_products dp
