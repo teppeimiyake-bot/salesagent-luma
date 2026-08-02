@@ -1,5 +1,7 @@
 "use client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { NextActionInput } from "@/components/deals/next-action-input";
+import { NextActionDateInput } from "@/components/deals/next-action-date-input";
 import { Badge } from "@/components/ui/badge";
 import { ChevronRight, History, Target, Sparkles, AlertTriangle, Trophy } from "lucide-react";
 import { formatDate } from "@/lib/utils";
@@ -34,14 +36,19 @@ type MeetingItem = {
 };
 
 export function DealOverviewPanel({
+  dealId,
   deal,
   meetings,
+  canEdit = false,
 }: {
+  dealId: string;
   deal: {
     nextAction: string | null;
     nextActionAt: Date | string | null;
   };
   meetings: MeetingItem[];
+  /** admin / user のみ編集可。viewer は従来どおり表示専用 */
+  canEdit?: boolean;
 }) {
   // 古→新でラベル付け、表示は新→古
   const ordered = [...meetings].sort(
@@ -88,7 +95,26 @@ export function DealOverviewPanel({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {deal.nextAction ? (
+          {canEdit ? (
+            /* 商談を開いてすぐ書き換えられるように、表示ではなく入力欄を置く。
+               テキストはフォーカスを外すと保存、期日は選んだ時点で保存される。 */
+            <div className="space-y-2">
+              <NextActionInput
+                dealId={dealId}
+                value={deal.nextAction}
+                rows={3}
+                placeholder="次にやることを入力（例: 見積を再提示して決裁者面談を打診）"
+                className="w-full resize-y rounded-md border border-amber-200 bg-white px-2.5 py-2 text-base font-semibold leading-relaxed text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:cursor-wait disabled:bg-zinc-50"
+              />
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-500 shrink-0">期日</span>
+                <NextActionDateInput dealId={dealId} value={deal.nextActionAt} />
+              </div>
+              <p className="text-[10px] text-zinc-400">
+                入力欄からフォーカスを外すと保存されます（Ctrl/⌘+Enter でも保存）。
+              </p>
+            </div>
+          ) : deal.nextAction ? (
             <p className="text-base font-semibold text-zinc-900 leading-relaxed">
               {deal.nextAction}
             </p>

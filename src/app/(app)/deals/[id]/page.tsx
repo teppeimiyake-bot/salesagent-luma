@@ -296,11 +296,13 @@ export default async function DealDetailPage({
             <div className="xl:sticky xl:top-4 space-y-4">
               {/* これまでの流れ + 次の一手 */}
               <DealOverviewPanel
+                dealId={deal.id}
                 deal={{
                   nextAction: deal.nextAction,
                   nextActionAt: deal.nextActionAt,
                 }}
                 meetings={deal.meetings}
+                canEdit={canEdit}
               />
 
               {/* 最新MTGのAI 7段分析パネル（既存） */}
