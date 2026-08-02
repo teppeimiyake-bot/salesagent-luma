@@ -111,10 +111,22 @@ const READ_OPS = new Set([
   "findMany", "findFirst", "findFirstOrThrow", "count", "aggregate", "groupBy",
 ]);
 
-/** where に tenant_id を AND する更新・削除操作（他社の行を触れなくする） */
-const WRITE_OPS = new Set([
-  "update", "updateMany", "delete", "deleteMany",
-]);
+/**
+ * where に tenant_id を AND する更新・削除操作（WhereInput を取るもの）。
+ * update / delete（単数）は where が WhereUniqueInput でトップレベルに
+ * ユニーク識別子が必要なため、ここには入れず別扱いにする。
+ */
+const WRITE_MANY_OPS = new Set(["updateMany", "deleteMany"]);
+
+/**
+ * where が WhereUniqueInput の更新・削除操作。
+ * ここを AND で包むと Prisma が
+ * 「Argument `where` needs at least one of `id` arguments」で落ちる。
+ * （実際それで商談のネクストアクション・ヨミが一切更新できなくなった）
+ * トップレベルに tenantId を並べる形にすれば、ユニーク識別子を保ったまま
+ * 他社の行に触れない（Prisma の extendedWhereUnique）。
+ */
+const WRITE_UNIQUE_OPS = new Set(["update", "delete"]);
 
 /** 取得後に tenant_id を検証する操作（where にユニーク列しか書けないため後段で弾く） */
 const UNIQUE_READ_OPS = new Set(["findUnique", "findUniqueOrThrow"]);
@@ -183,8 +195,14 @@ export const prisma = basePrisma.$extends({
         const tenantId = ctx?.tenantId ?? fallbackTenantId(model, operation);
         const a = args as Record<string, unknown>;
 
-        if (READ_OPS.has(operation) || WRITE_OPS.has(operation)) {
-          a.where = andTenant(a.where, tenantId);
+        if (READ_OPS.has(operation) || WRITE_MANY_OPS.has(operation) || WRITE_UNIQUE_OPS.has(operation)) {
+          if (WRITE_UNIQUE_OPS.has(operation)) {
+            // where は WhereUniqueInput。AND で包むとユニーク識別子を見失って
+            // Prisma が検証エラーを出すので、トップレベルに並べる。
+            a.where = { ...(a.where as object), tenantId };
+          } else {
+            a.where = andTenant(a.where, tenantId);
+          }
           if ((operation === "update" || operation === "updateMany") && a.data && typeof a.data === "object") {
             // 所属テナントの付け替えは許さない（他社へ商談を移す操作を封じる）
             delete (a.data as Record<string, unknown>).tenantId;

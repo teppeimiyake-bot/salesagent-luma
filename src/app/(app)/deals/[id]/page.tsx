@@ -9,11 +9,9 @@ import { AiPanel } from "@/components/deals/ai-panel";
 import { TasksList } from "@/components/deals/tasks-list";
 import { DealStatusBar } from "@/components/deals/deal-status";
 import { DealProductsPanel } from "@/components/deals/deal-products-panel";
-import { RoleplayPanel } from "@/components/deals/roleplay-panel";
 import { PreparationPanel } from "@/components/deals/preparation-panel";
 import { DealDocuments } from "@/components/deals/deal-documents";
 import { DealContracts } from "@/components/deals/deal-contracts";
-import { DealQuotes } from "@/components/deals/deal-quotes";
 import { QuoteBuilder } from "@/components/deals/quote-builder";
 import { ContractGenerator } from "@/components/deals/contract-generator";
 import { categoryFromDealProduct } from "@/lib/product-categories";
@@ -254,7 +252,6 @@ export default async function DealDetailPage({
             />
             {/* Notion ヨミ表「★初回商談ヒアリングシート」由来の議事録（閲覧専用） */}
             <NotionMeetingNotes bant={deal.bant} />
-            <RoleplayPanel dealId={deal.id} />
             <MeetingRecorder dealId={deal.id} />
             <UploadRecording dealId={deal.id} />
             {/* 複数回商談を時系列で記録・編集（BANTは案件全体に集約済のため、各回はメモのみ） */}
@@ -272,8 +269,6 @@ export default async function DealDetailPage({
               }))}
               canEdit={canEdit}
             />
-            {/* 既存：手動アップロード見積（複数バージョン管理） */}
-            <DealQuotes dealId={deal.id} canEdit={canEdit} />
             <DealDocuments dealId={deal.id} companyName={deal.company.name} />
             {/* 機能②：契約書 自動生成（映像/SNS。A+ヨミ遷移でも自動生成） */}
             <ContractGenerator

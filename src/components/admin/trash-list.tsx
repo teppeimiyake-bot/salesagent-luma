@@ -219,7 +219,7 @@ function CompanyRow({ company }: { company: TrashedCompany }) {
         onOpenChange={setPermanentOpen}
         endpoint={`/api/companies/${company.id}?permanent=true`}
         targetLabel={company.name}
-        cascadeNote={`連絡先 ${company._count.contacts} 件、商談 ${company._count.deals} 件、および商談に紐づく議事録・タスク・ロープレ・ドキュメント・見積等が全て物理削除されます。`}
+        cascadeNote={`連絡先 ${company._count.contacts} 件、商談 ${company._count.deals} 件、および商談に紐づく議事録・タスク・ドキュメント等が全て物理削除されます。`}
       />
     </Card>
   );
@@ -349,7 +349,7 @@ function DealRow({ deal }: { deal: TrashedDeal }) {
         onOpenChange={setPermanentOpen}
         endpoint={`/api/deals/${deal.id}?permanent=true`}
         targetLabel={`${deal.company.name} ／ ${deal.title}`}
-        cascadeNote={`議事録 ${deal._count.meetings} 件、ToDo ${deal._count.tasks} 件、ロープレ・AIログ・ドキュメント・見積等が全て物理削除されます。`}
+        cascadeNote={`議事録 ${deal._count.meetings} 件、ToDo ${deal._count.tasks} 件、AIログ・ドキュメント等が全て物理削除されます。`}
       />
     </Card>
   );

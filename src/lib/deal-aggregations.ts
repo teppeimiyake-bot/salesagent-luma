@@ -174,6 +174,15 @@ export function dealYomiRank(items: DealProductLite[]): number {
 
 /**
  * Yomi バッジ色（ヨミ7段階の表示色）
+ *
+ * 色は「確度」を表す情報なので、会社（Luma / リージー）が変わっても同じでなければ
+ * ならない。ところが Bヨミ=amber・Cヨミ=orange は Luma のブランドカラーと同じ系統で、
+ * globals.css の会社別カラー振替（orange→emerald / amber→teal）に巻き込まれ、
+ * リージー表示時に受注・A+ヨミ・Cヨミがどれも緑になって区別がつかなくなっていた。
+ *
+ * そのため Tailwind のパレットクラス（.bg-amber-100 等）ではなく、
+ * 同じ色を指す任意値クラス（bg-[var(--color-amber-100)]）で書く。
+ * 生成されるセレクタが振替対象と一致しないので、両社で同じ配色が保たれる。
  */
 export function yomiColor(yomi: string | null | undefined): {
   bg: string;
@@ -182,20 +191,52 @@ export function yomiColor(yomi: string | null | undefined): {
 } {
   switch (yomi) {
     case "受注":
-      return { bg: "bg-emerald-100", text: "text-emerald-800", border: "border-emerald-300" };
+      return {
+        bg: "bg-[var(--color-emerald-100)]",
+        text: "text-[var(--color-emerald-800)]",
+        border: "border-[var(--color-emerald-300)]",
+      };
     case "A+ヨミ":
-      return { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" };
+      return {
+        bg: "bg-[var(--color-emerald-50)]",
+        text: "text-[var(--color-emerald-700)]",
+        border: "border-[var(--color-emerald-200)]",
+      };
     case "Aヨミ":
-      return { bg: "bg-sky-100", text: "text-sky-800", border: "border-sky-300" };
+      return {
+        bg: "bg-[var(--color-sky-100)]",
+        text: "text-[var(--color-sky-800)]",
+        border: "border-[var(--color-sky-300)]",
+      };
     case "Bヨミ":
-      return { bg: "bg-amber-100", text: "text-amber-800", border: "border-amber-300" };
+      return {
+        bg: "bg-[var(--color-amber-100)]",
+        text: "text-[var(--color-amber-800)]",
+        border: "border-[var(--color-amber-300)]",
+      };
     case "Cヨミ":
-      return { bg: "bg-orange-100", text: "text-orange-800", border: "border-orange-300" };
+      return {
+        bg: "bg-[var(--color-orange-100)]",
+        text: "text-[var(--color-orange-800)]",
+        border: "border-[var(--color-orange-300)]",
+      };
     case "ネタ":
-      return { bg: "bg-zinc-100", text: "text-zinc-700", border: "border-zinc-300" };
+      return {
+        bg: "bg-[var(--color-zinc-100)]",
+        text: "text-[var(--color-zinc-700)]",
+        border: "border-[var(--color-zinc-300)]",
+      };
     case "NG":
-      return { bg: "bg-red-100", text: "text-red-700", border: "border-red-300" };
+      return {
+        bg: "bg-[var(--color-red-100)]",
+        text: "text-[var(--color-red-700)]",
+        border: "border-[var(--color-red-300)]",
+      };
     default:
-      return { bg: "bg-zinc-50", text: "text-zinc-500", border: "border-zinc-200" };
+      return {
+        bg: "bg-[var(--color-zinc-50)]",
+        text: "text-[var(--color-zinc-500)]",
+        border: "border-[var(--color-zinc-200)]",
+      };
   }
 }

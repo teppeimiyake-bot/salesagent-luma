@@ -29,10 +29,11 @@ type Doc = {
   createdAt: Date | string;
 };
 
-// この商談に紐づくドキュメントのカテゴリ（提案書 / 見積書 / その他）
+// この商談に紐づくドキュメントのカテゴリ（提案書 / その他）
+// 見積書は廃止（社長指示 2026-08-02）。見積は「見積書 自動作成」に一本化する。
+// 過去に category='quote' で登録された書類は「その他」に寄せて表示だけ残す。
 const DEAL_DOC_CATEGORIES: { value: string; label: string; color: string }[] = [
   { value: "proposal", label: "提案書", color: "bg-emerald-100 text-emerald-700" },
-  { value: "quote", label: "見積書", color: "bg-blue-100 text-blue-700" },
   { value: "other", label: "その他", color: "bg-zinc-100 text-zinc-600" },
 ];
 const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
@@ -194,7 +195,7 @@ export function DealDocuments({ dealId, companyName }: { dealId: string; company
             <div className="rounded-lg bg-emerald-500 text-white p-1.5">
               <FolderOpen className="h-4 w-4" />
             </div>
-            この商談の提案書・見積書
+            この商談の提案書
             <Badge variant="secondary">{docs.length}</Badge>
           </span>
           <Button size="sm" variant="primary" onClick={() => { setOpen(!open); if (!open) { resetForm(); setName(""); } }}>
@@ -252,16 +253,12 @@ export function DealDocuments({ dealId, companyName }: { dealId: string; company
               <>
                 <div className="space-y-1">
                   <Label className="text-sm">
-                    {category === "quote" ? "見積書名" : category === "proposal" ? "提案書名" : "ドキュメント名"}
+                    {category === "proposal" ? "提案書名" : "ドキュメント名"}
                   </Label>
                   <Input
                     value={name}
                     onChange={(e) => { setName(e.target.value); setNameTouched(true); }}
-                    placeholder={
-                      category === "quote"
-                        ? "例: ◯◯様 御見積書 v2"
-                        : "例: ◯◯様向け提案書 v2"
-                    }
+                    placeholder="例: ◯◯様向け提案書 v2"
                     required
                   />
                   <p className="text-[10px] text-zinc-400">ファイルを選ぶと、拡張子を除いたファイル名が自動入力されます（編集可）。</p>
