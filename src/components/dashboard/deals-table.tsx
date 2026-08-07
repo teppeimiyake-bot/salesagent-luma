@@ -85,15 +85,20 @@ export function DealsTable({
             const repYomiColor = yomiColor(repYomi);
             const { primary, rest } = topProductLabels(d.products, 2);
             return (
-              <Link
+              <div
                 key={d.id}
-                href={
-                  linkQuery
-                    ? `/deals/${d.id}?from=${encodeURIComponent(linkQuery)}`
-                    : `/deals/${d.id}`
-                }
-                className="grid grid-cols-12 gap-x-4 gap-y-2 items-center px-5 py-3 hover:bg-emerald-50/30 transition-colors group"
+                className="relative grid grid-cols-12 gap-x-4 gap-y-2 items-center px-5 py-3 hover:bg-emerald-50/30 transition-colors group"
               >
+                {/* 行全体を覆う遷移用リンク。入力欄（relative z-10）はこの上に出る */}
+                <Link
+                  href={
+                    linkQuery
+                      ? `/deals/${d.id}?from=${encodeURIComponent(linkQuery)}`
+                      : `/deals/${d.id}`
+                  }
+                  aria-label={`${d.company.name} の商談を開く`}
+                  className="absolute inset-0"
+                />
                 {/* 左：企業ロゴ＋名＋プロダクト構成 */}
                 <div className="col-span-12 md:col-span-4 min-w-0 flex items-start gap-3">
                   <CompanyLogo
@@ -257,14 +262,16 @@ export function DealsTable({
                     <OwnerBadge owner={d.owner} size="sm" />
                   </div>
                   {canDelete && (
-                    <DeleteButton
-                      endpoint={`/api/deals/${d.id}`}
-                      targetLabel={d.company.name}
-                    />
+                    <span className="relative z-10">
+                      <DeleteButton
+                        endpoint={`/api/deals/${d.id}`}
+                        targetLabel={d.company.name}
+                      />
+                    </span>
                   )}
                   <ChevronRight className="h-4 w-4 text-zinc-300 group-hover:text-emerald-500 transition-colors shrink-0" />
                 </div>
-              </Link>
+              </div>
             );
           })}
           {deals.length === 0 && (

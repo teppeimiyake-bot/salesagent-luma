@@ -80,7 +80,9 @@ function AmountInput({
 
 /**
  * 商談一覧の行内でヨミ・提案金額をインライン編集する。
- * 行全体が <Link> なので、このコンポーネント内のクリックは preventDefault + stopPropagation で
+ * 行の遷移リンクは行全体を覆うオーバーレイ（deals-table.tsx）。この要素は relative z-10 で
+ * その上に出るので、クリックはそのまま入力欄に届く。preventDefault は使わない
+ * （使うと日付入力のカレンダーやセレクトが開かなくなる）。旧実装は preventDefault +
  * リンク遷移を抑止する。
  *
  * ネクストアクション(テキスト/期日)の編集は `DealNextActionEdit` に分離した
@@ -111,12 +113,10 @@ export function DealInlineEdit({
 
   return (
     <div
-      className="mt-2"
-      onClick={(e) => {
-        // 行全体の <Link> 遷移を抑止
-        e.preventDefault();
-        e.stopPropagation();
-      }}
+      // relative z-10 で行の遷移オーバーレイより前面に出す。
+      // preventDefault はしない（セレクトが開かなくなるため）。
+      className="relative z-10 mt-2"
+      onClick={(e) => e.stopPropagation()}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         {products.map((p) => {
@@ -159,7 +159,9 @@ export function DealInlineEdit({
 /**
  * 商談一覧の行内でネクストアクション(テキスト/期日)をインライン編集する。
  * カード中央〜右側エリアに配置する想定。
- * 行全体が <Link> なので、クリックは preventDefault + stopPropagation でリンク遷移を抑止する。
+ * 行の遷移リンクは行全体を覆うオーバーレイ（deals-table.tsx）。この要素は relative z-10 で
+ * その上に出るため、preventDefault なしでもリンクに遷移しない。
+ * preventDefault を入れると日付入力のカレンダーが開かなくなるので入れないこと。
  */
 export function DealNextActionEdit({
   dealId,
@@ -190,11 +192,10 @@ export function DealNextActionEdit({
 
   return (
     <div
-      onClick={(e) => {
-        // 行全体の <Link> 遷移を抑止
-        e.preventDefault();
-        e.stopPropagation();
-      }}
+      // relative z-10 で行の遷移オーバーレイより前面に出す。
+      // preventDefault はしない（日付入力のカレンダーが開かなくなるため）。
+      className="relative z-10"
+      onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between gap-2 mb-0.5">
         <p className="text-xs text-zinc-500">ネクストアクション</p>
