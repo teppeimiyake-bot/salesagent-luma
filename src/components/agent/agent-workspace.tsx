@@ -493,7 +493,10 @@ function RunPanel({
         throw new Error(d.error ?? `エージェントに接続できません（${srcRes.status}）`);
       }
       const srcData = await srcRes.json();
-      const list: AgentSource[] = srcData.sources ?? [];
+      // 「いまの一覧をもう一度しらべる」(sheets) は UI から除外。CLI 経路は残す。
+      const list: AgentSource[] = (srcData.sources ?? []).filter(
+        (s: AgentSource) => s.id !== "sheets",
+      );
       setSources(list);
 
       let states: Record<string, SourceState> = {};
