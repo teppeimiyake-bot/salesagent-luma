@@ -105,7 +105,7 @@ export function StaffPicker({
   }, [open]);
 
   if (!canEdit) {
-    return <span className="text-sm">{value ?? "—"}</span>;
+    return <span className="whitespace-nowrap text-sm">{value ?? "—"}</span>;
   }
 
   const hasValueInMaster = !!value && roleOptions.some((o) => o.name === value);

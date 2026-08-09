@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { PmTable, type PmProject } from "@/components/pm/pm-table";
 import {
   PRODUCTION_STATUS_LABEL,
+  PRODUCTION_STATUS_STYLE,
   defaultHiddenStatus,
   statusesForCategory,
   type ProductionStatus,
@@ -140,20 +141,26 @@ export function PmBoard({ canEdit }: { canEdit: boolean }) {
         <span className="mr-1 text-xs font-medium text-zinc-500">ステータス</span>
         {tabStatuses.map((s) => {
           const on = selected.includes(s);
+          const style = PRODUCTION_STATUS_STYLE[s];
           return (
             <button
               key={s}
               type="button"
               onClick={() => toggleStatus(s)}
               aria-pressed={on}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset transition-all ${
                 on
-                  ? "border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700"
-                  : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
+                  ? style.chip
+                  : "bg-white text-zinc-400 ring-zinc-200 hover:text-zinc-600 hover:ring-zinc-300"
               }`}
             >
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full transition-colors ${
+                  on ? style.dot : "bg-zinc-300"
+                }`}
+              />
               {PRODUCTION_STATUS_LABEL[s]}
-              <span className={`tabular-nums ${on ? "text-indigo-100" : "text-zinc-400"}`}>
+              <span className={`tabular-nums ${on ? "opacity-60" : "text-zinc-300"}`}>
                 {statusCounts[s] ?? 0}
               </span>
             </button>

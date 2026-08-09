@@ -17,21 +17,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  PRODUCTION_STATUS_LABEL,
-  productionStatusVariant,
-  statusesForCategory,
-  type ProductionStatus,
-} from "@/lib/production";
+import { type ProductionStatus } from "@/lib/production";
 import { StaffPicker } from "@/components/pm/staff-picker";
 import { UserPicker } from "@/components/pm/user-picker";
+import { StatusPill, StatusSelect } from "@/components/pm/status-pill";
 
 type SnsPlatform = "YOUTUBE" | "INSTAGRAM" | "TIKTOK";
 
@@ -158,25 +147,13 @@ export function PmDetail({ data }: { data: PmDetailData }) {
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="ステータス">
             {canEdit ? (
-              <Select
-                value={project.status}
-                onValueChange={(v) => patchProject({ status: v })}
-              >
-                <SelectTrigger className="h-8 w-[160px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusesForCategory(project.category).map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {PRODUCTION_STATUS_LABEL[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <StatusSelect
+                status={project.status}
+                category={project.category}
+                onChange={(v) => patchProject({ status: v })}
+              />
             ) : (
-              <Badge variant={productionStatusVariant(project.status)}>
-                {PRODUCTION_STATUS_LABEL[project.status]}
-              </Badge>
+              <StatusPill status={project.status} />
             )}
           </Field>
           <Field label="PM担当">

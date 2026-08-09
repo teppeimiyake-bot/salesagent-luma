@@ -77,7 +77,7 @@ export function UserPicker({
   }, [open]);
 
   if (!canEdit) {
-    return <span className="text-sm">{value ?? "—"}</span>;
+    return <span className="whitespace-nowrap text-sm">{value ?? "—"}</span>;
   }
 
   const extraValue = value && !users.some((u) => u.name === value) ? value : null;

@@ -57,7 +57,75 @@ export function defaultHiddenStatus(category: string | null | undefined): Produc
   return category === "SNS" ? "CANCELLED" : "DELIVERED";
 }
 
-// ---------- Badge variant ヘルパー（UI色分け） ----------
+// ---------- ステータス配色 ----------
+/**
+ * ステータスごとの色。制作の進み方に沿って色相を動かしているので、
+ * 一覧をざっと眺めたときに「どの段階に案件が溜まっているか」が色で分かる。
+ *   撮影前(灰) → 編集中(青) → 修正中(琥珀) → 修正待ち(橙) → 先方チェック待ち(紫)
+ *   → 納品間近(青緑) → 納品済み(緑)
+ * SNSは 契約中(緑) / 解約(灰) の2色。映像系と同じタブに並ぶことはないので色は重複してよい。
+ *
+ * Tailwind はクラス名を静的に走査するため、必ず完全なクラス文字列で持つこと
+ * （`bg-${color}-50` のような組み立ては本番ビルドで消える）。
+ */
+type StatusStyle = {
+  /** 先頭のドット */
+  dot: string;
+  /** バッジ/セレクトの下地 */
+  pill: string;
+  /** 絞り込みチップ（選択中） */
+  chip: string;
+};
+
+export const PRODUCTION_STATUS_STYLE: Record<ProductionStatus, StatusStyle> = {
+  BEFORE_SHOOT: {
+    dot: "bg-slate-400",
+    pill: "bg-slate-50 text-slate-700 ring-slate-200",
+    chip: "bg-slate-100 text-slate-800 ring-slate-300",
+  },
+  EDITING: {
+    dot: "bg-sky-500",
+    pill: "bg-sky-50 text-sky-700 ring-sky-200",
+    chip: "bg-sky-100 text-sky-800 ring-sky-300",
+  },
+  REVISING: {
+    dot: "bg-amber-500",
+    pill: "bg-amber-50 text-amber-700 ring-amber-200",
+    chip: "bg-amber-100 text-amber-800 ring-amber-300",
+  },
+  REVISION_WAIT: {
+    dot: "bg-orange-500",
+    pill: "bg-orange-50 text-orange-700 ring-orange-200",
+    chip: "bg-orange-100 text-orange-800 ring-orange-300",
+  },
+  CLIENT_REVIEW: {
+    dot: "bg-violet-500",
+    pill: "bg-violet-50 text-violet-700 ring-violet-200",
+    chip: "bg-violet-100 text-violet-800 ring-violet-300",
+  },
+  NEAR_DELIVERY: {
+    dot: "bg-teal-500",
+    pill: "bg-teal-50 text-teal-700 ring-teal-200",
+    chip: "bg-teal-100 text-teal-800 ring-teal-300",
+  },
+  DELIVERED: {
+    dot: "bg-emerald-500",
+    pill: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    chip: "bg-emerald-100 text-emerald-800 ring-emerald-300",
+  },
+  CONTRACTED: {
+    dot: "bg-emerald-500",
+    pill: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    chip: "bg-emerald-100 text-emerald-800 ring-emerald-300",
+  },
+  CANCELLED: {
+    dot: "bg-zinc-300",
+    pill: "bg-zinc-50 text-zinc-500 ring-zinc-200",
+    chip: "bg-zinc-200 text-zinc-700 ring-zinc-300",
+  },
+};
+
+// ---------- Badge variant ヘルパー（旧UI互換） ----------
 export function productionStatusVariant(
   s: ProductionStatus,
 ): "success" | "warning" | "info" | "secondary" {
