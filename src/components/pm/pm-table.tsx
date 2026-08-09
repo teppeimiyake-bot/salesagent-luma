@@ -102,12 +102,15 @@ export function PmTable({
   projects,
   onUpdated,
   variant = "video",
+  emptyMessage = "このカテゴリの受注案件はありません",
 }: {
   canEdit: boolean;
   projects: PmProject[];
   onUpdated: (p: PmProject) => void;
   /** video=映像/CATV/アライアンス（撮影日等を表示） / sns=SNS（投稿本数・提供期間・管理シート） */
   variant?: "video" | "sns";
+  /** 0件のときの文言。絞り込みで0件になった場合と元から0件の場合を呼び出し側で出し分ける。 */
+  emptyMessage?: string;
 }) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const isSns = variant === "sns";
@@ -168,7 +171,7 @@ export function PmTable({
             <tr>
               <td colSpan={isSns ? 11 : 12} className="py-16 text-center text-zinc-400">
                 <Inbox className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                このカテゴリの受注案件はありません
+                {emptyMessage}
               </td>
             </tr>
           )}
