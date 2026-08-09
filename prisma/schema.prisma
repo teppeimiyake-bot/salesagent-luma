@@ -1149,6 +1149,8 @@ model ProductionProject {
   @@map("production_projects")
 }
 
+// 映像/CATV/アライアンスは制作の進行段階、SNSは継続契約なので体系が分かれる。
+// UI での出し分けは src/lib/production.ts の statusesForCategory() が持つ。
 enum ProductionStatus {
   BEFORE_SHOOT     // 撮影前
   EDITING          // 編集中
@@ -1157,6 +1159,8 @@ enum ProductionStatus {
   REVISION_WAIT    // 修正待ち
   NEAR_DELIVERY    // 納品間近
   DELIVERED        // 納品済み
+  CONTRACTED       // 契約中（SNS）
+  CANCELLED        // 解約（SNS）
 }
 
 // ============================================================

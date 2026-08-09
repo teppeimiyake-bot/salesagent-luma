@@ -25,12 +25,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  PRODUCTION_STATUSES,
   PRODUCTION_STATUS_LABEL,
   productionStatusVariant,
+  statusesForCategory,
   type ProductionStatus,
 } from "@/lib/production";
 import { StaffPicker } from "@/components/pm/staff-picker";
+import { UserPicker } from "@/components/pm/user-picker";
 
 type SnsPlatform = "YOUTUBE" | "INSTAGRAM" | "TIKTOK";
 
@@ -165,7 +166,7 @@ export function PmDetail({ data }: { data: PmDetailData }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PRODUCTION_STATUSES.map((s) => (
+                  {statusesForCategory(project.category).map((s) => (
                     <SelectItem key={s} value={s}>
                       {PRODUCTION_STATUS_LABEL[s]}
                     </SelectItem>
@@ -179,8 +180,7 @@ export function PmDetail({ data }: { data: PmDetailData }) {
             )}
           </Field>
           <Field label="PM担当">
-            <StaffPicker
-              role="pm"
+            <UserPicker
               value={project.pmName}
               canEdit={canEdit}
               onChange={(v) => patchProject({ pmName: v })}
@@ -189,15 +189,6 @@ export function PmDetail({ data }: { data: PmDetailData }) {
           </Field>
           {!isSns && (
             <>
-              <Field label="ディレクター">
-                <StaffPicker
-                  role="director"
-                  value={project.directorName}
-                  canEdit={canEdit}
-                  onChange={(v) => patchProject({ directorName: v })}
-                  width="w-[200px]"
-                />
-              </Field>
               <Field label="カメラ">
                 <StaffPicker
                   role="camera"

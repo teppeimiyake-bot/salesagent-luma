@@ -6,6 +6,7 @@ import { getCurrentPermission, hasPermission, getSession } from "@/lib/auth";
 import { stripYomiPrefix } from "@/lib/yomi-status";
 import { generateContractDraft, isAPlusYomi } from "@/lib/contract-generate";
 import { syncWonProductToPayments } from "@/lib/payment-sync";
+import { syncWonProductToPm } from "@/lib/pm-sync";
 import { isWonYomi } from "@/lib/yomi-status";
 
 const updateSchema = z.object({
@@ -116,11 +117,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   //   - 失敗は PATCH 本体の成否に影響させない（ログのみ）。
   // ============================================================
   let paymentSync: Awaited<ReturnType<typeof syncWonProductToPayments>> | null = null;
+  // 受注遷移で PM（受注管理）にも案件を1件起票する。
+  // これが無かったため、バックフィル後に受注になった商材が PM 一覧に出ていなかった。
+  let pmSync: Awaited<ReturnType<typeof syncWonProductToPm>> | null = null;
   if (isWonYomi(updated.yomiStatus) && !isWonYomi(prevYomi)) {
     try {
       paymentSync = await syncWonProductToPayments(prisma, updated.id);
     } catch (e) {
       console.error("[deal-products PATCH] payment sync failed:", e);
+    }
+    try {
+      pmSync = await syncWonProductToPm(prisma, updated.id);
+    } catch (e) {
+      console.error("[deal-products PATCH] pm sync failed:", e);
     }
   }
 
@@ -150,7 +159,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
   }
 
-  return NextResponse.json({ dealProduct: updated, contractDraft, paymentSync });
+  return NextResponse.json({ dealProduct: updated, contractDraft, paymentSync, pmSync });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {

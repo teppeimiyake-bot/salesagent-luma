@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
-import { Loader2, Inbox, Building2, Check, ExternalLink } from "lucide-react";
+import { Loader2, Inbox, Building2, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
@@ -14,12 +14,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  PRODUCTION_STATUSES,
   PRODUCTION_STATUS_LABEL,
   productionStatusVariant,
+  statusesForCategory,
   type ProductionStatus,
 } from "@/lib/production";
 import { StaffPicker } from "@/components/pm/staff-picker";
+import { UserPicker } from "@/components/pm/user-picker";
 
 export type SnsPlatform = "YOUTUBE" | "INSTAGRAM" | "TIKTOK";
 
@@ -157,19 +158,17 @@ export function PmTable({
                 <th className="px-3 py-2.5 font-medium">撮影日</th>
                 <th className="px-3 py-2.5 font-medium">仮納品予定日</th>
                 <th className="px-3 py-2.5 font-medium">納品予定日</th>
-                <th className="px-3 py-2.5 font-medium">ディレクター</th>
                 <th className="px-3 py-2.5 font-medium">カメラ</th>
                 <th className="px-3 py-2.5 font-medium">編集</th>
               </>
             )}
             <th className="px-3 py-2.5 font-medium min-w-[160px]">備考</th>
-            <th className="px-3 py-2.5 font-medium text-center">納品済</th>
           </tr>
         </thead>
         <tbody>
           {projects.length === 0 && (
             <tr>
-              <td colSpan={isSns ? 11 : 12} className="py-16 text-center text-zinc-400">
+              <td colSpan={10} className="py-16 text-center text-zinc-400">
                 <Inbox className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 {emptyMessage}
               </td>
@@ -228,7 +227,7 @@ export function PmTable({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {PRODUCTION_STATUSES.map((s) => (
+                      {statusesForCategory(p.category).map((s) => (
                         <SelectItem key={s} value={s}>
                           {PRODUCTION_STATUS_LABEL[s]}
                         </SelectItem>
@@ -242,10 +241,9 @@ export function PmTable({
                 )}
               </td>
 
-              {/* PM担当 */}
+              {/* PM担当（このツールの登録メンバーから選択） */}
               <td className="px-3 py-2">
-                <StaffPicker
-                  role="pm"
+                <UserPicker
                   value={p.pmName}
                   canEdit={canEdit}
                   onChange={(v) => patch(p.id, { pmName: v })}
@@ -376,17 +374,6 @@ export function PmTable({
                     )}
                   </td>
 
-                  {/* ディレクター */}
-                  <td className="px-3 py-2">
-                    <StaffPicker
-                      role="director"
-                      value={p.directorName}
-                      canEdit={canEdit}
-                      onChange={(v) => patch(p.id, { directorName: v })}
-                      width="w-[100px]"
-                    />
-                  </td>
-
                   {/* カメラ */}
                   <td className="px-3 py-2">
                     <StaffPicker
@@ -425,24 +412,6 @@ export function PmTable({
                 ) : (
                   <span className="text-zinc-600">{p.note ?? "—"}</span>
                 )}
-              </td>
-
-              {/* 納品済 */}
-              <td className="px-3 py-2 text-center">
-                <button
-                  type="button"
-                  disabled={!canEdit}
-                  onClick={() => patch(p.id, { delivered: !p.delivered })}
-                  className={`inline-flex h-6 w-6 items-center justify-center rounded border transition-colors ${
-                    p.delivered
-                      ? "bg-emerald-500 border-emerald-500 text-white"
-                      : "bg-white border-zinc-300 text-transparent hover:border-zinc-400"
-                  } ${canEdit ? "cursor-pointer" : "cursor-default opacity-70"}`}
-                  aria-pressed={p.delivered}
-                  title={p.delivered ? "納品済み" : "未納品"}
-                >
-                  <Check className="h-4 w-4" />
-                </button>
               </td>
             </tr>
           ))}

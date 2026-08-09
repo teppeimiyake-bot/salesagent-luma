@@ -3,10 +3,15 @@
  *
  * DBは enum ProductionStatus（英大文字）で保持し、UI表示はこのモジュールで
  * 日本語ラベル（Notion PMボード「Luma PM-dev」準拠）へ変換する。
+ *
+ * ステータスはカテゴリで体系が違う：
+ *   映像 / CATV / アライアンス … 制作の進行段階（撮影前 → … → 納品済み）
+ *   SNS                        … 継続契約なので「契約中 / 解約」の2択
+ * 混ぜて出すと運用上まぎらわしいので、UIは必ず statusesForCategory() で出し分ける。
  */
 
-// ---------- enum 値（Prisma enum メンバ名と一致させる） ----------
-export const PRODUCTION_STATUSES = [
+// ---------- 映像系（制作進行）----------
+export const VIDEO_PRODUCTION_STATUSES = [
   "BEFORE_SHOOT",
   "EDITING",
   "REVISING",
@@ -14,6 +19,15 @@ export const PRODUCTION_STATUSES = [
   "REVISION_WAIT",
   "NEAR_DELIVERY",
   "DELIVERED",
+] as const;
+
+// ---------- SNS（継続契約）----------
+export const SNS_PRODUCTION_STATUSES = ["CONTRACTED", "CANCELLED"] as const;
+
+// ---------- enum 値（Prisma enum メンバ名と一致させる） ----------
+export const PRODUCTION_STATUSES = [
+  ...VIDEO_PRODUCTION_STATUSES,
+  ...SNS_PRODUCTION_STATUSES,
 ] as const;
 export type ProductionStatus = (typeof PRODUCTION_STATUSES)[number];
 
@@ -26,7 +40,22 @@ export const PRODUCTION_STATUS_LABEL: Record<ProductionStatus, string> = {
   REVISION_WAIT: "修正待ち",
   NEAR_DELIVERY: "納品間近",
   DELIVERED: "納品済み",
+  CONTRACTED: "契約中",
+  CANCELLED: "解約",
 };
+
+/** そのカテゴリで選べるステータス。SNS だけ契約中/解約の2択。 */
+export function statusesForCategory(category: string | null | undefined): readonly ProductionStatus[] {
+  return category === "SNS" ? SNS_PRODUCTION_STATUSES : VIDEO_PRODUCTION_STATUSES;
+}
+
+/**
+ * 一覧の初期表示で隠すステータス。
+ * 終わった案件（納品済み／解約）が積み上がって進行中の案件が埋もれるのを防ぐ。
+ */
+export function defaultHiddenStatus(category: string | null | undefined): ProductionStatus {
+  return category === "SNS" ? "CANCELLED" : "DELIVERED";
+}
 
 // ---------- Badge variant ヘルパー（UI色分け） ----------
 export function productionStatusVariant(
@@ -34,6 +63,7 @@ export function productionStatusVariant(
 ): "success" | "warning" | "info" | "secondary" {
   switch (s) {
     case "DELIVERED":
+    case "CONTRACTED":
       return "success";
     case "NEAR_DELIVERY":
       return "warning";

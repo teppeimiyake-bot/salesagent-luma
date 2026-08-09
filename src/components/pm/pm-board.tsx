@@ -6,8 +6,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { PmTable, type PmProject } from "@/components/pm/pm-table";
 import {
-  PRODUCTION_STATUSES,
   PRODUCTION_STATUS_LABEL,
+  defaultHiddenStatus,
+  statusesForCategory,
   type ProductionStatus,
 } from "@/lib/production";
 
@@ -19,11 +20,14 @@ const SUBTABS = [
 ] as const;
 
 /**
- * 既定の絞り込み：納品済み以外。
- * 納品済みは件数が積み上がる一方で日々の進行管理では見る必要がないため、
+ * 既定の絞り込み：終わった案件（映像系＝納品済み / SNS＝解約）以外。
+ * 終わった案件は件数が積み上がる一方で日々の進行管理では見る必要がないため、
  * 初期表示では隠して「進行中の案件だけが並ぶ」状態にする。
  */
-const DEFAULT_STATUSES = PRODUCTION_STATUSES.filter((s) => s !== "DELIVERED");
+function defaultStatuses(category: string): ProductionStatus[] {
+  const hidden = defaultHiddenStatus(category);
+  return statusesForCategory(category).filter((s) => s !== hidden);
+}
 
 /**
  * PMボード：映像 / SNS / CATV / アライアンス のサブタブ。
@@ -33,8 +37,9 @@ export function PmBoard({ canEdit }: { canEdit: boolean }) {
   const [projects, setProjects] = useState<PmProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>("映像");
-  const [statuses, setStatuses] = useState<Set<ProductionStatus>>(
-    () => new Set<ProductionStatus>(DEFAULT_STATUSES),
+  // 選択中のステータスはサブタブごとに持つ（SNSだけ契約中/解約の体系で別物のため）
+  const [statusesByTab, setStatusesByTab] = useState<Record<string, ProductionStatus[]>>(() =>
+    Object.fromEntries(SUBTABS.map((s) => [s.value, defaultStatuses(s.value)])),
   );
 
   const fetchProjects = useCallback(async () => {
@@ -70,31 +75,39 @@ export function PmBoard({ canEdit }: { canEdit: boolean }) {
 
   /** ステータス絞り込みまで通した、実際に表に出る案件 */
   const visible = useCallback(
-    (cat: string) => byCategory(cat).filter((p) => statuses.has(p.status)),
-    [byCategory, statuses],
+    (cat: string) => {
+      const selected = statusesByTab[cat] ?? [];
+      return byCategory(cat).filter((p) => selected.includes(p.status));
+    },
+    [byCategory, statusesByTab],
   );
 
   // フィルタチップの件数は「今開いているサブタブの、絞り込み前の母数」で出す。
-  // こうしておくと隠れている納品済みが何件あるかが一目で分かる。
+  // こうしておくと隠れている納品済み／解約が何件あるかが一目で分かる。
   const statusCounts = useMemo(() => {
-    const c = {} as Record<ProductionStatus, number>;
-    for (const s of PRODUCTION_STATUSES) c[s] = 0;
+    const c: Partial<Record<ProductionStatus, number>> = {};
+    for (const s of statusesForCategory(tab)) c[s] = 0;
     for (const p of byCategory(tab)) c[p.status] = (c[p.status] ?? 0) + 1;
     return c;
   }, [byCategory, tab]);
 
-  const toggleStatus = useCallback((s: ProductionStatus) => {
-    setStatuses((prev) => {
-      const next = new Set(prev);
-      if (next.has(s)) next.delete(s);
-      else next.add(s);
-      return next;
-    });
-  }, []);
+  const toggleStatus = useCallback(
+    (s: ProductionStatus) => {
+      setStatusesByTab((prev) => {
+        const cur = prev[tab] ?? [];
+        const next = cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s];
+        return { ...prev, [tab]: next };
+      });
+    },
+    [tab],
+  );
 
-  const allSelected = statuses.size === PRODUCTION_STATUSES.length;
+  const tabStatuses = statusesForCategory(tab);
+  const selected = statusesByTab[tab] ?? [];
+  const allSelected = selected.length === tabStatuses.length;
+  const tabDefaults = defaultStatuses(tab);
   const isDefault =
-    statuses.size === DEFAULT_STATUSES.length && DEFAULT_STATUSES.every((s) => statuses.has(s));
+    selected.length === tabDefaults.length && tabDefaults.every((s) => selected.includes(s));
 
   if (loading) {
     return (
@@ -125,8 +138,8 @@ export function PmBoard({ canEdit }: { canEdit: boolean }) {
       {/* ステータス絞り込み */}
       <div className="mb-4 flex flex-wrap items-center gap-1.5">
         <span className="mr-1 text-xs font-medium text-zinc-500">ステータス</span>
-        {PRODUCTION_STATUSES.map((s) => {
-          const on = statuses.has(s);
+        {tabStatuses.map((s) => {
+          const on = selected.includes(s);
           return (
             <button
               key={s}
@@ -141,7 +154,7 @@ export function PmBoard({ canEdit }: { canEdit: boolean }) {
             >
               {PRODUCTION_STATUS_LABEL[s]}
               <span className={`tabular-nums ${on ? "text-indigo-100" : "text-zinc-400"}`}>
-                {statusCounts[s]}
+                {statusCounts[s] ?? 0}
               </span>
             </button>
           );
@@ -150,7 +163,7 @@ export function PmBoard({ canEdit }: { canEdit: boolean }) {
         <div className="ml-auto flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => setStatuses(new Set(PRODUCTION_STATUSES))}
+            onClick={() => setStatusesByTab((prev) => ({ ...prev, [tab]: [...tabStatuses] }))}
             disabled={allSelected}
             className="rounded-md px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-40 disabled:hover:bg-transparent"
           >
@@ -158,11 +171,11 @@ export function PmBoard({ canEdit }: { canEdit: boolean }) {
           </button>
           <button
             type="button"
-            onClick={() => setStatuses(new Set(DEFAULT_STATUSES))}
+            onClick={() => setStatusesByTab((prev) => ({ ...prev, [tab]: tabDefaults }))}
             disabled={isDefault}
             className="rounded-md px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-40 disabled:hover:bg-transparent"
           >
-            納品済みを隠す
+            {PRODUCTION_STATUS_LABEL[defaultHiddenStatus(tab)]}を隠す
           </button>
         </div>
       </div>
