@@ -55,7 +55,9 @@ export function KpiCards({
     {
       label: "受注金額",
       value: formatJPY(kpi.wonAmount),
-      sub: "累計（受注計上日ベース）",
+      // 契約総額の累計（SNSは6ヶ月分の契約総額）。月次の「売上」は KPI階層ビュー側で
+      // 契約期間に按分した金額を見る（社長判断 2026-08）。
+      sub: "累計・契約総額ベース",
       icon: DollarSign,
       color: "text-pink-600 bg-pink-50",
     },

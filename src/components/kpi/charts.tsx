@@ -13,6 +13,8 @@ import {
   Legend,
 } from "recharts";
 
+// 週次チャートは「いつ受注が決まったか」を見る受注ベースの推移（SNSの月次売上按分は含まない）。
+// 月次以上の売上は KPI階層ビュー / 指標別ロールアップ（売上）を参照。
 type Point = { label: string; wonAmount: number; wonDeals: number; tasksDone: number };
 
 export function KpiCharts({ data }: { data: Point[] }) {
@@ -20,7 +22,7 @@ export function KpiCharts({ data }: { data: Point[] }) {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">受注金額（万円・週次）</CardTitle>
+          <CardTitle className="text-base">受注金額（万円・週次／受注決定ベース）</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-64">

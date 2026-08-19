@@ -24,7 +24,7 @@ export function GoalProgress({
           <Progress value={Math.min(100, personal.rate * 100)} className="mt-2" />
           <p className="text-[10px] text-zinc-500 mt-1.5">
             達成率 {(personal.rate * 100).toFixed(1)}%
-            <span className="ml-1 text-emerald-600">／受注計上日ベース</span>
+            <span className="ml-1 text-emerald-600">／売上計上ベース</span>
           </p>
         </CardContent>
       </Card>
@@ -40,7 +40,7 @@ export function GoalProgress({
           <Progress value={Math.min(100, team.rate * 100)} className="mt-2" />
           <p className="text-[10px] text-zinc-500 mt-1.5">
             達成率 {(team.rate * 100).toFixed(1)}%
-            <span className="ml-1 text-emerald-600">／受注計上日ベース</span>
+            <span className="ml-1 text-emerald-600">／売上計上ベース</span>
           </p>
         </CardContent>
       </Card>

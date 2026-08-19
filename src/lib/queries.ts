@@ -1,5 +1,6 @@
+import { cache } from "react";
 import { prisma } from "@/lib/db";
-import { getFiscalStartMonth } from "@/lib/tenant-context";
+import { getFiscalStartMonth, currentTenantId } from "@/lib/tenant-context";
 import { DealStatus, TaskStatus } from "@prisma/client";
 import {
   fyPeriodLabel,
@@ -11,6 +12,12 @@ import {
   getFiscalMonthIndex,
 } from "@/lib/config";
 import { totalProposedAmount, wonAmount, isWonDeal, isWonProduct, type DealProductLite } from "@/lib/deal-aggregations";
+import {
+  revenueEntries,
+  toYearMonth,
+  yearMonthToPeriod,
+  type RevenueEntry,
+} from "@/lib/revenue-recognition";
 import { isExcludedFromNextAction } from "@/lib/deal-status";
 import { excludeNGDealsWhere, excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
 
@@ -339,50 +346,190 @@ export function periodToMonthPeriods(startMonth: number, period: string): string
   return [];
 }
 
+// ============================================================
+// 売上計上（レベニューレコグニション）
+// ------------------------------------------------------------
+// 社長判断 2026-08：
+//   SNS運用は毎月売上が発生する継続契約なので、受注時点で6ヶ月分をまとめて
+//   受注月に計上しない。契約初月＝初期費用（既定10万）＋月額、2ヶ月目以降＝月額として
+//   契約期間中の各月に分割計上する。映像/CATV/アライアンスは従来どおり受注月に一括計上。
+//   分割ロジック本体は @/lib/revenue-recognition（純粋関数）。
+// ============================================================
+
+/** 受注計上日の由来（contractDate 未設定時のフォールバック元を UI で注記するため） */
+export type BookedDateSource = "contractDate" | "appointmentDate" | "bantUpdatedAt" | null;
+
+/** 売上明細1行（DealProduct × 計上月） */
+export type RevenueEntryDetail = RevenueEntry & {
+  dealId: string;
+  companyName: string;
+  productName: string;
+  planName: string | null;
+  /** 受注計上日（contractDate → appointmentDate → bantUpdatedAt の確定値） */
+  bookedDate: Date | null;
+  bookedDateSource: BookedDateSource;
+  contractDate: Date | null;
+};
+
+/** 売上計上に必要な受注商談＋契約条件（入金管理の定期契約 / PMの提供期間）をまとめて引く */
+async function loadWonDealsForRevenue(userId?: string) {
+  const where = {
+    ...(userId ? { ownerUserId: userId } : {}),
+    ...ACTIVE_DEAL_FILTER,
+  };
+  return prisma.deal.findMany({
+    where: {
+      ...where,
+      products: {
+        some: {
+          OR: [{ yomiStatus: { contains: "受注" } }, { yomiStatus: { contains: "締結済み" } }],
+        },
+      },
+    },
+    select: {
+      id: true,
+      contractDate: true,
+      appointmentDate: true,
+      bantUpdatedAt: true,
+      company: { select: { name: true } },
+      products: {
+        select: {
+          id: true,
+          productId: true,
+          productName: true,
+          planName: true,
+          amount: true,
+          yomiStatus: true,
+          probability: true,
+          product: { select: { name: true, category: true } },
+          // 定期契約の条件（初期費用・月額・契約開始/終了）。最新1件を使う。
+          recurringBillings: {
+            select: { initialFee: true, monthlyFee: true, startDate: true, endDate: true },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+          // PM側のSNS提供開始/終了月（入金管理未登録の契約のフォールバック）
+          productionProject: {
+            select: { category: true, serviceStartMonth: true, serviceEndMonth: true },
+          },
+        },
+        orderBy: [{ amount: "desc" }, { createdAt: "asc" }],
+      },
+    },
+  });
+}
+
+type WonDealForRevenue = Awaited<ReturnType<typeof loadWonDealsForRevenue>>[number];
+type WonProductForRevenue = WonDealForRevenue["products"][number];
+
+/** 受注計上日と、その由来フィールドを確定する */
+function bookedDateOf(d: {
+  contractDate: Date | null;
+  appointmentDate: Date | null;
+  bantUpdatedAt: Date | null;
+}): { date: Date | null; source: BookedDateSource } {
+  if (d.contractDate) return { date: d.contractDate, source: "contractDate" };
+  if (d.appointmentDate) return { date: d.appointmentDate, source: "appointmentDate" };
+  if (d.bantUpdatedAt) return { date: d.bantUpdatedAt, source: "bantUpdatedAt" };
+  return { date: null, source: null };
+}
+
+/** 1商談を「受注商材 × 計上月」の売上明細に展開する */
+function dealRevenueEntries(
+  d: WonDealForRevenue,
+): { product: WonProductForRevenue; entry: RevenueEntry }[] {
+  const { date: booked } = bookedDateOf(d);
+  const out: { product: WonProductForRevenue; entry: RevenueEntry }[] = [];
+  for (const p of d.products) {
+    if (!isWonProduct(p as DealProductLite)) continue;
+    const entries = revenueEntries(
+      {
+        id: p.id,
+        productName: p.productName,
+        planName: p.planName,
+        amount: p.amount,
+        yomiStatus: p.yomiStatus,
+        product: p.product,
+        recurring: p.recurringBillings[0] ?? null,
+        production: p.productionProject ?? null,
+      },
+      booked,
+    );
+    for (const entry of entries) out.push({ product: p, entry });
+  }
+  return out;
+}
+
+/**
+ * 全受注商材の売上明細（DealProduct × 計上月）を返す。
+ * KPI月次・目標進捗・月別ドリルダウンはすべてこの明細を正本に集計する。
+ *
+ * KPI画面は年間/四半期/月次で getGoalProgress を17回呼ぶため、同一リクエスト内では
+ * 会社（テナント）×担当者ごとに結果を使い回す（React cache でリクエストスコープ）。
+ */
+export function getRevenueEntries(userId?: string): Promise<RevenueEntryDetail[]> {
+  const store = revenueEntriesStore();
+  const key = `${currentTenantId()}::${userId ?? ""}`;
+  let hit = store.get(key);
+  if (!hit) {
+    hit = loadRevenueEntries(userId);
+    store.set(key, hit);
+  }
+  return hit;
+}
+
+/** リクエストスコープのメモ化ストア（テナント×担当者 → 売上明細） */
+const revenueEntriesStore = cache(() => new Map<string, Promise<RevenueEntryDetail[]>>());
+
+async function loadRevenueEntries(userId?: string): Promise<RevenueEntryDetail[]> {
+  const deals = await loadWonDealsForRevenue(userId);
+  const out: RevenueEntryDetail[] = [];
+  for (const d of deals) {
+    const { date: booked, source } = bookedDateOf(d);
+    for (const { product, entry } of dealRevenueEntries(d)) {
+      out.push({
+        ...entry,
+        dealId: d.id,
+        companyName: d.company?.name ?? "（企業名なし）",
+        productName: product.productName,
+        planName: product.planName,
+        bookedDate: booked,
+        bookedDateSource: source,
+        contractDate: d.contractDate,
+      });
+    }
+  }
+  return out;
+}
+
 /**
  * 目標 vs 実績
- * 集計基準：DealProduct.yomiStatus が 受注/締結済み（接頭辞付き含む）の DealProduct.amount 合計。
- *           計上日は contractDate → appointmentDate(商談日) → bantUpdatedAt の優先で確定し、
- *           それが指定期間内のものを集計する。
+ *
+ * 集計基準（社長判断 2026-08 の売上計上ルール）：
+ *   受注商材（yomiStatus が 受注/締結済み）を「計上月 × 金額」の明細に展開し（getRevenueEntries）、
+ *   指定期間に属する月の売上を合算する。
+ *     - SNS：契約初月 = 初期費用（既定10万）＋月額、2ヶ月目以降 = 月額 を契約期間中の各月に計上
+ *     - 映像/CATV/アライアンス：受注計上日の月に提案金額を全額計上
+ *   受注計上日は contractDate → appointmentDate(商談日) → bantUpdatedAt の優先で確定する。
  *
  * - Deal.status は問わない（Notion取込では status は LEAD 固定のため受注判定に使えない）
- * - Notion取込は contractDate を入れないため、商談日ベースで月度に按分する（2026-05 不具合修正）
- * - 期間指定が無い場合は全期間（受注DealProductを持つDealすべて）
+ * - 期間指定が無い場合は全期間（受注DealProductの売上すべて）
  *
  * 目標金額は getGoalTargetAmount に委譲（四半期/年間は月次目標の合算）。
  */
 export async function getGoalProgress(period: string, userId?: string) {
   const targetAmount = await getGoalTargetAmount(period, userId);
-  const where = {
-    ...(userId ? { ownerUserId: userId } : {}),
-    ...ACTIVE_DEAL_FILTER,
-  };
   const range = parsePeriodToRange(await getFiscalStartMonth(), period);
+  const entries = await getRevenueEntries(userId);
 
-  const wonDeals = await prisma.deal.findMany({
-    where: {
-      ...where,
-      products: { some: { OR: [{ yomiStatus: { contains: "受注" } }, { yomiStatus: { contains: "締結済み" } }] } },
-    },
-    select: {
-      contractDate: true,
-      appointmentDate: true,
-      bantUpdatedAt: true,
-      products: { select: { amount: true, yomiStatus: true } },
-    },
-  });
-  const inRange = (d: {
-    contractDate: Date | null;
-    appointmentDate: Date | null;
-    bantUpdatedAt: Date | null;
-  }): boolean => {
-    if (!range) return true; // 全期間
-    const bd = d.contractDate ?? d.appointmentDate ?? d.bantUpdatedAt ?? null;
-    return !!bd && bd >= range.start && bd <= range.end;
-  };
-  const wonAmt = wonDeals
-    .filter(inRange)
-    .reduce((s, d) => s + wonAmount(d.products as DealProductLite[]), 0);
+  // 期間は「計上月（YYYYMM）」で判定する。SNSの月次売上は日付を持たないため、
+  // 日付レンジではなく月レンジで比較する（レンジ両端の月は必ず含む）。
+  const startYm = range ? toYearMonth(range.start) : null;
+  const endYm = range ? toYearMonth(range.end) : null;
+  const wonAmt = entries
+    .filter((e) => startYm == null || endYm == null || (e.yearMonth >= startYm && e.yearMonth <= endYm))
+    .reduce((s, e) => s + e.amount, 0);
+
   return {
     targetAmount,
     wonAmount: wonAmt,
@@ -530,15 +677,19 @@ export type WonDealEditableProduct = {
   probability: number;
 };
 
-/** 月クリックで開くドリルダウン用：1件の受注案件カード */
+/** 月クリックで開くドリルダウン用：1件の受注案件カード（その月の売上1件分） */
 export type WonDealCard = {
   dealId: string;
   companyName: string;
-  /** その案件の受注金額（受注/締結済みのDealProduct.amount合計） */
+  /**
+   * その月に計上される売上。
+   * スポット（映像/CATV/アライアンス）＝受注月に提案金額の全額。
+   * SNS＝その月の月額（契約初月は初期費用を含む）。
+   */
   wonAmount: number;
   /**
    * 受注計上日（Deal.contractDate）。
-   * KPI月次集計は contractDate を最優先（未設定時は appointmentDate→bantUpdatedAt にフォールバック）するため、
+   * スポットの月度振り分けは contractDate（未設定時は appointmentDate→bantUpdatedAt）が基準なので、
    * カード上の編集UIは contractDate を直接書き換える（"YYYY-MM-DD" or null）。
    */
   contractDate: string | null;
@@ -548,74 +699,48 @@ export type WonDealCard = {
    */
   bookedDate: string | null;
   /** bookedDate がどのフィールド由来か（contractDate / appointmentDate / bantUpdatedAt） */
-  bookedDateSource: "contractDate" | "appointmentDate" | "bantUpdatedAt" | null;
-  /** 受注したプロダクト（商材）名のリスト（受注/締結済みのもののみ。表示サマリー用） */
-  products: { name: string; amount: number | null }[];
+  bookedDateSource: BookedDateSource;
+  /**
+   * その月の売上に寄与した商材（金額は按分後の当月計上額）。
+   * note には SNS の「月額（3/6ヶ月目）」等の内訳を入れる。
+   */
+  products: { name: string; amount: number | null; note?: string | null }[];
   /**
    * この案件に紐づく全 DealProduct（受注以外も含む）。
    * 受注企業カード上でのインライン編集（追加/変更/金額修正）に使う。
-   * 受注判定・受注金額は yomiStatus ベース（isWonProduct）で再集計される。
+   * 受注判定・売上は yomiStatus ベース（isWonProduct）で再集計される。
    */
   editableProducts: WonDealEditableProduct[];
+  /** その月の計上に SNS（継続課金）の月次売上が含まれるか */
+  hasRecurring: boolean;
 };
 
 /**
- * FY内の各月（YYYY-MM）について「その月に受注した案件」のカード一覧を返す。
+ * FY内の各月（YYYY-MM）について「その月に売上が計上される案件」のカード一覧を返す。
  *
- * 受注定義・月帰属は KPI月次セル（getGoalProgress / getKpiTimeseries）と完全に同一：
- *   - 受注 = DealProduct.yomiStatus が 受注/締結済み（接頭辞付き含む。isWonProduct）を持つ Deal
- *   - 月帰属 = 計上日（contractDate → appointmentDate(商談日) → bantUpdatedAt）が
- *             その暦月レンジ（parsePeriodToRange("YYYY-MM")）に入る
- *   - カードの受注金額 = wonAmount(products)（受注DealProductのamount合計）
+ * 集計基準は KPI月次セル（getGoalProgress / getMonthlyKpiBases）と完全に同一：
+ *   - 受注 = DealProduct.yomiStatus が 受注/締結済み（接頭辞付き含む。isWonProduct）
+ *   - 月帰属 = getRevenueEntries の計上月
+ *       * SNS：契約初月＝初期費用＋月額／2ヶ月目以降＝月額（契約期間中の各月）
+ *       * それ以外：受注計上日（contractDate → appointmentDate → bantUpdatedAt）の月
+ *   - カード金額 = その月に計上される売上
  *
- * これにより KPI月次セルの「受注金額」「件数」とカード一覧が必ず一致する。
+ * これにより KPI月次セルの「売上」とカード一覧の合計が必ず一致する。
  * 戻り値は period(YYYY-MM) → カード配列 の Record。
  */
 export async function getMonthlyWonDealsByPeriod(
   fy: number,
   userId?: string,
 ): Promise<Record<string, WonDealCard[]>> {
-  const where = {
-    ...(userId ? { ownerUserId: userId } : {}),
-    ...ACTIVE_DEAL_FILTER,
-  };
-  // FY内の受注案件をまとめて取得（getGoalProgress と同じ受注フィルタ）
-  const wonDeals = await prisma.deal.findMany({
-    where: {
-      ...where,
-      products: {
-        some: {
-          OR: [{ yomiStatus: { contains: "受注" } }, { yomiStatus: { contains: "締結済み" } }],
-        },
-      },
-    },
-    select: {
-      id: true,
-      contractDate: true,
-      appointmentDate: true,
-      bantUpdatedAt: true,
-      company: { select: { name: true } },
-      products: {
-        select: {
-          id: true,
-          productId: true,
-          productName: true,
-          planName: true,
-          amount: true,
-          yomiStatus: true,
-          probability: true,
-        },
-        orderBy: [{ amount: "desc" }, { createdAt: "asc" }],
-      },
-    },
-  });
+  const wonDeals = await loadWonDealsForRevenue(userId);
 
-  // 12ヶ月分の period と暦月レンジを用意（getGoalsHierarchy と同じ並び）
+  // 12ヶ月分の period を用意（getGoalsHierarchy と同じ並び）
   const startMonth = await getFiscalStartMonth();
   const monthPeriods = Array.from({ length: 12 }, (_, i) => {
     const { year, month } = getFiscalMonth(startMonth, fy, i);
     return monthPeriodLabel(year, month);
   });
+  const monthPeriodSet = new Set(monthPeriods);
   const result: Record<string, WonDealCard[]> = {};
   for (const p of monthPeriods) result[p] = [];
 
@@ -624,47 +749,53 @@ export async function getMonthlyWonDealsByPeriod(
     dt ? dt.toISOString().slice(0, 10) : null;
 
   for (const d of wonDeals) {
-    const bd = d.contractDate ?? d.appointmentDate ?? d.bantUpdatedAt ?? null;
-    if (!bd) continue;
-    const bookedSource: WonDealCard["bookedDateSource"] = d.contractDate
-      ? "contractDate"
-      : d.appointmentDate
-        ? "appointmentDate"
-        : d.bantUpdatedAt
-          ? "bantUpdatedAt"
-          : null;
-    // この計上日が属する月の period を見つける（KPIと同じ暦月レンジ判定）
-    const period = monthPeriods.find((p) => {
-      const range = parsePeriodToRange(startMonth, p);
-      return range && bd >= range.start && bd <= range.end;
-    });
-    if (!period) continue; // FY外（前年5月以前 / 翌年6月以降）はスキップ
+    const { date: bd, source: bookedSource } = bookedDateOf(d);
+    // 同一商談が同じ月に複数商材の売上を持つ場合は1カードにまとめる
+    const byPeriod = new Map<string, WonDealCard>();
 
-    const wonProducts = (d.products as DealProductLite[]).filter(isWonProduct);
-    result[period].push({
-      dealId: d.id,
-      companyName: d.company?.name ?? "（企業名なし）",
-      wonAmount: wonAmount(d.products as DealProductLite[]),
-      contractDate: toYmd(d.contractDate),
-      bookedDate: toYmd(bd),
-      bookedDateSource: bookedSource,
-      products: wonProducts.map((p) => ({
-        name: p.productName,
-        amount: p.amount,
-      })),
-      editableProducts: d.products.map((p) => ({
-        id: p.id,
-        productId: p.productId,
-        productName: p.productName,
-        planName: p.planName,
-        amount: p.amount,
-        yomiStatus: p.yomiStatus,
-        probability: p.probability,
-      })),
-    });
+    for (const { product, entry } of dealRevenueEntries(d)) {
+      const period = yearMonthToPeriod(entry.yearMonth);
+      if (!monthPeriodSet.has(period)) continue; // FY外の計上月はスキップ
+
+      let card = byPeriod.get(period);
+      if (!card) {
+        card = {
+          dealId: d.id,
+          companyName: d.company?.name ?? "（企業名なし）",
+          wonAmount: 0,
+          contractDate: toYmd(d.contractDate),
+          bookedDate: toYmd(bd),
+          bookedDateSource: bookedSource,
+          products: [],
+          editableProducts: d.products.map((p) => ({
+            id: p.id,
+            productId: p.productId,
+            productName: p.productName,
+            planName: p.planName,
+            amount: p.amount,
+            yomiStatus: p.yomiStatus,
+            probability: p.probability,
+          })),
+          hasRecurring: false,
+        };
+        byPeriod.set(period, card);
+      }
+      card.wonAmount += entry.amount;
+      card.hasRecurring = card.hasRecurring || entry.kind === "recurring";
+      card.products.push({
+        name: product.productName,
+        amount: entry.amount,
+        note:
+          entry.kind === "recurring"
+            ? `月額 ${entry.monthIndex}/${entry.totalMonths}ヶ月目${entry.includesInitialFee ? "＋初期費用" : ""}`
+            : null,
+      });
+    }
+
+    for (const [period, card] of byPeriod) result[period].push(card);
   }
 
-  // 各月は受注金額の大きい順に並べる（見やすさ）
+  // 各月は売上の大きい順に並べる（見やすさ）
   for (const p of monthPeriods) {
     result[p].sort((a, b) => b.wonAmount - a.wonAmount);
   }
@@ -684,6 +815,11 @@ export async function getMonthlyWonDealsByPeriod(
 
 /**
  * FY内12ヶ月の基礎実績（売上・商談数・受注数）を月インデックス順に返す。
+ *
+ * 売上（revenue）：getRevenueEntries の売上明細を計上月で振り分ける（社長判断 2026-08）。
+ *   SNSは契約期間中の各月に月額（初月は＋初期費用）が立つため、受注月に一括計上しない。
+ *   前年度に受注したSNS契約でも、当年度の月に売上が立てばその月に計上される。
+ * 受注数（wonCount）：受注は「その月に決まった件数」なので従来どおり受注計上日ベース。
  *
  * 受注の判定は Luma の慣習に合わせ isWonProduct / isWonDeal を使う。
  * Luma のヨミは「【映像】受注」のようにプレフィックスが付くため、
@@ -705,8 +841,8 @@ export async function getMonthlyKpiBases(
   const rangeStart = new Date(Date.UTC(fyStart.year, fyStart.month - 1, 1, 0, 0, 0));
   const rangeEnd = new Date(Date.UTC(fyEnd.year, fyEnd.month, 0, 23, 59, 59));
 
-  const [wonDeals, createdDeals] = await Promise.all([
-    // 受注実績（受注計上日ベース）
+  const [wonDeals, createdDeals, entries] = await Promise.all([
+    // 受注件数（受注計上日ベース）
     prisma.deal.findMany({
       where: { ...where, contractDate: { gte: rangeStart, lte: rangeEnd } },
       select: {
@@ -719,6 +855,8 @@ export async function getMonthlyKpiBases(
       where: { ...where, createdAt: { gte: rangeStart, lte: rangeEnd } },
       select: { createdAt: true },
     }),
+    // 売上明細（SNSは月次按分済み）。FY外の受注も含めて引き、計上月でFYに振り分ける。
+    getRevenueEntries(userId),
   ]);
 
   // 会計年度内の月インデックス（0〜11）。範囲外は -1。
@@ -729,19 +867,29 @@ export async function getMonthlyKpiBases(
     }
     return -1;
   };
+  // FY内12ヶ月の YYYYMM → 月インデックス
+  const idxByYearMonth = new Map<number, number>();
+  for (let i = 0; i < 12; i++) {
+    const fm = getFiscalMonth(startMonth, fy, i);
+    idxByYearMonth.set(fm.year * 100 + fm.month, i);
+  }
 
   const bases: import("@/lib/kpi-rollup").MonthlyBase[] = Array.from(
     { length: 12 },
     () => ({ revenue: 0, dealCount: 0, wonCount: 0 }),
   );
 
+  for (const e of entries) {
+    const idx = idxByYearMonth.get(e.yearMonth);
+    if (idx === undefined) continue;
+    bases[idx].revenue += e.amount;
+  }
   for (const d of wonDeals) {
     if (!d.contractDate) continue;
     const idx = monthIndexOf(d.contractDate);
     if (idx < 0) continue;
     const products = d.products as DealProductLite[];
     if (!isWonDeal(products)) continue;
-    bases[idx].revenue += wonAmount(products);
     bases[idx].wonCount += 1;
   }
   for (const d of createdDeals) {

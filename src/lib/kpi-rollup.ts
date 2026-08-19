@@ -11,6 +11,7 @@
  *
  * 集計タイプの区別（要望で明示された注意点）：
  *   - "sum"    累積タイプ … 売上・商談数・受注数。3ヶ月/12ヶ月を単純合算。
+ *              売上はSNSの月次按分後の値（受注時の一括計上ではない。社長判断 2026-08）。
  *   - "avg"    比率/平均タイプ … 受注率・平均単価。単純合算してはいけない。
  *              実績ベース（分子/分母）を持つ指標は「分子の合算 / 分母の合算」で
  *              再計算する＝事実上の加重平均。これにより四半期・年間でも正しい比率になる。
@@ -26,7 +27,7 @@
 
 /** KPI指標キー。売上・商談・受注の基本指標（Luma・リージー共通）。 */
 export type KpiMetricKey =
-  | "revenue" // 受注金額（売上）
+  | "revenue" // 売上（SNSは契約期間中の各月に按分計上。社長判断 2026-08）
   | "dealCount" // 商談数（新規に発生した商談）
   | "wonCount" // 受注数（受注に至った商談数）
   | "winRate" // 受注率（受注数 / 商談数）
@@ -55,7 +56,7 @@ export type KpiMetricDef = {
  * winRate / avgDealSize は派生指標（基礎指標から再計算する）。
  */
 export const KPI_METRICS: KpiMetricDef[] = [
-  { key: "revenue", label: "受注金額", kind: "sum", unit: "jpy" },
+  { key: "revenue", label: "売上", kind: "sum", unit: "jpy" },
   { key: "dealCount", label: "商談数", kind: "sum", unit: "count" },
   { key: "wonCount", label: "受注数", kind: "sum", unit: "count" },
   {
@@ -67,8 +68,10 @@ export const KPI_METRICS: KpiMetricDef[] = [
     denominatorKey: "dealCount",
   },
   {
+    // 売上（SNSは月次按分）÷ 受注数（受注が決まった件数）なので、
+    // SNSが多い月は「その月の売上 ÷ その月の受注件数」となり単価そのものではない点に注意。
     key: "avgDealSize",
-    label: "平均受注単価",
+    label: "平均単価",
     kind: "avg",
     unit: "jpy",
     numeratorKey: "revenue",

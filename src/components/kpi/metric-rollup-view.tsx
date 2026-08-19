@@ -162,7 +162,7 @@ export function MetricRollupView({
             <p className="mt-1 text-[11px] text-zinc-400">
               {def.key === "revenue"
                 ? "年間目標が未設定です（管理者が KPI目標管理から設定できます）。"
-                : "この指標は実績の積み上げ表示のみ対応しています（目標設定は受注金額のみ）。"}
+                : "この指標は実績の積み上げ表示のみ対応しています（目標設定は売上のみ）。"}
             </p>
           )}
         </div>

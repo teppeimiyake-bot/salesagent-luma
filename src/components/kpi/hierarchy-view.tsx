@@ -112,14 +112,16 @@ export function KpiHierarchyView({
       {/* ============ 集計基準ノート ============ */}
       <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-2.5 text-xs text-emerald-800 flex items-center gap-2 flex-wrap">
         <Badge variant="success" className="text-[10px]">
-          受注計上日ベース
+          売上計上ベース
         </Badge>
         <span>
-          受注実績は <strong className="font-bold">Deal.受注計上日</strong> が指定期間に入っており、
-          かつプロダクトのヨミが <strong className="font-bold">「受注」</strong> のものを集計します。
+          ヨミが <strong className="font-bold">「受注」</strong> のプロダクトを、
+          <strong className="font-bold">映像・CATV・アライアンスは受注計上日の月に全額</strong>、
+          <strong className="font-bold">SNSは契約期間中の各月（初月＝初期費用＋月額／2ヶ月目以降＝月額）</strong>
+          に分けて計上します。
         </span>
         <span className="text-emerald-700/70">
-          （受注に変更すると本日付で自動セット／後から手動編集可）
+          （SNSの契約期間・初期費用・月額は入金管理〈定期〉／PMの提供開始・終了月を参照。未登録なら受注月から6ヶ月・初期費用10万円で計算）
         </span>
       </div>
 
@@ -132,7 +134,7 @@ export function KpiHierarchyView({
             </div>
             年間KGI
             <Badge variant="danger">FY{year}</Badge>
-            <Badge variant="success" className="text-[10px]">受注計上日ベース</Badge>
+            <Badge variant="success" className="text-[10px]">売上計上ベース</Badge>
             <Badge variant={isOrgView ? "info" : "secondary"} className="ml-auto">
               {isOrgView ? "組織全体" : "個人"}
             </Badge>
@@ -148,7 +150,7 @@ export function KpiHierarchyView({
             />
             <Stat
               icon={Trophy}
-              label="達成額（受注計上日ベース）"
+              label="達成額（売上計上ベース）"
               value={formatJPY(data.year.wonAmount)}
               accent="emerald"
               highlight
@@ -277,7 +279,7 @@ export function KpiHierarchyView({
 
           {/* 月次セルグリッド（クリックで受注企業カードを表示） */}
           <p className="mt-5 mb-2 text-[11px] text-zinc-500">
-            月をクリックすると、その月に受注した企業と商材を確認できます。
+            月をクリックすると、その月に売上が計上される企業と商材を確認できます（SNSは月次按分）。
           </p>
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
             {data.months.map((m, idx) => {
@@ -311,7 +313,7 @@ export function KpiHierarchyView({
                     </p>
                   )}
                   <p className="mt-1 text-[10px] text-sky-600 font-medium">
-                    {cardCount > 0 ? `受注 ${cardCount}件 ›` : "受注なし"}
+                    {cardCount > 0 ? `計上 ${cardCount}件 ›` : "売上なし"}
                   </p>
                 </button>
               );
@@ -331,11 +333,11 @@ export function KpiHierarchyView({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-sky-500" />
-              {`FY${year} ${selectedLabel}`}の受注
+              {`FY${year} ${selectedLabel}`}の売上
             </DialogTitle>
             <DialogDescription>
               {selectedMonth
-                ? `受注 ${selectedCards.length}件 ／ 受注金額 ${formatJPY(selectedMonth.wonAmount)}（受注計上日ベース）`
+                ? `計上 ${selectedCards.length}件 ／ 売上 ${formatJPY(selectedMonth.wonAmount)}（SNSは月次按分）`
                 : ""}
             </DialogDescription>
           </DialogHeader>
@@ -343,7 +345,7 @@ export function KpiHierarchyView({
           {selectedCards.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-zinc-400">
               <Inbox className="h-8 w-8" />
-              <p className="text-sm">この月に受注した案件はありません。</p>
+              <p className="text-sm">この月に売上が計上される案件はありません。</p>
             </div>
           ) : (
             <ul className="space-y-2.5">
@@ -393,6 +395,11 @@ function WonCardItem({
             <Building2 className="h-4 w-4" />
           </div>
           <p className="font-semibold text-sm text-zinc-800 truncate">{card.companyName}</p>
+          {card.hasRecurring && (
+            <Badge variant="secondary" className="text-[10px] shrink-0">
+              SNS月次
+            </Badge>
+          )}
         </div>
         <p className="text-sm font-bold tabular-nums text-emerald-700 shrink-0">
           {formatJPY(displayWon)}
@@ -410,12 +417,21 @@ function WonCardItem({
               <Package className="h-3 w-3" />
               {p.name}
               {p.amount != null && <span className="text-sky-500">（{formatJPY(p.amount)}）</span>}
+              {p.note && <span className="text-sky-500/80">{p.note}</span>}
             </span>
           ))
         )}
       </div>
 
-      {/* 受注計上日の編集（KPIの月度振り分けに直結）。
+      {/* SNS（継続課金）は計上月が契約期間で決まるため、受注計上日を動かしてもこの月からは動かない。 */}
+      {card.hasRecurring && (
+        <p className="mt-2 text-[10px] text-zinc-500">
+          SNSはこの月の月額（初月は＋初期費用）を計上しています。計上月は入金管理〈定期〉の契約開始・終了月
+          （未登録ならPMの提供開始・終了月／受注月から6ヶ月）に従います。
+        </p>
+      )}
+
+      {/* 受注計上日の編集（スポット商材の月度振り分けに直結）。
           編集権が無くても閲覧用に計上日は表示する（canEdit=false で読み取り専用表示）。 */}
       <WonDealContractDateEditor
         dealId={card.dealId}
@@ -431,7 +447,9 @@ function WonCardItem({
           initial={card.editableProducts}
           products={productMasters}
           canEdit={canEditProducts}
-          onLocalWonAmountChange={setLocalWon}
+          // SNSカードの表示額は「その月の月額」なので、受注金額合計での楽観更新は使わない
+          // （編集後は router.refresh() でサーバーの按分計算に同期される）
+          onLocalWonAmountChange={card.hasRecurring ? undefined : setLocalWon}
         />
       )}
     </li>

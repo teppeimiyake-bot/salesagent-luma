@@ -86,3 +86,10 @@ scripts/.backup/
 
 # PM同期のロールバック用スナップショット（本番データを含むためコミットしない）
 pm-sync-backup-*.json
+
+# ===== backfill / 調査スクラッチの出力（本番データを含むためコミットしない） =====
+backfill-*.json
+backfill-*.log
+extracted-values*.json
+pdf-index.json
+dev-restart.log
