@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { callClaudeJSON } from "@/lib/ai/anthropic";
 import { getSession, hasPermission } from "@/lib/auth";
+import { JP_JSON_TEXT_STYLE_RULE } from "@/lib/ai/text-style";
 
 export const maxDuration = 30;
 
@@ -76,7 +77,9 @@ JSON厳密：
   "timeline": "意思決定/契約/導入の希望時期（具体的な月）",
   "summary": "案件全体のBANT総合所感と次に取りに行くべき情報（2-3文）",
   "confidence": 0-100（BANT情報の確度。情報量と具体性で評価）
-}`;
+}
+
+${JP_JSON_TEXT_STYLE_RULE}`;
 
     const productSummary = deal.products
       .map(

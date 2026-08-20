@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { callClaudeJSON } from "@/lib/ai/anthropic";
+import { JP_JSON_TEXT_STYLE_RULE } from "@/lib/ai/text-style";
 
 export const maxDuration = 60;
 
@@ -49,7 +50,9 @@ JSON厳密出力：
   "talking_points": ["..."],
   "common_concerns": ["..."],
   "recommended_materials": ["..."]
-}`;
+}
+
+${JP_JSON_TEXT_STYLE_RULE}`;
 
   const productSummary = deal.products
     .map(

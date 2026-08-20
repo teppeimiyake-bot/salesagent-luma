@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { callClaudeJSON } from "@/lib/ai/anthropic";
+import { JP_JSON_TEXT_STYLE_RULE } from "@/lib/ai/text-style";
 
 export const maxDuration = 30;
 
@@ -38,7 +39,9 @@ JSON厳密：
   "next_action": "...",
   "next_action_at": "YYYY-MM-DD",
   "reason": "..."
-}`;
+}
+
+${JP_JSON_TEXT_STYLE_RULE}`;
 
   const today = new Date();
   const productSummary = deal.products

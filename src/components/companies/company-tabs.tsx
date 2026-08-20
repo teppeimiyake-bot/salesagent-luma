@@ -36,6 +36,7 @@ import {
 } from "@/lib/deal-aggregations";
 import { stripYomiPrefix } from "@/lib/yomi-status";
 import type { DealStatus } from "@prisma/client";
+import { toReadableText } from "@/lib/text-format";
 
 type Contact = {
   id: string;
@@ -296,7 +297,7 @@ export function CompanyTabs({
             {company.websiteSummary ? (
               <div className="rounded-lg bg-zinc-50 border border-zinc-200 p-5">
                 <pre className="whitespace-pre-wrap text-sm text-zinc-700 leading-relaxed font-sans">
-                  {company.websiteSummary}
+                  {toReadableText(company.websiteSummary)}
                 </pre>
                 {company.websiteFetchedAt && (
                   <p className="text-xs text-zinc-400 mt-3 inline-flex items-center gap-1">

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollText, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { toReadableText } from "@/lib/text-format";
 
 /**
  * Phase 1: Notion ヨミ表ページの「★初回商談ヒアリングシート」セクションを取り込んだ
@@ -66,9 +67,13 @@ export function NotionMeetingNotes({ bant }: NotionMeetingNotesProps) {
   const isSafeNotionUrl =
     !!notionUrl && (notionUrl.startsWith("https://") || notionUrl.startsWith("http://"));
 
+  // 表示は読みやすい体裁（■ 見出し／・箇条書き／①）に整形してから折り畳む。
+  // Notion 由来の Markdown 記法をそのまま出すと視認性が悪いため（社長判断 2026-08）。
+  const readable = toReadableText(meetingNotes);
+
   // 折り畳み判定
-  const isLong = meetingNotes.length > PREVIEW_THRESHOLD;
-  const displayed = isLong && !expanded ? meetingNotes.slice(0, PREVIEW_THRESHOLD) : meetingNotes;
+  const isLong = readable.length > PREVIEW_THRESHOLD;
+  const displayed = isLong && !expanded ? readable.slice(0, PREVIEW_THRESHOLD) : readable;
 
   // 日付の整形（YYYY/MM/DD のみ。失敗したら raw を返す）
   const lastEditedLabel = (() => {

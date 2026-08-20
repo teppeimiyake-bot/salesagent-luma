@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { callClaude } from "@/lib/ai/anthropic";
+import { JP_TEXT_STYLE_RULE } from "@/lib/ai/text-style";
 
 const sendSchema = z.object({
   scope: z.string().default("global"),
@@ -98,9 +99,11 @@ ${productLines}
   const system = `あなたは営業担当の右腕として伴走するAIエージェント。
 役割：受注確度を上げるために、ユーザーの質問に**即実行可能なアクション**で答える。
 原則：
-- 抽象論禁止（「関係構築」「フォローアップ」だけ→NG）
-- 「動詞＋目的語＋期限」で具体策を出す
-- 受注を取りにいく姿勢で、決裁者巻き込み・失注リスク潰し・タイミング握りを優先
+・抽象論禁止（「関係構築」「フォローアップ」だけ→NG）
+・「動詞＋目的語＋期限」で具体策を出す
+・受注を取りにいく姿勢で、決裁者巻き込み・失注リスク潰し・タイミング握りを優先
+
+${JP_TEXT_STYLE_RULE}
 
 ${contextBlock}`;
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { callClaude } from "@/lib/ai/anthropic";
+import { JP_TEXT_STYLE_RULE } from "@/lib/ai/text-style";
 
 export const maxDuration = 60;
 
@@ -52,17 +53,23 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const system = `あなたはBtoB営業のリサーチャー。指定された企業のWebサイト本文から、商談前ブリーフィングに必要な情報を抽出する。
 出力は以下のフォーマットで日本語：
 
-# ${company.name}
-## 事業概要
-（3〜5行で。何をやっている会社か、規模感、特徴）
-## 主要プロダクト/サービス
-- ...
-## 直近の動き・ニュース
-- ...
-## 営業視点の着眼点（このサイトから読み取れる課題・機会）
-- ...
+■ ${company.name}
 
-事実のみに基づき、推測は明確にラベリングする。`;
+◆ 事業概要
+（3〜5行で。何をやっている会社か、規模感、特徴）
+
+◆ 主要プロダクト/サービス
+・...
+
+◆ 直近の動き・ニュース
+・...
+
+◆ 営業視点の着眼点（このサイトから読み取れる課題・機会）
+・...
+
+事実のみに基づき、推測は明確にラベリングする。
+
+${JP_TEXT_STYLE_RULE}`;
   const user = `URL: ${company.websiteUrl}\n\n本文（抜粋・最大8000字）:\n${text}`;
 
   const aiText = await callClaude({ system, user, maxTokens: 1200, temperature: 0.3 });

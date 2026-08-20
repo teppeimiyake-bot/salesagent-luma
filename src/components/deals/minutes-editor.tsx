@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { FileText, Save, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { toReadableText } from "@/lib/text-format";
 
 export function MinutesEditor({
   meetingId,
@@ -73,7 +74,7 @@ export function MinutesEditor({
               onChange={(e) => setMinutes(e.target.value)}
               rows={16}
               className="font-mono text-xs"
-              placeholder="商談の要約を Markdown で記述..."
+              placeholder="商談の要約を記述（「・」「①」で箇条書き、「■」で見出し。Markdown記法も表示時に自動整形されます）"
             />
             <div className="flex justify-end">
               <Button size="sm" variant="primary" onClick={save} disabled={saving}>
@@ -83,7 +84,8 @@ export function MinutesEditor({
           </div>
         ) : minutes ? (
           <pre className="whitespace-pre-wrap text-xs text-zinc-700 leading-relaxed max-h-[480px] overflow-y-auto font-sans">
-            {minutes}
+            {/* 表示は読みやすい体裁（■ 見出し／・箇条書き／①）に整形。保存データは元のまま。 */}
+            {toReadableText(minutes)}
           </pre>
         ) : (
           <p className="text-sm text-zinc-500 text-center py-6">

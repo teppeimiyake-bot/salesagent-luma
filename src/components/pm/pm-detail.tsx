@@ -21,6 +21,7 @@ import { type ProductionStatus } from "@/lib/production";
 import { StaffPicker } from "@/components/pm/staff-picker";
 import { UserPicker } from "@/components/pm/user-picker";
 import { StatusPill, StatusSelect } from "@/components/pm/status-pill";
+import { toReadableText } from "@/lib/text-format";
 
 type SnsPlatform = "YOUTUBE" | "INSTAGRAM" | "TIKTOK";
 
@@ -715,7 +716,7 @@ function MeetingsCard({
                 </div>
                 {(m.summary || m.minutes) && (
                   <p className="text-sm text-zinc-600 whitespace-pre-wrap line-clamp-6">
-                    {m.summary || m.minutes}
+                    {toReadableText(m.summary || m.minutes)}
                   </p>
                 )}
                 {m.recordingUrl && (

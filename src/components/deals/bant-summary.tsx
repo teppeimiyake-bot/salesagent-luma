@@ -19,6 +19,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { toReadableText } from "@/lib/text-format";
 
 type BantValue = {
   budget?: string;
@@ -226,7 +227,7 @@ export function BantSummary({
                     </div>
                     {val ? (
                       <p className="text-sm text-zinc-800 leading-snug whitespace-pre-wrap">
-                        {val}
+                        {toReadableText(val)}
                       </p>
                     ) : (
                       <p className="text-xs text-zinc-400 italic">未確認</p>

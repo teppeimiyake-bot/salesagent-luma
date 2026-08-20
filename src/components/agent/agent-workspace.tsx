@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SendGuidePanel } from "@/components/agent/send-guide-panel";
+import { toReadableText } from "@/lib/text-format";
 
 /* ---------------------------------- 型 ---------------------------------- */
 
@@ -1418,7 +1419,7 @@ function HistoryPanel() {
                   実行レポートを表示
                 </summary>
                 <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap border-t border-zinc-100 px-5 py-4 text-[12px] leading-relaxed text-zinc-600">
-                  {detail.loop_report}
+                  {toReadableText(detail.loop_report)}
                 </pre>
               </details>
             )}

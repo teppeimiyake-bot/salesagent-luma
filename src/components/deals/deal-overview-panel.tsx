@@ -7,13 +7,16 @@ import { ChevronRight, History, Target, Sparkles, AlertTriangle, Trophy } from "
 import { formatDate } from "@/lib/utils";
 import { DueBadge } from "@/components/ui/due-badge";
 import type { NextAction } from "@/lib/ai/pipeline";
+import { toReadableText } from "@/lib/text-format";
 
 type Json = Record<string, unknown> | null | unknown;
 
 // AI生成物の表示防御（ai-panel.tsx と同じ意図、循環依存を避けてローカル定義）
 function asText(v: unknown): string {
   if (v == null) return "";
-  if (typeof v === "string") return v;
+  // AIが文字列内でMarkdown記法（**強調**・- 箇条書き）を使うことがあるため、
+  // 表示直前に日本語の体裁（・／①）へ整形する（社長判断 2026-08）。
+  if (typeof v === "string") return toReadableText(v);
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   try {
     return JSON.stringify(v, null, 2);

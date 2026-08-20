@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sparkles, Send, RefreshCw, Lightbulb } from "lucide-react";
+import { toReadableText } from "@/lib/text-format";
 
 type Msg = { id?: string; role: "user" | "assistant" | "system"; content: string };
 
@@ -94,7 +95,7 @@ export function AiChat({ scope = "global" }: { scope?: string }) {
                     : "inline-block bg-white border border-zinc-200 text-sm text-zinc-800 rounded-2xl rounded-bl-md px-3.5 py-2 max-w-[90%] whitespace-pre-wrap shadow-sm"
                 }
               >
-                {m.content}
+                {m.role === "user" ? m.content : toReadableText(m.content)}
               </div>
             </div>
           ))}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { callClaude } from "@/lib/ai/anthropic";
 import { hasAiTextKey } from "@/lib/ai/provider";
+import { JP_JSON_TEXT_STYLE_RULE } from "@/lib/ai/text-style";
 
 const schema = z.object({
   query: z.string().min(1),
@@ -46,7 +47,9 @@ export async function POST(req: Request) {
   "results": [
     { "id": "...", "relevance": 0-100, "reason": "..." }
   ]
-}`;
+}
+
+${JP_JSON_TEXT_STYLE_RULE}`;
     const user = `# クエリ\n${query}\n\n# 候補事例\n${top.map((s, i) => `${i + 1}. id=${s.doc.id} / ${s.doc.name}\n   tags: ${s.doc.tags.join(", ")}\n   ${s.doc.description ?? ""}`).join("\n\n")}\n\nJSONのみ出力。`;
     const text = await callClaude({ system, user, maxTokens: 1500, temperature: 0.2 });
     if (text) {

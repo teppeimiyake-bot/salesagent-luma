@@ -18,6 +18,7 @@
 import { callClaudeJSON, tryParseJSON } from "./anthropic";
 import { hasAiTextKey } from "./provider";
 import { SALES_FEWSHOT_INTERPRETATION } from "./fewshot";
+import { JP_JSON_TEXT_STYLE_RULE } from "@/lib/ai/text-style";
 
 export interface PipelineContext {
   companyName: string;
@@ -91,8 +92,10 @@ export interface PipelineResult {
 
 const COMMON_GUARDRAIL = `
 あなたは年間100億円規模を売る、トップオブトップの営業コンサルタントです。
-すべての出力は必ず**JSONのみ**。前後に説明文を出さない。
+すべての出力は必ずJSONのみ。前後に説明文を出さない。
 日本語で。
+
+${JP_JSON_TEXT_STYLE_RULE}
 `.trim();
 
 function ctxBlock(ctx: PipelineContext) {

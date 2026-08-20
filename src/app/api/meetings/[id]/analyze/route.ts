@@ -41,7 +41,21 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   // minutes が空なら、AI がドラフトとして埋める
   const minutesDraft = meeting.minutes
     ? meeting.minutes
-    : `# 商談要約（AI生成ドラフト）\n\n## サマリ\n${summary}\n\n## 課題\n${result.analysis.issues.map((i) => `- ${i}`).join("\n")}\n\n## BANT\n- B: ${result.analysis.bant.budget}\n- A: ${result.analysis.bant.authority}\n- N: ${result.analysis.bant.need}\n- T: ${result.analysis.bant.timeline}`;
+    : [
+        "■ 商談要約（AI生成ドラフト）",
+        "",
+        "◆ サマリ",
+        summary,
+        "",
+        "◆ 課題",
+        ...result.analysis.issues.map((i) => `・${i}`),
+        "",
+        "◆ BANT",
+        `・予算（B）：${result.analysis.bant.budget}`,
+        `・決裁（A）：${result.analysis.bant.authority}`,
+        `・課題（N）：${result.analysis.bant.need}`,
+        `・時期（T）：${result.analysis.bant.timeline}`,
+      ].join("\n");
   await prisma.meeting.update({
     where: { id },
     data: {

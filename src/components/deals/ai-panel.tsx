@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Plus, AlertTriangle, Lightbulb, Trophy, Shield, CheckCircle2 } from "lucide-react";
 import type { NextAction } from "@/lib/ai/pipeline";
+import { toReadableText } from "@/lib/text-format";
 
 type Json = Record<string, unknown> | null;
 
@@ -20,7 +21,9 @@ type Json = Record<string, unknown> | null;
  */
 function asText(v: unknown): string {
   if (v == null) return "";
-  if (typeof v === "string") return v;
+  // AIが文字列内でMarkdown記法（**強調**・- 箇条書き）を使うことがあるため、
+  // 表示直前に日本語の体裁（・／①）へ整形する（社長判断 2026-08）。
+  if (typeof v === "string") return toReadableText(v);
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   try {
     return JSON.stringify(v, null, 2);
