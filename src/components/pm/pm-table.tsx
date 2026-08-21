@@ -35,7 +35,6 @@ export type PmProject = {
   editorName: string | null;
   shootDate: string | null;
   deliveryDate: string | null;
-  provisionalDeliveryDate: string | null;
   delivered: boolean;
   note: string | null;
   storyboardUrl: string | null;
@@ -175,7 +174,6 @@ export function PmTable({
             ) : (
               <>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">撮影日</th>
-                <th className="whitespace-nowrap px-4 py-3 font-semibold">仮納品予定日</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">納品予定日</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">カメラ</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">編集</th>
@@ -358,21 +356,6 @@ export function PmTable({
                       />
                     ) : (
                       <span className="whitespace-nowrap tabular-nums">{isoDay(p.shootDate) || "—"}</span>
-                    )}
-                  </td>
-
-                  {/* 仮納品予定日 */}
-                  <td className="px-4 py-3">
-                    {canEdit ? (
-                      <DateInput
-                        value={isoDay(p.provisionalDeliveryDate)}
-                        onChange={(v) => patch(p.id, { provisionalDeliveryDate: v || null })}
-                        className="scale-90 origin-left"
-                      />
-                    ) : (
-                      <span className="whitespace-nowrap tabular-nums">
-                        {isoDay(p.provisionalDeliveryDate) || "—"}
-                      </span>
                     )}
                   </td>
 

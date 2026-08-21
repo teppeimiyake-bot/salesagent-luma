@@ -47,6 +47,7 @@ type NotionRow = {
   delivered: boolean;
   shoot?: string | null;
   delivery?: string | null;
+  /** 仮納品予定日。2026-08にPM機能から廃止したため取込対象外（スナップショットの記録としてのみ保持）。 */
   provisional?: string | null;
   director?: string | null;
   camera?: string | null;
@@ -705,7 +706,6 @@ async function main() {
         delivered: nr.delivered,
         shootDate: toDate(nr.shoot),
         deliveryDate: toDate(nr.delivery),
-        provisionalDeliveryDate: toDate(nr.provisional),
         directorName: nr.director ?? null,
         cameraName: nr.camera ?? null,
         editorName: nr.editor ?? null,
@@ -752,7 +752,7 @@ async function main() {
   // ロールバック用スナップショット（更新対象の現在値）
   const snapshot = await pool.query(
     `SELECT id, status::text, pm_name, director_name, camera_name, editor_name,
-            shoot_date, delivery_date, provisional_delivery_date, delivered, note
+            shoot_date, delivery_date, delivered, note
        FROM production_projects WHERE id = ANY($1::text[])`,
     [updates.map((u) => u.id)],
   );

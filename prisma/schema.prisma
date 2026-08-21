@@ -1122,7 +1122,8 @@ model ProductionProject {
   editorName    String?  @map("editor_name")     // 編集
   shootDate     DateTime? @map("shoot_date")      // 撮影日
   deliveryDate  DateTime? @map("delivery_date")   // 納品予定日
-  provisionalDeliveryDate DateTime? @map("provisional_delivery_date") // 仮納品予定日
+  // 仮納品予定日（provisional_delivery_date）は 2026-08 に廃止。
+  // DB側の列は残置（nullable なので未参照でも支障なし）。
   delivered     Boolean  @default(false)          // 納品済み(チェック)
   note          String?  @db.Text
   // 映像：絵コンテ／香盤表のスプレッドシートURL

@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS "production_projects" (
   "editor_name"               TEXT,
   "shoot_date"                TIMESTAMP(3),
   "delivery_date"             TIMESTAMP(3),
-  "provisional_delivery_date" TIMESTAMP(3),
+  -- "provisional_delivery_date"（仮納品予定日）は 2026-08 に廃止。既存DBには列が残っている場合あり。
   "delivered"                 BOOLEAN NOT NULL DEFAULT false,
   "note"                      TEXT,
   "created_at"                TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

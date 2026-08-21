@@ -14,7 +14,6 @@ const updateSchema = z.object({
   editorName: z.string().nullable().optional(),
   shootDate: z.string().nullable().optional(),
   deliveryDate: z.string().nullable().optional(),
-  provisionalDeliveryDate: z.string().nullable().optional(),
   delivered: z.boolean().optional(),
   note: z.string().nullable().optional(),
   // 映像：絵コンテ／香盤表URL
@@ -145,9 +144,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ...(d.editorName !== undefined ? { editorName: d.editorName } : {}),
       ...(d.shootDate !== undefined ? { shootDate: toDate(d.shootDate) } : {}),
       ...(d.deliveryDate !== undefined ? { deliveryDate: toDate(d.deliveryDate) } : {}),
-      ...(d.provisionalDeliveryDate !== undefined
-        ? { provisionalDeliveryDate: toDate(d.provisionalDeliveryDate) }
-        : {}),
       ...(d.delivered !== undefined ? { delivered: d.delivered } : {}),
       ...(d.note !== undefined ? { note: d.note } : {}),
       ...(d.storyboardUrl !== undefined ? { storyboardUrl: d.storyboardUrl } : {}),
