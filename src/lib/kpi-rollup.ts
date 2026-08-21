@@ -28,7 +28,7 @@
 /** KPI指標キー。売上・商談・受注の基本指標（Luma・リージー共通）＋MS送付の2指標。 */
 export type KpiMetricKey =
   | "revenue" // 売上（SNSは契約期間中の各月に按分計上。社長判断 2026-08）
-  | "dealCount" // 商談数（新規に発生した商談）
+  | "dealCount" // 商談数（初回商談日ベース。未設定のみ作成日で代替）
   | "wonCount" // 受注数（受注に至った商談数）
   | "winRate" // 受注率（受注数 / 商談数）
   | "avgDealSize" // 平均受注単価（受注金額 / 受注数）
@@ -67,7 +67,13 @@ export type KpiMetricDef = {
  */
 export const KPI_METRICS: KpiMetricDef[] = [
   { key: "revenue", label: "売上", kind: "sum", unit: "jpy" },
-  { key: "dealCount", label: "商談数", kind: "sum", unit: "count" },
+  {
+    key: "dealCount",
+    label: "商談数",
+    kind: "sum",
+    unit: "count",
+    note: "商談詳細の「初回商談日」の月で集計（未入力の商談のみ作成日で代替）",
+  },
   { key: "wonCount", label: "受注数", kind: "sum", unit: "count" },
   {
     key: "winRate",
@@ -76,6 +82,7 @@ export const KPI_METRICS: KpiMetricDef[] = [
     unit: "percent",
     numeratorKey: "wonCount",
     denominatorKey: "dealCount",
+    note: "受注数 ÷ 商談数（商談数は初回商談日ベース）",
   },
   {
     // 売上（SNSは月次按分）÷ 受注数（受注が決まった件数）なので、

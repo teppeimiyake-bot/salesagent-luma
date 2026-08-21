@@ -209,6 +209,8 @@ export function MetricRollupView({
                   return (
                     <th
                       key={def.key}
+                      // 集計の起算日など、指標ごとの注記はホバーで出す（列幅を増やさないため）
+                      title={def.note}
                       className={`py-2 px-3 font-medium text-right whitespace-nowrap ${
                         isMs ? "bg-sky-50/70 text-sky-700" : ""
                       }`}
@@ -267,6 +269,13 @@ export function MetricRollupView({
             </tfoot>
           </table>
         </div>
+
+        {/* 商談数の起算日（社長判断 2026-08）。受注率の分母もこの商談数を使う。 */}
+        <p className="text-[11px] text-zinc-500">
+          <strong className="text-zinc-600">商談数</strong>
+          は商談詳細の「初回商談日」の月で集計します（初回商談日が未入力の商談のみ、作成日で代替）。
+          <strong className="text-zinc-600">受注率</strong>の分母もこの商談数です。
+        </p>
 
         {/* ── 凡例：集計タイプとデータソース ─────────────────────── */}
         <div className="grid gap-2 md:grid-cols-3">

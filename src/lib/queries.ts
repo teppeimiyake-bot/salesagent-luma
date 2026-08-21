@@ -820,6 +820,12 @@ export async function getMonthlyWonDealsByPeriod(
  *   SNSは契約期間中の各月に月額（初月は＋初期費用）が立つため、受注月に一括計上しない。
  *   前年度に受注したSNS契約でも、当年度の月に売上が立てばその月に計上される。
  * 受注数（wonCount）：受注は「その月に決まった件数」なので従来どおり受注計上日ベース。
+ * 商談数（dealCount）：初回商談日（Deal.appointmentDate）ベース（社長判断 2026-08）。
+ *   以前は作成日（createdAt）で振り分けていたが、Notion からの一括取り込みで作られた商談は
+ *   全件が取り込み日の月に固まってしまい「その月に何件商談したか」を表さなかった。
+ *   初回商談日が未設定の商談は KPI から消えると件数が実態より減って見えるため、
+ *   従来どおり作成日にフォールバックする（＝挙動が変わるのは初回商談日が入っている商談だけ）。
+ *   受注率（wonCount / dealCount）はこの dealCount を分母に再計算されるため自動的に整合する。
  *
  * 受注の判定は Luma の慣習に合わせ isWonProduct / isWonDeal を使う。
  * Luma のヨミは「【映像】受注」のようにプレフィックスが付くため、
@@ -848,7 +854,7 @@ export async function getMonthlyKpiBases(
   // FY内12ヶ月の暦年月。MS週次実績（暦年月で持つ）の絞り込みに使う。
   const fyMonths = Array.from({ length: 12 }, (_, i) => getFiscalMonth(startMonth, fy, i));
 
-  const [wonDeals, createdDeals, entries, msEntries] = await Promise.all([
+  const [wonDeals, dealCountDeals, entries, msEntries] = await Promise.all([
     // 受注件数（受注計上日ベース）
     prisma.deal.findMany({
       where: { ...where, contractDate: { gte: rangeStart, lte: rangeEnd } },
@@ -857,10 +863,21 @@ export async function getMonthlyKpiBases(
         products: { select: { amount: true, yomiStatus: true } },
       },
     }),
-    // 新規商談数（作成日ベース）
+    // 商談数（初回商談日ベース。未設定のみ作成日にフォールバック）
+    // where は「初回商談日がFY内」OR「初回商談日が無く作成日がFY内」の2択。
+    // 後者を入れないと初回商談日が未入力の商談がKPIから丸ごと消えてしまう。
     prisma.deal.findMany({
-      where: { ...where, createdAt: { gte: rangeStart, lte: rangeEnd } },
-      select: { createdAt: true },
+      where: {
+        ...where,
+        OR: [
+          { appointmentDate: { gte: rangeStart, lte: rangeEnd } },
+          {
+            appointmentDate: null,
+            createdAt: { gte: rangeStart, lte: rangeEnd },
+          },
+        ],
+      },
+      select: { appointmentDate: true, createdAt: true },
     }),
     // 売上明細（SNSは月次按分済み）。FY外の受注も含めて引き、計上月でFYに振り分ける。
     getRevenueEntries(userId),
@@ -910,8 +927,10 @@ export async function getMonthlyKpiBases(
     if (!isWonDeal(products)) continue;
     bases[idx].wonCount += 1;
   }
-  for (const d of createdDeals) {
-    const idx = monthIndexOf(d.createdAt);
+  for (const d of dealCountDeals) {
+    // 起算日は初回商談日（Deal.appointmentDate）。未設定のみ作成日で代替する。
+    const basis = d.appointmentDate ?? d.createdAt;
+    const idx = monthIndexOf(basis);
     if (idx >= 0) bases[idx].dealCount += 1;
   }
   // MS送付の週次実績（1〜5週）を暦年月で束ねて、その月のセルに積む。
