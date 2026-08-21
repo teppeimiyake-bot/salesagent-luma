@@ -824,6 +824,11 @@ export async function getMonthlyWonDealsByPeriod(
  * 受注の判定は Luma の慣習に合わせ isWonProduct / isWonDeal を使う。
  * Luma のヨミは「【映像】受注」のようにプレフィックスが付くため、
  * 文字列の厳密一致では受注を取りこぼす。
+ *
+ * MS送信数 / MSアポ数：MsWeeklyEntry（/ms-outreach の「ワーカー × 月内週」グリッド）を
+ *   暦年月で束ねて月インデックスに振り分ける。MS送付は営業担当（User）ではなく
+ *   送付代行ワーカー（MsWorker）に紐付く記録なので、個人ビュー（userId 指定）では
+ *   按分できない。よって userId 指定時は 0 のままとし、UI 側で「—（組織全体のみ）」と出す。
  */
 export async function getMonthlyKpiBases(
   fy: number,
@@ -840,8 +845,10 @@ export async function getMonthlyKpiBases(
   const fyEnd = getFiscalMonth(startMonth, fy, 11);
   const rangeStart = new Date(Date.UTC(fyStart.year, fyStart.month - 1, 1, 0, 0, 0));
   const rangeEnd = new Date(Date.UTC(fyEnd.year, fyEnd.month, 0, 23, 59, 59));
+  // FY内12ヶ月の暦年月。MS週次実績（暦年月で持つ）の絞り込みに使う。
+  const fyMonths = Array.from({ length: 12 }, (_, i) => getFiscalMonth(startMonth, fy, i));
 
-  const [wonDeals, createdDeals, entries] = await Promise.all([
+  const [wonDeals, createdDeals, entries, msEntries] = await Promise.all([
     // 受注件数（受注計上日ベース）
     prisma.deal.findMany({
       where: { ...where, contractDate: { gte: rangeStart, lte: rangeEnd } },
@@ -857,6 +864,17 @@ export async function getMonthlyKpiBases(
     }),
     // 売上明細（SNSは月次按分済み）。FY外の受注も含めて引き、計上月でFYに振り分ける。
     getRevenueEntries(userId),
+    // MS送付の週次実績（送信数・アポ数）。
+    // MsWeeklyEntry は MsWorker（送付代行者）に紐付き営業担当（User）を持たないため、
+    // 個人ビュー（userId 指定）では取得しない＝実績0のまま返す。
+    userId
+      ? Promise.resolve(
+          [] as { year: number; month: number; sent: number; appointments: number }[],
+        )
+      : prisma.msWeeklyEntry.findMany({
+          where: { OR: fyMonths.map((m) => ({ year: m.year, month: m.month })) },
+          select: { year: true, month: true, sent: true, appointments: true },
+        }),
   ]);
 
   // 会計年度内の月インデックス（0〜11）。範囲外は -1。
@@ -876,7 +894,7 @@ export async function getMonthlyKpiBases(
 
   const bases: import("@/lib/kpi-rollup").MonthlyBase[] = Array.from(
     { length: 12 },
-    () => ({ revenue: 0, dealCount: 0, wonCount: 0 }),
+    () => ({ revenue: 0, dealCount: 0, wonCount: 0, msSent: 0, msAppointments: 0 }),
   );
 
   for (const e of entries) {
@@ -895,6 +913,14 @@ export async function getMonthlyKpiBases(
   for (const d of createdDeals) {
     const idx = monthIndexOf(d.createdAt);
     if (idx >= 0) bases[idx].dealCount += 1;
+  }
+  // MS送付の週次実績（1〜5週）を暦年月で束ねて、その月のセルに積む。
+  // /ms-outreach の月合計と KPI の月次セルが必ず一致するようにするための単純合算。
+  for (const e of msEntries) {
+    const idx = idxByYearMonth.get(e.year * 100 + e.month);
+    if (idx === undefined) continue;
+    bases[idx].msSent += e.sent;
+    bases[idx].msAppointments += e.appointments;
   }
   return bases;
 }

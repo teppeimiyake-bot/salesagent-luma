@@ -2,15 +2,22 @@
 /**
  * 指標別 KPI 階層ロールアップビュー（Luma・リージー共通）
  * ============================================================
- * 社長要望：「月次で入れたものを合算して、四半期目標や年間KGIに反映」
+ * 社長要望1：「月次で入れたものを合算して、四半期目標や年間KGIに反映」
+ * 社長要望2（2026-08）：「指標ごとにタブを切り替えないと見えないので見にくい。
+ *                        全指標を一覧で見渡せるようにしてほしい」
  *
- * 月次（正本）→ 四半期（3ヶ月合算）→ 年間KGI（12ヶ月合算）を
- * 指標ごとに1枚のテーブルで俯瞰する。
+ * → 指標タブを廃止し、「期間（縦） × 指標（横）」のマトリクス1枚に変更。
+ *   年間KGIは表の上に指標タイルとして並べ、四半期行をクリックすると
+ *   その3ヶ月の月次行（正本）が開く。
  *
  * 集計タイプ：
- *  - 累積系（受注金額・商談数・受注数）… 単純合算
- *  - 比率/平均系（受注率・平均受注単価）… 加重平均で再計算
+ *  - 累積系（売上・商談数・受注数・MS送信数・MSアポ数）… 単純合算
+ *  - 比率/平均系（受注率・平均単価）… 加重平均で再計算
  *    （上位期間でも「合算した分子 / 合算した分母」で正しい値になる）
+ *
+ * MS指標（MS送信数 / MSアポ数）：
+ *  データソースは「MS送付状況」(/ms-outreach) の週次グリッド。
+ *  送付代行ワーカー単位の記録で営業担当に紐付かないため、個人ビューでは「—」になる。
  */
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +30,9 @@ import {
   CalendarDays,
   Sigma,
   Percent,
+  Send,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from "lucide-react";
 import {
   KPI_METRICS,
@@ -33,6 +43,9 @@ import {
   type MetricProgress,
 } from "@/lib/kpi-rollup";
 
+/** MS系の指標（表の列で視覚的にひとまとまりに見せる） */
+const MS_METRIC_KEYS = new Set<KpiMetricKey>(["msSent", "msAppointments"]);
+
 export function MetricRollupView({
   data,
   isOrgView,
@@ -40,13 +53,25 @@ export function MetricRollupView({
   data: KpiRollupResult;
   isOrgView: boolean;
 }) {
-  const [metric, setMetric] = useState<KpiMetricKey>("revenue");
-  const def = KPI_METRICS.find((m) => m.key === metric)!;
+  // 四半期の開閉。初期は全展開（=従来の見え方を維持）。
+  const [openQuarters, setOpenQuarters] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(data.quarters.map((q) => [q.period, true])),
+  );
+  const allOpen = data.quarters.every((q) => openQuarters[q.period]);
 
-  const pick = (p: PeriodRollup): MetricProgress =>
-    p.metrics.find((m) => m.metric === metric)!;
+  const toggleAll = () => {
+    const next = !allOpen;
+    setOpenQuarters(
+      Object.fromEntries(data.quarters.map((q) => [q.period, next])),
+    );
+  };
 
-  const yearM = pick(data.year);
+  /** 「この指標はこのビューでは出せない」= MS指標 × 個人ビュー */
+  const isUnavailable = (m: MetricProgress) => m.orgOnly && !isOrgView;
+
+  /** 年間のMS送信数（MSアポ率＝アポ数÷送信数 の分母） */
+  const yearMsSent =
+    data.year.metrics.find((x) => x.metric === "msSent")?.actual ?? 0;
 
   return (
     <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50/40 via-white to-violet-50/30 shadow-sm">
@@ -65,243 +90,345 @@ export function MetricRollupView({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* 指標タブ */}
-        <div className="flex flex-wrap gap-1.5">
-          {KPI_METRICS.map((m) => {
-            const active = m.key === metric;
-            return (
-              <button
-                key={m.key}
-                onClick={() => setMetric(m.key)}
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                  active
-                    ? "border-indigo-400 bg-indigo-500 text-white shadow-sm"
-                    : "border-zinc-200 bg-white text-zinc-600 hover:border-indigo-200 hover:bg-indigo-50/50"
-                }`}
-              >
-                {m.kind === "sum" ? (
-                  <Sigma className="h-3 w-3" />
-                ) : (
-                  <Percent className="h-3 w-3" />
-                )}
-                {m.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 集計タイプの説明 */}
-        <div
-          className={`rounded-lg border px-3 py-2 text-xs flex items-center gap-2 ${
-            def.kind === "sum"
-              ? "border-emerald-200 bg-emerald-50/60 text-emerald-800"
-              : "border-amber-200 bg-amber-50/60 text-amber-800"
-          }`}
-        >
-          {def.kind === "sum" ? (
-            <>
-              <Badge variant="success" className="text-[10px]">
-                累積タイプ
-              </Badge>
-              <span>
-                <strong>{def.label}</strong> は累積系の指標です。四半期は3ヶ月分、年間KGIは12ヶ月分を
-                <strong>単純合算</strong>して積み上げます。
-              </span>
-            </>
-          ) : (
-            <>
-              <Badge variant="warning" className="text-[10px]">
-                比率/平均タイプ
-              </Badge>
-              <span>
-                <strong>{def.label}</strong> は比率・平均系の指標です。単純合算はできないため、
-                上位期間では<strong>分子と分母をそれぞれ合算して再計算（加重平均）</strong>します。
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* 年間KGI サマリ */}
-        <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-4">
+        {/* ── 年間KGI：全指標をタイルで一覧 ───────────────────────── */}
+        <div>
           <div className="flex items-center gap-2 mb-2">
             <Crown className="h-4 w-4 text-rose-500" />
             <span className="text-sm font-semibold text-rose-700">
-              年間KGI（FY{data.fy}）— {def.label}
+              年間KGI（FY{data.fy}）
             </span>
-            {yearM.target > 0 && yearM.targetEstimated && (
-              <Badge variant="secondary" className="text-[9px]">
-                目標=月次合算（推定）
-              </Badge>
-            )}
+            <span className="text-[11px] text-zinc-400">12ヶ月合算</span>
           </div>
-          <div className="flex items-baseline gap-3 flex-wrap">
-            <span className="text-3xl font-bold tabular-nums">
-              {formatMetricValue(yearM.actual, yearM.unit)}
-            </span>
-            {yearM.target > 0 && (
-              <>
-                <span className="text-sm text-zinc-500">
-                  / 目標 {formatMetricValue(yearM.target, yearM.unit)}
-                </span>
-                <Badge
-                  variant={progressBadge(yearM.rate)}
-                  className="text-[11px]"
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
+            {KPI_METRICS.map((def) => {
+              const m = data.year.metrics.find((x) => x.metric === def.key)!;
+              const na = isUnavailable(m);
+              const isMs = MS_METRIC_KEYS.has(def.key);
+              // MSアポ数のタイルには参考値として年間アポ率（=返信率）を添える。
+              // MS送付状況(/ms-outreach)のKPI目標が「返信率」で運用されているため、
+              // 年間の着地を同じ物差しで見られるようにしておく。
+              const msRate =
+                def.key === "msAppointments" && !na && yearMsSent > 0
+                  ? (m.actual / yearMsSent) * 100
+                  : null;
+              return (
+                <div
+                  key={def.key}
+                  className={`rounded-xl border p-3 flex flex-col gap-1 ${
+                    isMs
+                      ? "border-sky-200 bg-sky-50/50"
+                      : "border-rose-200 bg-rose-50/40"
+                  }`}
                 >
-                  達成率 {(yearM.rate * 100).toFixed(1)}%
-                </Badge>
-              </>
-            )}
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-zinc-500">
+                    <MetricKindIcon
+                      kind={def.kind}
+                      isMs={isMs}
+                      className="h-3 w-3"
+                    />
+                    {def.label}
+                  </span>
+                  <span
+                    className={`text-xl font-bold tabular-nums leading-tight ${
+                      na ? "text-zinc-300" : "text-zinc-900"
+                    }`}
+                  >
+                    {na ? "—" : formatMetricValue(m.actual, m.unit)}
+                  </span>
+                  {na ? (
+                    <span className="text-[10px] text-zinc-400">
+                      組織全体のみ集計
+                    </span>
+                  ) : m.target > 0 ? (
+                    <>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-zinc-500">
+                          目標 {formatMetricValue(m.target, m.unit)}
+                        </span>
+                        <Badge
+                          variant={progressBadge(m.rate)}
+                          className="text-[9px] px-1.5"
+                        >
+                          {(m.rate * 100).toFixed(0)}%
+                        </Badge>
+                      </div>
+                      <Progress
+                        value={Math.min(100, m.rate * 100)}
+                        className="h-1.5"
+                      />
+                      {m.targetEstimated && (
+                        <span className="text-[9px] text-zinc-400">
+                          目標=月次合算（推定）
+                        </span>
+                      )}
+                    </>
+                  ) : msRate !== null ? (
+                    <span className="text-[10px] text-sky-600">
+                      アポ率 {msRate.toFixed(2)}%
+                    </span>
+                  ) : def.key === "revenue" ? (
+                    <span className="text-[10px] text-zinc-400">
+                      年間目標が未設定（KPI目標管理から設定）
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-zinc-400">実績のみ</span>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          {yearM.target > 0 && (
-            <Progress
-              value={Math.min(100, yearM.rate * 100)}
-              className="mt-2 h-2.5"
-            />
-          )}
-          {yearM.target === 0 && (
-            <p className="mt-1 text-[11px] text-zinc-400">
-              {def.key === "revenue"
-                ? "年間目標が未設定です（管理者が KPI目標管理から設定できます）。"
-                : "この指標は実績の積み上げ表示のみ対応しています（目標設定は売上のみ）。"}
-            </p>
-          )}
         </div>
 
-        {/* 四半期 → 月次 の階層テーブル */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        {/* ── 期間 × 指標 のマトリクス ─────────────────────────── */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-sm font-semibold text-zinc-700">
+            期間 × 指標
+          </span>
+          <button
+            onClick={toggleAll}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-[11px] font-medium text-zinc-600 hover:border-indigo-300 hover:bg-indigo-50/60"
+          >
+            {allOpen ? (
+              <ChevronsDownUp className="h-3 w-3" />
+            ) : (
+              <ChevronsUpDown className="h-3 w-3" />
+            )}
+            {allOpen ? "月次を全て折りたたむ" : "月次を全て展開"}
+          </button>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+          <table className="w-full text-sm min-w-[880px]">
             <thead>
-              <tr className="text-left text-xs text-zinc-500 border-b border-zinc-200">
-                <th className="py-2 pr-3 font-medium">期間</th>
-                <th className="py-2 px-3 font-medium text-right">実績</th>
-                <th className="py-2 px-3 font-medium text-right">目標</th>
-                <th className="py-2 px-3 font-medium text-right">達成率</th>
-                <th className="py-2 pl-3 font-medium w-40">進捗</th>
+              <tr className="text-xs text-zinc-500 border-b border-zinc-200 bg-zinc-50/80">
+                <th className="py-2 px-3 font-medium text-left sticky left-0 bg-zinc-50/95 z-10 w-32">
+                  期間
+                </th>
+                {KPI_METRICS.map((def) => {
+                  const isMs = MS_METRIC_KEYS.has(def.key);
+                  return (
+                    <th
+                      key={def.key}
+                      className={`py-2 px-3 font-medium text-right whitespace-nowrap ${
+                        isMs ? "bg-sky-50/70 text-sky-700" : ""
+                      }`}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        <MetricKindIcon
+                          kind={def.kind}
+                          isMs={isMs}
+                          className="h-3 w-3"
+                        />
+                        {def.label}
+                      </span>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
-              {data.quarters.map((q, qi) => {
-                const qm = pick(q);
-                const qMonths = data.months.slice(qi * 3, qi * 3 + 3);
-                return (
-                  <QuarterBlock
-                    key={q.period}
-                    quarter={q}
-                    qm={qm}
-                    months={qMonths}
-                    pick={pick}
-                  />
-                );
-              })}
+              {data.quarters.map((q, qi) => (
+                <QuarterRows
+                  key={q.period}
+                  quarter={q}
+                  months={data.months.slice(qi * 3, qi * 3 + 3)}
+                  open={!!openQuarters[q.period]}
+                  onToggle={() =>
+                    setOpenQuarters((s) => ({
+                      ...s,
+                      [q.period]: !s[q.period],
+                    }))
+                  }
+                  isUnavailable={isUnavailable}
+                />
+              ))}
             </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-rose-200 bg-rose-50/50">
+                <td className="py-2.5 px-3 sticky left-0 bg-rose-50/90 z-10">
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-rose-700 whitespace-nowrap">
+                    <Crown className="h-3.5 w-3.5" />
+                    年間KGI
+                  </span>
+                </td>
+                {KPI_METRICS.map((def) => {
+                  const m = data.year.metrics.find((x) => x.metric === def.key)!;
+                  return (
+                    <MetricCell
+                      key={def.key}
+                      m={m}
+                      unavailable={isUnavailable(m)}
+                      isMs={MS_METRIC_KEYS.has(def.key)}
+                      emphasis="year"
+                    />
+                  );
+                })}
+              </tr>
+            </tfoot>
           </table>
+        </div>
+
+        {/* ── 凡例：集計タイプとデータソース ─────────────────────── */}
+        <div className="grid gap-2 md:grid-cols-3">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-[11px] text-emerald-800 flex items-start gap-2">
+            <Sigma className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>
+              <strong>累積タイプ</strong>（売上・商談数・受注数・MS送信数・MSアポ数）は、
+              四半期＝3ヶ月分、年間KGI＝12ヶ月分を<strong>単純合算</strong>します。
+            </span>
+          </div>
+          <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-[11px] text-amber-800 flex items-start gap-2">
+            <Percent className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>
+              <strong>比率/平均タイプ</strong>（受注率・平均単価）は単純合算できないため、
+              上位期間では<strong>分子と分母をそれぞれ合算して再計算（加重平均）</strong>します。
+            </span>
+          </div>
+          <div className="rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-2 text-[11px] text-sky-800 flex items-start gap-2">
+            <Send className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>
+              <strong>MS送信数 / MSアポ数</strong>は「MS送付状況」の週次グリッドの実績を月合算した値です。
+              送付代行ワーカー単位の記録のため、<strong>担当者を絞った個人ビューでは表示されません</strong>。
+            </span>
+          </div>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function QuarterBlock({
+/** 四半期行（3ヶ月合算）＋ 展開時の月次行（正本） */
+function QuarterRows({
   quarter,
-  qm,
   months,
-  pick,
+  open,
+  onToggle,
+  isUnavailable,
 }: {
   quarter: PeriodRollup;
-  qm: MetricProgress;
   months: PeriodRollup[];
-  pick: (p: PeriodRollup) => MetricProgress;
+  open: boolean;
+  onToggle: () => void;
+  isUnavailable: (m: MetricProgress) => boolean;
 }) {
-  const [open, setOpen] = useState(true);
   return (
     <>
-      {/* 四半期行（3ヶ月合算） */}
       <tr
         className="border-b border-zinc-100 bg-emerald-50/40 cursor-pointer hover:bg-emerald-50/70"
-        onClick={() => setOpen((o) => !o)}
+        onClick={onToggle}
       >
-        <td className="py-2.5 pr-3">
-          <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-800">
+        <td className="py-2.5 px-3 sticky left-0 bg-emerald-50/90 z-10">
+          <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-800 whitespace-nowrap">
             <CalendarRange className="h-3.5 w-3.5" />
             {quarter.label}
             <span className="text-[10px] text-emerald-600/70 font-normal">
-              {open ? "▼" : "▶"} 3ヶ月合算
+              {open ? "▼" : "▶"}
             </span>
-            {qm.target > 0 && qm.targetEstimated && (
-              <Badge variant="secondary" className="text-[9px]">
-                目標=月次合算
-              </Badge>
-            )}
           </span>
         </td>
-        <td className="py-2.5 px-3 text-right font-bold tabular-nums">
-          {formatMetricValue(qm.actual, qm.unit)}
-        </td>
-        <td className="py-2.5 px-3 text-right tabular-nums text-zinc-500">
-          {qm.target > 0 ? formatMetricValue(qm.target, qm.unit) : "—"}
-        </td>
-        <td className="py-2.5 px-3 text-right">
-          {qm.target > 0 ? (
-            <Badge variant={progressBadge(qm.rate)} className="text-[10px]">
-              {(qm.rate * 100).toFixed(0)}%
-            </Badge>
-          ) : (
-            <span className="text-zinc-300">—</span>
-          )}
-        </td>
-        <td className="py-2.5 pl-3">
-          {qm.target > 0 && (
-            <Progress value={Math.min(100, qm.rate * 100)} className="h-1.5" />
-          )}
-        </td>
-      </tr>
-      {/* 月次行（正本） */}
-      {open &&
-        months.map((m) => {
-          const mm = pick(m);
-          const empty = mm.actual === 0 && mm.target === 0;
+        {KPI_METRICS.map((def) => {
+          const m = quarter.metrics.find((x) => x.metric === def.key)!;
           return (
-            <tr key={m.period} className="border-b border-zinc-50">
-              <td className="py-2 pr-3 pl-6">
-                <span className="inline-flex items-center gap-1.5 text-zinc-600">
-                  <CalendarDays className="h-3 w-3 text-sky-400" />
-                  {m.label}
-                </span>
-              </td>
-              <td className="py-2 px-3 text-right tabular-nums">
-                {empty ? (
-                  <span className="text-zinc-300">—</span>
-                ) : (
-                  formatMetricValue(mm.actual, mm.unit)
-                )}
-              </td>
-              <td className="py-2 px-3 text-right tabular-nums text-zinc-400">
-                {mm.target > 0 ? formatMetricValue(mm.target, mm.unit) : "—"}
-              </td>
-              <td className="py-2 px-3 text-right">
-                {mm.target > 0 ? (
-                  <Badge
-                    variant={progressBadge(mm.rate)}
-                    className="text-[9px] px-1.5"
-                  >
-                    {(mm.rate * 100).toFixed(0)}%
-                  </Badge>
-                ) : (
-                  <span className="text-zinc-300">—</span>
-                )}
-              </td>
-              <td className="py-2 pl-3">
-                {mm.target > 0 && (
-                  <Progress
-                    value={Math.min(100, mm.rate * 100)}
-                    className="h-1"
-                  />
-                )}
-              </td>
-            </tr>
+            <MetricCell
+              key={def.key}
+              m={m}
+              unavailable={isUnavailable(m)}
+              isMs={MS_METRIC_KEYS.has(def.key)}
+              emphasis="quarter"
+            />
           );
         })}
+      </tr>
+      {open &&
+        months.map((mo) => (
+          <tr key={mo.period} className="border-b border-zinc-50">
+            <td className="py-2 px-3 pl-7 sticky left-0 bg-white z-10">
+              <span className="inline-flex items-center gap-1.5 text-zinc-600 whitespace-nowrap">
+                <CalendarDays className="h-3 w-3 text-sky-400" />
+                {mo.label}
+              </span>
+            </td>
+            {KPI_METRICS.map((def) => {
+              const m = mo.metrics.find((x) => x.metric === def.key)!;
+              return (
+                <MetricCell
+                  key={def.key}
+                  m={m}
+                  unavailable={isUnavailable(m)}
+                  isMs={MS_METRIC_KEYS.has(def.key)}
+                  emphasis="month"
+                />
+              );
+            })}
+          </tr>
+        ))}
     </>
+  );
+}
+
+/**
+ * 1セル＝1期間 × 1指標。
+ * 実績を主役にし、目標が入っている指標（現状は売上のみ）は達成率バッジを下に添える。
+ */
+function MetricCell({
+  m,
+  unavailable,
+  isMs,
+  emphasis,
+}: {
+  m: MetricProgress;
+  unavailable: boolean;
+  isMs: boolean;
+  emphasis: "year" | "quarter" | "month";
+}) {
+  const empty = m.actual === 0 && m.target === 0;
+  const base = isMs ? "bg-sky-50/40" : "";
+  const weight =
+    emphasis === "month" ? "font-normal text-zinc-700" : "font-bold text-zinc-900";
+  const pad = emphasis === "month" ? "py-2 px-3" : "py-2.5 px-3";
+
+  return (
+    <td className={`${pad} text-right align-top ${base}`}>
+      {unavailable || empty ? (
+        <span className="text-zinc-300">—</span>
+      ) : (
+        <div className="flex flex-col items-end gap-0.5">
+          <span className={`tabular-nums whitespace-nowrap ${weight}`}>
+            {formatMetricValue(m.actual, m.unit)}
+          </span>
+          {m.target > 0 && (
+            <span className="flex items-center gap-1 whitespace-nowrap">
+              <span className="text-[9px] text-zinc-400">
+                /{formatMetricValue(m.target, m.unit)}
+              </span>
+              <Badge
+                variant={progressBadge(m.rate)}
+                className="text-[9px] px-1"
+              >
+                {(m.rate * 100).toFixed(0)}%
+              </Badge>
+            </span>
+          )}
+        </div>
+      )}
+    </td>
+  );
+}
+
+function MetricKindIcon({
+  kind,
+  isMs,
+  className,
+}: {
+  kind: "sum" | "avg";
+  isMs: boolean;
+  className?: string;
+}) {
+  if (isMs) return <Send className={className} />;
+  return kind === "sum" ? (
+    <Sigma className={className} />
+  ) : (
+    <Percent className={className} />
   );
 }
 

@@ -25,13 +25,15 @@
 // 指標定義
 // ============================================================
 
-/** KPI指標キー。売上・商談・受注の基本指標（Luma・リージー共通）。 */
+/** KPI指標キー。売上・商談・受注の基本指標（Luma・リージー共通）＋MS送付の2指標。 */
 export type KpiMetricKey =
   | "revenue" // 売上（SNSは契約期間中の各月に按分計上。社長判断 2026-08）
   | "dealCount" // 商談数（新規に発生した商談）
   | "wonCount" // 受注数（受注に至った商談数）
   | "winRate" // 受注率（受注数 / 商談数）
-  | "avgDealSize"; // 平均受注単価（受注金額 / 受注数）
+  | "avgDealSize" // 平均受注単価（受注金額 / 受注数）
+  | "msSent" // MS送信数（MS送付状況の週次実績の合算）
+  | "msAppointments"; // MSからのアポ数（MS送付状況の週次実績の合算）
 
 /** 集計タイプ：sum=単純合算で上位へ積み上げ可 / avg=分子分母で再計算（加重平均） */
 export type RollupKind = "sum" | "avg";
@@ -42,13 +44,21 @@ export type KpiMetricDef = {
   /** sum=累積系（合算OK） / avg=比率・平均系（合算NG、加重平均で再計算） */
   kind: RollupKind;
   /** 表示単位の整形 */
-  unit: "jpy" | "count" | "percent";
+  unit: "jpy" | "count" | "percent" | "msg";
   /**
    * avg型の指標が「どの実績値から再計算されるか」。
    * numeratorKey / denominatorKey は基礎となる sum 型指標を指す。
    */
   numeratorKey?: KpiMetricKey;
   denominatorKey?: KpiMetricKey;
+  /**
+   * true = 組織全体でしか集計できない指標。
+   * MS送付（/ms-outreach）は「ワーカー × 週」で記録され、営業担当（User）に紐付かないため、
+   * 担当者を絞った個人ビューでは実績を出せない（UI側で「—」表示にする）。
+   */
+  orgOnly?: boolean;
+  /** 指標の意味・データソースをUIに出すための短い説明 */
+  note?: string;
 };
 
 /**
@@ -77,6 +87,26 @@ export const KPI_METRICS: KpiMetricDef[] = [
     numeratorKey: "revenue",
     denominatorKey: "wonCount",
   },
+  // ── MS送付（アウトリーチ）の2指標 ────────────────────────────
+  // データソースは MsWeeklyEntry（/ms-outreach の「ワーカー × 月内週」グリッド）。
+  // 送信数・アポ数はどちらもその画面で手入力される実績で、暦年月を持つため
+  // 会計年度の月インデックスに素直に振り分けられる。
+  {
+    key: "msSent",
+    label: "MS送信数",
+    kind: "sum",
+    unit: "msg",
+    orgOnly: true,
+    note: "MS送付状況（週次グリッド）の送信数を月合算",
+  },
+  {
+    key: "msAppointments",
+    label: "MSアポ数",
+    kind: "sum",
+    unit: "count",
+    orgOnly: true,
+    note: "MS送付状況（週次グリッド）のアポ数を月合算",
+  },
 ];
 
 export const KPI_METRIC_MAP: Record<KpiMetricKey, KpiMetricDef> = Object.fromEntries(
@@ -95,11 +125,15 @@ export type MonthlyBase = {
   revenue: number;
   dealCount: number;
   wonCount: number;
+  /** MS送信数（MsWeeklyEntry.sent の月合算）。個人ビューでは常に0（担当者に紐付かないため） */
+  msSent: number;
+  /** MSからのアポ数（MsWeeklyEntry.appointments の月合算）。個人ビューでは常に0 */
+  msAppointments: number;
 };
 
 /** 空の月次基礎値 */
 export function emptyMonthlyBase(): MonthlyBase {
-  return { revenue: 0, dealCount: 0, wonCount: 0 };
+  return { revenue: 0, dealCount: 0, wonCount: 0, msSent: 0, msAppointments: 0 };
 }
 
 /** 複数月の基礎値を合算 */
@@ -109,6 +143,8 @@ export function sumMonthlyBase(months: MonthlyBase[]): MonthlyBase {
       revenue: acc.revenue + m.revenue,
       dealCount: acc.dealCount + m.dealCount,
       wonCount: acc.wonCount + m.wonCount,
+      msSent: acc.msSent + m.msSent,
+      msAppointments: acc.msAppointments + m.msAppointments,
     }),
     emptyMonthlyBase(),
   );
@@ -152,6 +188,8 @@ export type MetricProgress = {
   rate: number;
   /** 目標が「月次目標の合算/加重平均から推定」されたものか（true=ボトムアップ推定） */
   targetEstimated: boolean;
+  /** 組織全体でしか集計できない指標か（個人ビューでは「—」表示にする） */
+  orgOnly: boolean;
 };
 
 // ============================================================
@@ -281,6 +319,7 @@ function buildMetricProgress(
       target,
       rate: target > 0 ? actual / target : 0,
       targetEstimated: def.key === "revenue" ? targetEstimated : false,
+      orgOnly: def.orgOnly === true,
     };
   });
 }
@@ -297,5 +336,7 @@ export function formatMetricValue(value: number, unit: KpiMetricDef["unit"]): st
     return `¥${Math.round(value).toLocaleString()}`;
   }
   if (unit === "percent") return `${value.toFixed(1)}%`;
+  // MS送信数は「通」。件数系（商談数・受注数・アポ数）は「件」。
+  if (unit === "msg") return `${Math.round(value).toLocaleString()}通`;
   return `${Math.round(value).toLocaleString()}件`;
 }
