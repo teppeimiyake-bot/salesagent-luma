@@ -47,7 +47,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     prisma.kyoproStaff.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      select: { id: true, name: true, roles: true, payOverrides: true },
+      select: { id: true, name: true, roles: true, trainee: true, payOverrides: true },
     }),
     prisma.kyoproRate.findMany({ orderBy: [{ role: "asc" }, { effectiveFrom: "asc" }] }),
     // 同日・別撮影会のアサイン（掛け持ちは可能だが、うっかり二重に入れないよう警告する）
@@ -86,6 +86,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       status: a.status,
       billAmount: a.billAmount,
       payAmount: a.payAmount,
+      trainee: a.trainee,
       cleanup: a.cleanup,
       cleanupBillAmount: a.cleanupBillAmount,
       cleanupPayAmount: a.cleanupPayAmount,

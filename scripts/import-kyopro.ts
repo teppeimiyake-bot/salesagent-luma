@@ -257,8 +257,7 @@ async function main() {
           role,
           billRate: DEFAULT_RATES[role].billRate,
           payRateDefault: DEFAULT_RATES[role].payRateDefault,
-          payRateMin: DEFAULT_RATES[role].payRateMin ?? null,
-          payRateMax: DEFAULT_RATES[role].payRateMax ?? null,
+          payRateTrainee: DEFAULT_RATES[role].payRateTrainee ?? null,
           effectiveFrom: new Date(Date.UTC(2026, 0, 1)),
         })),
       });
@@ -297,6 +296,8 @@ async function main() {
         const amounts = computeAssignmentAmounts({
           rate,
           role: a.role,
+          // 過去分の研修中／規定はリストに無いため、全員「規定」で投入して画面で直す
+          trainee: false,
           payOverrides: overridesById.get(staffId),
           cleanup: false, // 過去分の片付け有無はリストに無いため未チェックで投入する
         });

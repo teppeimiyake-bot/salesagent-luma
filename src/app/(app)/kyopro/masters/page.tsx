@@ -43,8 +43,7 @@ export default async function KyoproMastersPage() {
             role: r.role,
             billRate: r.billRate,
             payRateDefault: r.payRateDefault,
-            payRateMin: r.payRateMin,
-            payRateMax: r.payRateMax,
+            payRateTrainee: r.payRateTrainee,
             cleanupBillAmount: r.cleanupBillAmount,
             cleanupPayAmount: r.cleanupPayAmount,
           }))}

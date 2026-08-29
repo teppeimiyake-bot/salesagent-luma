@@ -69,15 +69,16 @@ export const ASSIGN_STATUS_LABEL: Record<string, string> = {
 
 /**
  * 初期レート（1名1日あたり・税抜）。
- * 片付けは京プロへ +3,000 円請求し、人材への支払は発生しない（粗利 +3,000）。
+ * 発注は「規定（＝研修明け）」と「研修中」の2段階。payRateTrainee が無い職種は
+ * 研修中でも規定額を払う。片付けは京プロへ +3,000 円請求し、人材への支払は発生しない。
  */
 export const DEFAULT_RATES: Record<
   KyoproRole,
-  { billRate: number; payRateDefault: number; payRateMin?: number; payRateMax?: number }
+  { billRate: number; payRateDefault: number; payRateTrainee?: number }
 > = {
   CAMERA: { billRate: 35000, payRateDefault: 25000 },
   SELECT: { billRate: 35000, payRateDefault: 20000 },
-  MC: { billRate: 25000, payRateDefault: 18000, payRateMin: 15000, payRateMax: 20000 },
+  MC: { billRate: 25000, payRateDefault: 20000, payRateTrainee: 15000 },
   GUIDE: { billRate: 25000, payRateDefault: 20000 },
 };
 
@@ -87,9 +88,10 @@ export const DEFAULT_CLEANUP_PAY = 0;
 export type RateLike = {
   role: KyoproRole;
   billRate: number;
+  /** 規定額（＝研修明け） */
   payRateDefault: number;
-  payRateMin: number | null;
-  payRateMax: number | null;
+  /** 研修中の額。null なら研修中でも規定額 */
+  payRateTrainee: number | null;
   cleanupBillAmount: number;
   cleanupPayAmount: number;
   effectiveFrom: Date;
@@ -120,26 +122,40 @@ export function staffPayOverride(payOverrides: unknown, role: KyoproRole): numbe
 }
 
 /**
+ * その職種・その稼働区分（研修中 / 規定＝研修明け）のレート額。
+ * 研修中の額が設定されていない職種は、研修中でも規定額を払う。
+ */
+export function payRateFor(rate: RateLike | null, role: KyoproRole, trainee: boolean): number {
+  const fallback = DEFAULT_RATES[role];
+  if (trainee) {
+    return rate ? (rate.payRateTrainee ?? rate.payRateDefault) : (fallback.payRateTrainee ?? fallback.payRateDefault);
+  }
+  return rate?.payRateDefault ?? fallback.payRateDefault;
+}
+
+/**
  * 1アサインの金額を決める。
- * 発注単価の優先順位は「手入力 > 人材の個別単価 > レートマスタの既定値」。
+ * 発注単価の優先順位は「手入力 > 人材の個別単価 > レートマスタ（研修中／規定）」。
  */
 export function computeAssignmentAmounts(opts: {
   rate: RateLike | null;
   role: KyoproRole;
   payOverrides?: unknown;
+  /** この稼働が研修中扱いか */
+  trainee?: boolean;
   /** 画面で手入力された発注単価（未指定なら自動決定） */
   payAmountInput?: number | null;
   /** 画面で手入力された受注単価（未指定ならレート） */
   billAmountInput?: number | null;
   cleanup?: boolean;
 }) {
-  const fallback = DEFAULT_RATES[opts.role];
-  const billRate = opts.rate?.billRate ?? fallback.billRate;
-  const payDefault = opts.rate?.payRateDefault ?? fallback.payRateDefault;
+  const trainee = opts.trainee ?? false;
+  const billRate = opts.rate?.billRate ?? DEFAULT_RATES[opts.role].billRate;
+  const rateAmount = payRateFor(opts.rate, opts.role, trainee);
   const override = staffPayOverride(opts.payOverrides, opts.role);
 
   const billAmount = opts.billAmountInput ?? billRate;
-  const payAmount = opts.payAmountInput ?? override ?? payDefault;
+  const payAmount = opts.payAmountInput ?? override ?? rateAmount;
   const cleanup = opts.cleanup ?? false;
 
   return {
@@ -150,13 +166,17 @@ export function computeAssignmentAmounts(opts: {
   };
 }
 
-/** 発注単価が職種の想定レンジ内か（範囲外でも保存はできるが画面で警告する） */
-export function isPayRateOutOfRange(rate: RateLike | null, role: KyoproRole, pay: number): boolean {
-  const min = rate?.payRateMin ?? DEFAULT_RATES[role].payRateMin ?? null;
-  const max = rate?.payRateMax ?? DEFAULT_RATES[role].payRateMax ?? null;
-  if (min !== null && pay < min) return true;
-  if (max !== null && pay > max) return true;
-  return false;
+/**
+ * 発注額がレート（研修中／規定）と違うか。
+ * 個別単価や手入力で外れること自体は許すが、画面で気づけるようにする。
+ */
+export function isPayRateUnexpected(
+  rate: RateLike | null,
+  role: KyoproRole,
+  trainee: boolean,
+  pay: number,
+): boolean {
+  return pay !== payRateFor(rate, role, trainee);
 }
 
 export type AssignmentAmounts = {

@@ -14,6 +14,8 @@ const updateSchema = z.object({
   roles: z.array(roleEnum).min(1).optional(),
   payOverrides: z.record(roleEnum, z.number().int().min(0).max(1_000_000)).nullish(),
   bankInfo: z.string().max(500).nullish(),
+  /** 研修中か。切り替えても過去のアサインは当時の区分のまま残る */
+  trainee: z.boolean().optional(),
   note: z.string().max(2000).nullish(),
   active: z.boolean().optional(),
 });
@@ -42,6 +44,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ...(d.payOverrides !== undefined ? { payOverrides: d.payOverrides ?? undefined } : {}),
       // 振込先は admin だけが書き換えられる
       ...(d.bankInfo !== undefined && g.permission === "admin" ? { bankInfo: d.bankInfo } : {}),
+      ...(d.trainee !== undefined ? { trainee: d.trainee } : {}),
       ...(d.note !== undefined ? { note: d.note } : {}),
       ...(d.active !== undefined ? { active: d.active } : {}),
     },

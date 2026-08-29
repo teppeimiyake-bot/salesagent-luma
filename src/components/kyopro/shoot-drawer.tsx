@@ -9,7 +9,8 @@ import {
   SHOOT_STATUS_LABEL,
   ASSIGN_STATUS_LABEL,
   formatJPY,
-  isPayRateOutOfRange,
+  isPayRateUnexpected,
+  payRateFor,
   parseRequiredCounts,
   resolveRate,
   billTotal,
@@ -28,6 +29,7 @@ type DetailAssignment = {
   status: string;
   billAmount: number;
   payAmount: number;
+  trainee: boolean;
   cleanup: boolean;
   cleanupBillAmount: number;
   cleanupPayAmount: number;
@@ -50,7 +52,7 @@ type Detail = {
     requiredCounts: unknown;
   };
   assignments: DetailAssignment[];
-  staff: { id: string; name: string; roles: KyoproRole[]; payOverrides: unknown }[];
+  staff: { id: string; name: string; roles: KyoproRole[]; trainee: boolean; payOverrides: unknown }[];
   rates: (Omit<RateLike, "effectiveFrom"> & { effectiveFrom: string })[];
   sameDay: { staffId: string; where: string }[];
 };
@@ -240,7 +242,7 @@ export function ShootDrawer({
                     <div className="space-y-1.5">
                       {rows.map((a) => (
                         <AssignmentRow
-                          key={`${a.id}:${a.payAmount}:${a.cleanup}`}
+                          key={`${a.id}:${a.payAmount}:${a.cleanup}:${a.trainee}`}
                           a={a}
                           rate={resolveRate(rates, role, new Date(`${data.shoot.date}T00:00:00Z`))}
                           conflict={sameDayMap.get(a.staffId) ?? []}
@@ -375,12 +377,31 @@ function AssignmentRow({
 }) {
   // 保存後は親が key を変えて作り直すので、初期値の同期は不要
   const [pay, setPay] = useState(String(a.payAmount));
-  const outOfRange = isPayRateOutOfRange(rate, a.role, Number(pay || 0));
+  const unexpected = isPayRateUnexpected(rate, a.role, a.trainee, Number(pay || 0));
+  const rateAmount = payRateFor(rate, a.role, a.trainee);
 
   return (
     <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <span className="font-medium">{a.staffName}</span>
+
+        {/* 研修中 / 規定（＝研修明け）。切り替えると発注額をレートから引き直す */}
+        <button
+          disabled={!canEdit || busy}
+          onClick={() => onPatch({ trainee: !a.trainee })}
+          className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
+            a.trainee
+              ? "border-violet-400 bg-violet-50 text-violet-700"
+              : "border-zinc-200 text-zinc-400 hover:border-violet-300 hover:text-violet-600"
+          }`}
+          title={
+            a.trainee
+              ? `研修中の単価（${formatJPY(payRateFor(rate, a.role, true))}）で計上しています。押すと規定に戻します`
+              : `規定（研修明け・${formatJPY(payRateFor(rate, a.role, false))}）で計上しています。押すと研修中にします`
+          }
+        >
+          {a.trainee ? "研修中" : "規定"}
+        </button>
 
         {a.status === "TENTATIVE" && (
           <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] text-zinc-500">
@@ -430,7 +451,7 @@ function AssignmentRow({
                 if (Number.isFinite(n) && n !== a.payAmount) onPatch({ payAmount: n });
               }}
               className={`w-20 rounded border px-1.5 py-0.5 text-right tabular-nums ${
-                outOfRange ? "border-amber-400 bg-amber-50 text-amber-800" : "border-zinc-200"
+                unexpected ? "border-amber-400 bg-amber-50 text-amber-800" : "border-zinc-200"
               }`}
             />
           </label>
@@ -448,9 +469,9 @@ function AssignmentRow({
           )}
         </div>
       </div>
-      {outOfRange && (
+      {unexpected && (
         <p className="mt-1 text-[11px] text-amber-700">
-          この職種の想定レンジ（{formatJPY(rate?.payRateMin ?? 0)}〜{formatJPY(rate?.payRateMax ?? 0)}）から外れています。
+          {a.trainee ? "研修中" : "規定"}のレート（{formatJPY(rateAmount)}）と違う額で計上しています。
         </p>
       )}
     </div>
@@ -466,7 +487,7 @@ function StaffPicker({
   onCancel,
 }: {
   role: KyoproRole;
-  staff: { id: string; name: string; roles: KyoproRole[] }[];
+  staff: { id: string; name: string; roles: KyoproRole[]; trainee: boolean }[];
   taken: Set<string>;
   sameDayMap: Map<string, string[]>;
   onPick: (staffId: string) => void;
@@ -516,6 +537,9 @@ function StaffPicker({
               }`}
             >
               {s.name}
+              {s.trainee && (
+                <span className="rounded bg-violet-50 px-1 text-[10px] font-semibold text-violet-700">研修</span>
+              )}
               {conflict.length > 0 && <AlertTriangle className="h-3 w-3 text-amber-500" />}
             </button>
           );

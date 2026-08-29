@@ -19,6 +19,7 @@ export type StaffRow = {
   payOverrides: Record<string, number> | null;
   bankInfo: string | null;
   note: string | null;
+  trainee: boolean;
   active: boolean;
   monthDays: number;
   monthPay: number;
@@ -44,6 +45,17 @@ export function StaffClient({
   const [showInactive, setShowInactive] = useState(false);
 
   const visible = rows.filter((r) => showInactive || r.active);
+
+  function toggleTrainee(row: StaffRow) {
+    start(async () => {
+      await fetch(`/api/kyopro/staff/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trainee: !row.trainee }),
+      });
+      router.refresh();
+    });
+  }
 
   function toggleActive(row: StaffRow) {
     start(async () => {
@@ -83,6 +95,7 @@ export function StaffClient({
             <tr className="border-b border-zinc-200 bg-zinc-50 text-[11px] uppercase tracking-wider text-zinc-400">
               <th className="px-3 py-2 text-left font-bold">氏名</th>
               <th className="px-3 py-2 text-left font-bold">対応職種</th>
+              <th className="px-3 py-2 text-left font-bold">単価区分</th>
               <th className="px-3 py-2 text-right font-bold">{monthLabel} 稼働</th>
               <th className="px-3 py-2 text-right font-bold">{monthLabel} 支払見込</th>
               <th className="px-3 py-2 text-right font-bold">累計稼働</th>
@@ -119,6 +132,20 @@ export function StaffClient({
                       );
                     })}
                   </div>
+                </td>
+                <td className="px-3 py-2">
+                  <button
+                    disabled={!canEdit || pending}
+                    onClick={() => toggleTrainee(r)}
+                    className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                      r.trainee
+                        ? "border-violet-400 bg-violet-50 text-violet-700"
+                        : "border-zinc-200 text-zinc-500 hover:border-violet-300"
+                    }`}
+                    title="押すと研修中／規定（研修明け）を切り替えます。以降のアサインの既定単価が変わります（過去分はそのまま）"
+                  >
+                    {r.trainee ? "研修中" : "規定"}
+                  </button>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{r.monthDays || "—"}</td>
                 <td className="px-3 py-2 text-right tabular-nums">
@@ -160,7 +187,7 @@ export function StaffClient({
             ))}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-10 text-center text-sm text-zinc-400">
+                <td colSpan={9} className="px-3 py-10 text-center text-sm text-zinc-400">
                   人材が登録されていません。
                 </td>
               </tr>
@@ -204,6 +231,7 @@ function StaffDialog({
       KYOPRO_ROLES.map((r) => [r, row?.payOverrides?.[r] ? String(row.payOverrides[r]) : ""]),
     ),
   );
+  const [trainee, setTrainee] = useState(row?.trainee ?? false);
   const [bankInfo, setBankInfo] = useState(row?.bankInfo ?? "");
   const [note, setNote] = useState(row?.note ?? "");
 
@@ -225,6 +253,7 @@ function StaffDialog({
       phone: phone || null,
       roles,
       payOverrides: Object.keys(payOverrides).length > 0 ? payOverrides : null,
+      trainee,
       ...(isAdmin ? { bankInfo: bankInfo || null } : {}),
       note: note || null,
     };
@@ -284,6 +313,32 @@ function StaffDialog({
                 );
               })}
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">単価区分</Label>
+            <div className="flex gap-2">
+              {[
+                { v: false, label: "規定（研修明け）" },
+                { v: true, label: "研修中" },
+              ].map((o) => (
+                <button
+                  key={String(o.v)}
+                  type="button"
+                  onClick={() => setTrainee(o.v)}
+                  className={`h-9 flex-1 rounded-md border text-sm ${
+                    trainee === o.v
+                      ? "border-violet-500 bg-violet-50 font-semibold text-violet-700"
+                      : "border-zinc-200 bg-white text-zinc-600"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-zinc-400">
+              これから作るアサインの既定になります。過去の稼働は当時の区分のまま残ります。
+            </p>
           </div>
 
           <div className="space-y-1">

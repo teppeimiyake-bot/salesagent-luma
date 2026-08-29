@@ -1424,6 +1424,8 @@ model KyoproStaff {
   payOverrides Json?    @map("pay_overrides")
   /// 振込先メモ（admin のみ表示）
   bankInfo  String?     @map("bank_info") @db.Text
+  /// 研修中か（新しいアサインの既定値になる。研修明けにしたら以降は規定額）
+  trainee   Boolean     @default(false)
   active    Boolean     @default(true)
   /// スプレッドシート原文（括弧書き等）の保持先
   note      String?     @db.Text
@@ -1445,11 +1447,10 @@ model KyoproRate {
   role           KyoproRole
   /// 受注単価（京プロへの請求）
   billRate       Int        @map("bill_rate")
-  /// 発注単価（人材への支払）の既定値
+  /// 発注単価（人材への支払）の規定額。研修明けはこの額（規定＝研修明け）。
   payRateDefault Int        @map("pay_rate_default")
-  /// 発注単価の下限・上限（司会のように人・案件で変動する職種で使う）
-  payRateMin     Int?       @map("pay_rate_min")
-  payRateMax     Int?       @map("pay_rate_max")
+  /// 研修中の発注単価。null なら研修中でも規定額。
+  payRateTrainee Int?       @map("pay_rate_trainee")
   /// 片付け対応の加算。現状は京プロへ +3,000 円請求し、人材への支払は 0 円。
   cleanupBillAmount Int     @default(3000) @map("cleanup_bill_amount")
   cleanupPayAmount  Int     @default(0) @map("cleanup_pay_amount")
@@ -1521,6 +1522,8 @@ model KyoproAssignment {
   billAmount Int              @map("bill_amount")
   /// 発注額（人材への支払）
   payAmount  Int              @map("pay_amount")
+  /// この稼働が研修中扱いか（撮影会ごと・人材ごとに残す。過去分は当時の区分のまま）
+  trainee           Boolean   @default(false)
   /// 片付け対応（現場でチェック）
   cleanup           Boolean   @default(false)
   cleanupBillAmount Int       @default(0) @map("cleanup_bill_amount")

@@ -31,6 +31,8 @@ const createSchema = z.object({
   roles: z.array(roleEnum).min(1),
   payOverrides: payOverridesSchema.nullish(),
   bankInfo: z.string().max(500).nullish(),
+  /** 研修中か（アサイン時の既定になる） */
+  trainee: z.boolean().optional(),
   note: z.string().max(2000).nullish(),
 });
 
@@ -64,6 +66,7 @@ export async function POST(req: Request) {
       roles: d.roles as never,
       payOverrides: d.payOverrides ?? undefined,
       bankInfo: g.permission === "admin" ? (d.bankInfo ?? null) : null,
+      trainee: d.trainee ?? false,
       note: d.note ?? null,
       sortOrder: count + 1,
     },

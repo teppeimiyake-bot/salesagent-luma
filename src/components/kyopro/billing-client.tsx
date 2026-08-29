@@ -16,6 +16,7 @@ export type BillLine = {
   staffName: string;
   role: KyoproRole;
   cleanup: boolean;
+  trainee: boolean;
   bill: number;
   pay: number;
 };
@@ -25,10 +26,11 @@ export type PayoutRow = {
   staffName: string;
   days: number;
   cleanupDays: number;
+  traineeDays: number;
   total: number;
   status: "UNPAID" | "SCHEDULED" | "PAID";
   paidDate: string | null;
-  lines: { date: string; clientName: string; role: KyoproRole; pay: number }[];
+  lines: { date: string; clientName: string; role: KyoproRole; pay: number; trainee: boolean }[];
 };
 
 const BILL_STATUS: { v: "NOT_SENT" | "SENT" | "PAID"; label: string }[] = [
@@ -143,16 +145,17 @@ export function BillingClient({
 
   function exportPayout() {
     downloadCsv(`京プロ人材支払_${yearMonth}.csv`, [
-      ["氏名", "稼働日数", "片付け日数", "支払額", "支払期日", "ステータス"],
+      ["氏名", "稼働日数", "うち研修中", "片付け日数", "支払額", "支払期日", "ステータス"],
       ...payouts.map((p) => [
         p.staffName,
         p.days,
+        p.traineeDays,
         p.cleanupDays,
         p.total,
         payoutDue,
         PAYOUT_STATUS.find((s) => s.v === p.status)?.label ?? "",
       ]),
-      ["合計", "", "", totalPay, "", ""],
+      ["合計", "", "", "", totalPay, "", ""],
     ]);
   }
 
@@ -260,6 +263,11 @@ export function BillingClient({
                       </td>
                       <td className="px-3 py-1.5">
                         {l.staffName}
+                        {l.trainee && (
+                          <span className="ml-1 rounded bg-violet-50 px-1 py-0.5 text-[10px] font-semibold text-violet-700">
+                            研修
+                          </span>
+                        )}
                         {l.cleanup && (
                           <span
                             className="ml-1 inline-flex items-center gap-0.5 rounded bg-emerald-50 px-1 py-0.5 text-[10px] font-semibold text-emerald-700"
@@ -384,8 +392,11 @@ function PayoutRowView({
         </td>
         <td className="px-3 py-1.5 text-right tabular-nums">
           {row.days}
+          {row.traineeDays > 0 && (
+            <span className="ml-1 text-[10px] text-violet-600" title="うち研修中の稼働">研{row.traineeDays}</span>
+          )}
           {row.cleanupDays > 0 && (
-            <span className="ml-1 text-[10px] text-emerald-600">片{row.cleanupDays}</span>
+            <span className="ml-1 text-[10px] text-emerald-600" title="片付け対応">片{row.cleanupDays}</span>
           )}
         </td>
         <td className="px-3 py-1.5 text-right tabular-nums">{formatJPY(row.total)}</td>
@@ -418,7 +429,12 @@ function PayoutRowView({
               {row.lines.map((l, i) => (
                 <div key={i} className="flex items-center gap-2 text-[11px] text-zinc-600">
                   <span className="w-16 tabular-nums">{md(l.date)}</span>
-                  <span className="flex-1 truncate">{l.clientName}</span>
+                  <span className="flex-1 truncate">
+                    {l.clientName}
+                    {l.trainee && (
+                      <span className="ml-1 rounded bg-violet-50 px-1 text-[10px] font-semibold text-violet-700">研修</span>
+                    )}
+                  </span>
                   <span className={ROLE_STYLE[l.role].text}>{ROLE_LABEL[l.role]}</span>
                   <span className="w-20 text-right tabular-nums">{formatJPY(l.pay)}</span>
                 </div>

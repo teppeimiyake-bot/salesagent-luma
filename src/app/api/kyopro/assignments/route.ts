@@ -21,6 +21,8 @@ const createSchema = z.object({
   payAmount: z.number().int().min(0).max(1_000_000).nullish(),
   billAmount: z.number().int().min(0).max(1_000_000).nullish(),
   cleanup: z.boolean().optional(),
+  /** 研修中扱いか。未指定なら人材マスタの現在の状態を使う */
+  trainee: z.boolean().optional(),
   note: z.string().max(500).nullish(),
 });
 
@@ -54,10 +56,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "この人はこの撮影会の同じ職種に既に入っています" }, { status: 409 });
   }
 
+  const trainee = d.trainee ?? staff.trainee;
   const rate = resolveRate(rates as unknown as RateLike[], role, shoot.date);
   const amounts = computeAssignmentAmounts({
     rate,
     role,
+    trainee,
     payOverrides: staff.payOverrides,
     payAmountInput: d.payAmount ?? null,
     billAmountInput: d.billAmount ?? null,
@@ -72,6 +76,7 @@ export async function POST(req: Request) {
       status: d.status ?? "CONFIRMED",
       billAmount: amounts.billAmount,
       payAmount: amounts.payAmount,
+      trainee,
       cleanup: d.cleanup ?? false,
       cleanupBillAmount: amounts.cleanupBillAmount,
       cleanupPayAmount: amounts.cleanupPayAmount,

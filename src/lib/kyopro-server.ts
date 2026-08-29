@@ -65,8 +65,7 @@ export async function ensureKyoproRates() {
         role,
         billRate: DEFAULT_RATES[role].billRate,
         payRateDefault: DEFAULT_RATES[role].payRateDefault,
-        payRateMin: DEFAULT_RATES[role].payRateMin ?? null,
-        payRateMax: DEFAULT_RATES[role].payRateMax ?? null,
+        payRateTrainee: DEFAULT_RATES[role].payRateTrainee ?? null,
         effectiveFrom: RATE_EPOCH,
       })),
     });

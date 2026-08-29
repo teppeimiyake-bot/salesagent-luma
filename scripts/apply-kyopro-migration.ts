@@ -19,12 +19,24 @@ import { Client } from "pg";
 const args = process.argv.slice(2);
 const APPLY = args.includes("--apply");
 const DOWN = args.includes("--down");
+/** どの台本を流すか（連番）。--file 02 で 2番目のマイグレーションを指す。既定は 01。 */
+const SERIAL = (() => {
+  const i = args.indexOf("--file");
+  return i >= 0 ? args[i + 1] : "01";
+})();
 
-const file = path.join(
-  process.cwd(),
-  "prisma/migrations-manual",
-  DOWN ? "2026-08-29_01_kyopro_down.sql" : "2026-08-29_01_kyopro_up.sql",
-);
+const dir = path.join(process.cwd(), "prisma/migrations-manual");
+const suffix = DOWN ? "_down.sql" : "_up.sql";
+const matches = fs
+  .readdirSync(dir)
+  .filter((f) => f.includes(`_${SERIAL}_`) && f.endsWith(suffix) && f.includes("kyopro"))
+  .sort();
+if (matches.length !== 1) {
+  throw new Error(
+    `台本が一意に決まりません（--file ${SERIAL}${DOWN ? " --down" : ""}）: ${matches.join(", ") || "該当なし"}`,
+  );
+}
+const file = path.join(dir, matches[0]);
 
 async function main() {
   const url = process.env.DATABASE_URL;

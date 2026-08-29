@@ -67,6 +67,7 @@ export default async function KyoproStaffPage({
       // 振込先は管理者以外には渡さない（クライアントへ載せない）
       bankInfo: isAdmin ? s.bankInfo : null,
       note: s.note,
+      trainee: s.trainee,
       active: s.active,
       ...st,
     };

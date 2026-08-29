@@ -26,8 +26,7 @@ export type RateRow = {
   role: string;
   billRate: number;
   payRateDefault: number;
-  payRateMin: number | null;
-  payRateMax: number | null;
+  payRateTrainee: number | null;
   cleanupBillAmount: number;
   cleanupPayAmount: number;
 };
@@ -117,7 +116,7 @@ function RatesSection({ rates }: { rates: RateRow[] }) {
   return (
     <Section
       title="職種レート"
-      desc="1名1日あたり・税抜。過去のアサインは確定時の金額を保持しているため、ここを変えても実績・請求は動きません。"
+      desc="1名1日あたり・税抜。発注は研修中と規定（＝研修明け）の2段階で、研修中を空欄にするとその職種は研修中でも規定額になります。過去のアサインは確定時の金額を保持しているため、ここを変えても実績・請求は動きません。"
     >
       {error && <p className="mb-3 rounded bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}
       <div className="overflow-x-auto">
@@ -126,12 +125,11 @@ function RatesSection({ rates }: { rates: RateRow[] }) {
             <tr className="border-b border-zinc-200 text-[11px] uppercase tracking-wider text-zinc-400">
               <th className="px-2 py-2 text-left font-bold">職種</th>
               <th className="px-2 py-2 text-right font-bold">受注（京プロ請求）</th>
-              <th className="px-2 py-2 text-right font-bold">発注（既定）</th>
-              <th className="px-2 py-2 text-right font-bold">発注 下限</th>
-              <th className="px-2 py-2 text-right font-bold">発注 上限</th>
+              <th className="px-2 py-2 text-right font-bold">発注（規定＝研修明け）</th>
+              <th className="px-2 py-2 text-right font-bold">発注（研修中）</th>
               <th className="px-2 py-2 text-right font-bold">片付け請求</th>
               <th className="px-2 py-2 text-right font-bold">片付け支払</th>
-              <th className="px-2 py-2 text-right font-bold">粗利</th>
+              <th className="px-2 py-2 text-right font-bold">粗利（規定）</th>
               <th className="px-2 py-2" />
             </tr>
           </thead>
@@ -157,8 +155,7 @@ function RatesSection({ rates }: { rates: RateRow[] }) {
                     [
                       "billRate",
                       "payRateDefault",
-                      "payRateMin",
-                      "payRateMax",
+                      "payRateTrainee",
                       "cleanupBillAmount",
                       "cleanupPayAmount",
                     ] as (keyof RateRow)[]
