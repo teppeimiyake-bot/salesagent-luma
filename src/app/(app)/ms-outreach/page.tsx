@@ -9,6 +9,7 @@ import {
   getFiscalYear,
   getFiscalQuarter,
   getFiscalQuarterMonths,
+  getFiscalMonth,
   fyDisplayLabel,
   fyPeriodLabel,
 } from "@/lib/config";
@@ -50,14 +51,20 @@ export default async function MsOutreachPage({
 
   // 選択四半期に属する3暦月（lib/config の会計年度ヘルパー）
   const monthCols = getFiscalQuarterMonths(startMonth, fy, quarter - 1);
+  // 会計年度12ヶ月（月次サマリ用）。四半期をまたいで月ごとの数字を並べる。
+  const fyMonths = Array.from({ length: 12 }, (_, i) => ({
+    ...getFiscalMonth(startMonth, fy, i),
+    quarter: Math.floor(i / 3) + 1,
+  }));
 
   const [workers, entries, goal] = await Promise.all([
     prisma.msWorker.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: "asc" }, { code: "asc" }, { name: "asc" }],
     }),
+    // 週次グリッドは選択四半期のみだが、月次サマリで年度12ヶ月を出すため年度全体を取得
     prisma.msWeeklyEntry.findMany({
-      where: { OR: monthCols.map((m) => ({ year: m.year, month: m.month })) },
+      where: { OR: fyMonths.map((m) => ({ year: m.year, month: m.month })) },
       orderBy: [{ year: "asc" }, { month: "asc" }, { weekOfMonth: "asc" }],
     }),
     prisma.msKpiGoal.findFirst({ where: { period: fyPeriodLabel(fy) } }),
@@ -98,6 +105,7 @@ export default async function MsOutreachPage({
             notes: e.notes,
           }))}
           monthCols={monthCols}
+          fyMonths={fyMonths}
           fy={fy}
           quarter={quarter}
           goal={goal ? { targetReplyRate: goal.targetReplyRate, targetSent: goal.targetSent } : null}

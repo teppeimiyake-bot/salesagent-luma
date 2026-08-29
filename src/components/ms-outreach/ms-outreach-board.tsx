@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Pencil, Plus, Power, PowerOff, Settings2, Target, Trash2, Users, X } from "lucide-react";
+import { CalendarDays, Pencil, Plus, Power, PowerOff, Settings2, Target, Trash2, Users, X } from "lucide-react";
 
 // 月内の最大週数（1w〜5w）
 const WEEKS = [1, 2, 3, 4, 5];
@@ -32,6 +32,8 @@ type Entry = {
 };
 
 type MonthCol = { year: number; month: number };
+/** 会計年度12ヶ月（月次サマリ用）。quarter は 1〜4。 */
+type FyMonth = MonthCol & { quarter: number };
 
 // 1セルの集計（4指標）
 type Cell = { sent: number; appointments: number; listOrders: number; inquiryOrders: number };
@@ -45,6 +47,26 @@ const METRICS = [
   { key: "inquiryOrders", label: "問合せ発注" },
 ] as const;
 type MetricKey = (typeof METRICS)[number]["key"];
+
+function monthKey(year: number, month: number) {
+  return `${year}-${month}`;
+}
+
+function addCell(acc: Cell, c: Cell): Cell {
+  acc.sent += c.sent;
+  acc.appointments += c.appointments;
+  acc.listOrders += c.listOrders;
+  acc.inquiryOrders += c.inquiryOrders;
+  return acc;
+}
+
+function sumCells(cells: Cell[]): Cell {
+  return cells.reduce((acc, c) => addCell(acc, c), { ...EMPTY_CELL });
+}
+
+function num(v: number): string {
+  return v === 0 ? "—" : v.toLocaleString();
+}
 
 function entryKey(workerId: string, year: number, month: number, week: number) {
   return `${workerId}|${year}|${month}|${week}`;
@@ -64,6 +86,7 @@ export function MsOutreachBoard({
   workers,
   entries,
   monthCols,
+  fyMonths,
   fy,
   quarter,
   goal,
@@ -71,8 +94,10 @@ export function MsOutreachBoard({
   isAdmin,
 }: {
   workers: Worker[];
+  /** 会計年度12ヶ月ぶんの週次実績（グリッドは monthCols の3ヶ月ぶんだけ描画） */
   entries: Entry[];
   monthCols: MonthCol[];
+  fyMonths: FyMonth[];
   fy: number;
   quarter: number;
   goal: { targetReplyRate: number; targetSent: number | null } | null;
@@ -151,11 +176,45 @@ export function MsOutreachBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workers, entryMap, monthCols]);
 
-  const actualReplyRate = replyRate(quarterGrandTotal.sent, quarterGrandTotal.appointments);
+  // 全ワーカー合算の月次集計（年度12ヶ月ぶん）。表示中のアクティブワーカーのみを対象にする。
+  const monthTotals = useMemo(() => {
+    const activeIds = new Set(workers.map((w) => w.id));
+    const m = new Map<string, Cell>();
+    for (const e of entries) {
+      if (!activeIds.has(e.workerId)) continue;
+      const k = monthKey(e.year, e.month);
+      const acc = m.get(k) ?? { ...EMPTY_CELL };
+      addCell(acc, e);
+      m.set(k, acc);
+    }
+    return m;
+  }, [entries, workers]);
+
+  function monthGrandTotal(col: MonthCol): Cell {
+    return monthTotals.get(monthKey(col.year, col.month)) ?? EMPTY_CELL;
+  }
+
+  // 全ワーカー合算の週セル（グリッド最下段の「全体」行）
+  function weekGrandTotal(col: MonthCol, week: number): Cell {
+    return sumCells(workers.map((wk) => getCell(wk.id, col.year, col.month, week)));
+  }
+
+  // KPIサマリの集計範囲: "quarter"（四半期計）or "YYYY-M"（単月）
+  const [scope, setScope] = useState<string>("quarter");
+  const scopeMonth = monthCols.find((c) => monthKey(c.year, c.month) === scope) ?? null;
+  // 四半期を切り替えた時に、前の四半期の月が選ばれたままにならないよう自動で四半期計に戻す
+  const scopeTotal = scopeMonth ? monthGrandTotal(scopeMonth) : quarterGrandTotal;
+  const scopeLabel = scopeMonth ? `${scopeMonth.month}月` : `${quarter}Q`;
+
+  const actualReplyRate = replyRate(scopeTotal.sent, scopeTotal.appointments);
   const achievement =
     goal && goal.targetReplyRate > 0 && actualReplyRate !== null
       ? actualReplyRate / goal.targetReplyRate
       : null;
+
+  function goToQuarter(q: number) {
+    router.push(`?year=${fy}&q=${q}`);
+  }
 
   // セル表示値の整形
   function renderCellValue(c: Cell): string {
@@ -169,25 +228,56 @@ export function MsOutreachBoard({
 
   return (
     <div className="space-y-5">
+      {/* 集計範囲（四半期計 or 単月）*/}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-zinc-500">集計範囲</span>
+        <div className="inline-flex rounded-md bg-zinc-100 p-1 text-xs">
+          <button
+            onClick={() => setScope("quarter")}
+            className={
+              "px-3 py-1 rounded-sm transition-all " +
+              (scopeMonth === null ? "bg-white shadow font-medium text-zinc-900" : "text-zinc-600")
+            }
+          >
+            {quarter}Q 計
+          </button>
+          {monthCols.map((c) => {
+            const key = monthKey(c.year, c.month);
+            return (
+              <button
+                key={key}
+                onClick={() => setScope(key)}
+                className={
+                  "px-3 py-1 rounded-sm transition-all " +
+                  (scope === key ? "bg-white shadow font-medium text-zinc-900" : "text-zinc-600")
+                }
+              >
+                {c.month}月
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* KPIサマリ */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="pt-5">
-            <div className="text-xs text-zinc-500">四半期 送信数合計</div>
-            <div className="text-2xl font-bold mt-1">{quarterGrandTotal.sent.toLocaleString()}</div>
+            <div className="text-xs text-zinc-500">{scopeLabel} 送信数合計</div>
+            <div className="text-2xl font-bold mt-1">{scopeTotal.sent.toLocaleString()}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5">
-            <div className="text-xs text-zinc-500">四半期 アポ数合計</div>
+            <div className="text-xs text-zinc-500">{scopeLabel} アポ数合計</div>
             <div className="text-2xl font-bold mt-1">
-              {quarterGrandTotal.appointments.toLocaleString()}
+              {scopeTotal.appointments.toLocaleString()}
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5">
-            <div className="text-xs text-zinc-500">アポ率（＝返信率）</div>
+            <div className="text-xs text-zinc-500">{scopeLabel} アポ率（＝返信率）</div>
             <div className="text-2xl font-bold mt-1">{pct(actualReplyRate)}</div>
             <div className="text-[11px] text-zinc-400 mt-0.5">アポ数 ÷ 送信数</div>
           </CardContent>
@@ -354,8 +444,148 @@ export function MsOutreachBoard({
                   );
                 })}
               </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-zinc-300 font-semibold bg-white">
+                  <td className="sticky left-0 bg-white z-10 px-2 py-1.5 whitespace-nowrap">全体</td>
+                  {monthCols.map((col) => {
+                    const mTotal = monthGrandTotal(col);
+                    return (
+                      <Fragment key={`f-${col.year}-${col.month}`}>
+                        {WEEKS.map((w) => {
+                          const c = weekGrandTotal(col, w);
+                          return (
+                            <td
+                              key={`f-${col.year}-${col.month}-${w}`}
+                              className="px-1 py-1.5 text-center border-l border-zinc-100 first:border-l-zinc-200"
+                            >
+                              {metric === "replyRate"
+                                ? pct(replyRate(c.sent, c.appointments))
+                                : num(c[metric])}
+                            </td>
+                          );
+                        })}
+                        <td className="px-1 py-1.5 text-center border-l border-zinc-200 bg-zinc-100">
+                          {metric === "replyRate"
+                            ? pct(replyRate(mTotal.sent, mTotal.appointments))
+                            : num(mTotal[metric])}
+                        </td>
+                      </Fragment>
+                    );
+                  })}
+                  <td className="px-2 py-1.5 text-center font-bold border-l-2 border-zinc-300 bg-amber-100">
+                    {metric === "replyRate"
+                      ? pct(replyRate(quarterGrandTotal.sent, quarterGrandTotal.appointments))
+                      : num(quarterGrandTotal[metric])}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           )}
+        </CardContent>
+      </Card>
+
+      {/* 月次サマリ（会計年度12ヶ月・全ワーカー合算） */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CalendarDays className="h-4 w-4 text-amber-600" />
+            月次サマリ（FY{fy} 全12ヶ月）
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-zinc-200 text-zinc-500">
+                <th className="text-left px-2 py-2 font-semibold min-w-[110px]">月</th>
+                <th className="text-right px-2 py-2 font-semibold">送信数</th>
+                <th className="text-right px-2 py-2 font-semibold">アポ数</th>
+                <th className="text-right px-2 py-2 font-semibold">アポ率</th>
+                <th className="text-right px-2 py-2 font-semibold">リスト発注</th>
+                <th className="text-right px-2 py-2 font-semibold">問合せ発注</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[1, 2, 3, 4].map((q) => {
+                const months = fyMonths.filter((m) => m.quarter === q);
+                const qTotal = sumCells(months.map((m) => monthGrandTotal(m)));
+                const selected = q === quarter;
+                return (
+                  <Fragment key={`sum-q${q}`}>
+                    {months.map((m) => {
+                      const t = monthGrandTotal(m);
+                      return (
+                        <tr
+                          key={`sum-${m.year}-${m.month}`}
+                          onClick={() => goToQuarter(q)}
+                          title={`${q}Qの週次グリッドを開く`}
+                          className={
+                            "border-b border-zinc-100 cursor-pointer hover:bg-amber-50 " +
+                            (selected ? "bg-amber-50/40" : "")
+                          }
+                        >
+                          <td className="px-2 py-1.5 whitespace-nowrap">
+                            {m.year}年{m.month}月
+                            <span className="ml-1 text-[10px] text-zinc-400">{q}Q</span>
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{num(t.sent)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {num(t.appointments)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {pct(replyRate(t.sent, t.appointments))}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {num(t.listOrders)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {num(t.inquiryOrders)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="border-b border-zinc-200 bg-zinc-50 font-semibold">
+                      <td className="px-2 py-1.5 whitespace-nowrap">{q}Q 計</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{num(qTotal.sent)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">
+                        {num(qTotal.appointments)}
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">
+                        {pct(replyRate(qTotal.sent, qTotal.appointments))}
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">
+                        {num(qTotal.listOrders)}
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">
+                        {num(qTotal.inquiryOrders)}
+                      </td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
+              {(() => {
+                const fyTotal = sumCells(fyMonths.map((m) => monthGrandTotal(m)));
+                return (
+                  <tr className="bg-amber-50 font-bold">
+                    <td className="px-2 py-2 whitespace-nowrap">FY{fy} 通期</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{num(fyTotal.sent)}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {num(fyTotal.appointments)}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {pct(replyRate(fyTotal.sent, fyTotal.appointments))}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">{num(fyTotal.listOrders)}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {num(fyTotal.inquiryOrders)}
+                    </td>
+                  </tr>
+                );
+              })()}
+            </tbody>
+          </table>
+          <p className="text-[11px] text-zinc-400 mt-2">
+            行をクリックするとその四半期の週次グリッドに切り替わります。アポ率＝アポ数÷送信数。
+          </p>
         </CardContent>
       </Card>
 
