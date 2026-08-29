@@ -31,6 +31,7 @@ import {
   Tag,
   ClipboardCheck,
   Bot,
+  Camera,
 } from "lucide-react";
 
 const baseGroups = [
@@ -49,6 +50,8 @@ const baseGroups = [
       { href: "/pm", label: "PM（受注管理）", icon: Clapperboard, color: "text-rose-600", activeBg: "bg-rose-600" },
       // 入金管理は admin 限定（Phase 9）。adminOnly フラグで非adminには非表示。
       { href: "/payments", label: "入金管理", icon: Wallet, color: "text-green-600", activeBg: "bg-green-600", adminOnly: true },
+      // 京プロ 撮影会派遣はリージーの事業。tenants で会社を絞り、Luma・全社ビューには出さない。
+      { href: "/kyopro", label: "京プロ", icon: Camera, color: "text-emerald-600", activeBg: "bg-emerald-600", tenants: ["reagey"] },
     ],
   },
   {
@@ -152,10 +155,15 @@ export function Sidebar({
   const router = useRouter();
   const brand = BRAND[activeTenantCode] ?? BRAND.luma;
   const isAdmin = user?.permission === "admin";
-  // adminOnly のアイテム（入金管理など）は非adminには出さない
+  // adminOnly のアイテム（入金管理など）は非adminには出さない。
+  // tenants 指定のアイテム（京プロなど）は、その会社を見ているときだけ出す。
   const visibleBaseGroups = baseGroups.map((g) => ({
     ...g,
-    items: g.items.filter((it) => !("adminOnly" in it && it.adminOnly) || isAdmin),
+    items: g.items.filter((it) => {
+      if ("adminOnly" in it && it.adminOnly && !isAdmin) return false;
+      if ("tenants" in it && it.tenants && !it.tenants.includes(activeTenantCode)) return false;
+      return true;
+    }),
   }));
   const groups = isAdmin ? [...visibleBaseGroups, adminGroup] : visibleBaseGroups;
 

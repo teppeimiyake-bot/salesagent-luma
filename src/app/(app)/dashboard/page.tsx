@@ -4,6 +4,7 @@ import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { DealsTable } from "@/components/dashboard/deals-table";
 import { AiChat } from "@/components/dashboard/ai-chat";
 import { GoalProgress } from "@/components/dashboard/goal-progress";
+import { KyoproDashboardCard } from "@/components/kyopro/dashboard-card";
 import { NewTaskDialog } from "@/components/todos/new-task-dialog";
 import { getDashboardData, getGoalProgress } from "@/lib/queries";
 import { excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
@@ -102,6 +103,8 @@ export default async function DashboardPage() {
         <div className="h-full grid grid-cols-12 gap-0">
           <div className="col-span-12 xl:col-span-8 overflow-y-auto p-6 space-y-5 border-r border-zinc-200">
             <GoalProgress personal={personalGoal} team={teamGoal} />
+            {/* 京プロ 撮影会（リージーを見ているときだけ描画される） */}
+            <KyoproDashboardCard />
             <AiTodoList tasks={merged} />
             <KpiCards kpi={kpi} />
             <DealsTable

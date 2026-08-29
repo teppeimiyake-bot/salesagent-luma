@@ -1311,3 +1311,272 @@ model PmStaff {
   @@unique([tenantId, role, name])
   @@map("pm_staff")
 }
+
+// ============================================================
+// 京プロ 撮影会人材派遣（株式会社リージー専用）
+// ------------------------------------------------------------
+// 京都プロデュース（京プロ）から依頼を受け、各地の呉服店が主催する
+// 家族成人式撮影会にカメラ/セレクト/司会/案内の人材を派遣する事業の管理。
+//   撮影会 = 1日 × 1クライアント（呉服店）× 1会場
+//   請求先は京プロ（受注）／人材へは発注として支払う
+// 要件定義: docs/plan-kyopro-staffing.md
+//
+// テナント境界は他モデルと同様 tenant_id ＋ src/lib/db.ts の Prisma Extension。
+// リージーテナントでのみ画面に出る（サイドバーの tenants フィルタ）。
+// ============================================================
+
+/// 職種。CAMERA=カメラ / SELECT=セレクト / MC=司会 / GUIDE=案内
+enum KyoproRole {
+  CAMERA
+  SELECT
+  MC
+  GUIDE
+}
+
+/// 撮影会の区分。SETUP は前日設営（金曜など）。
+enum KyoproShootKind {
+  SHOOT
+  SETUP
+}
+
+enum KyoproShootStatus {
+  PLANNED
+  CONFIRMED
+  DONE
+  CANCELLED
+}
+
+enum KyoproAssignStatus {
+  TENTATIVE
+  CONFIRMED
+  DONE
+  CANCELLED
+}
+
+/// 京プロへの請求ステータス
+enum KyoproBillStatus {
+  NOT_SENT
+  SENT
+  PAID
+}
+
+/// 人材への支払ステータス
+enum KyoproPayoutStatus {
+  UNPAID
+  SCHEDULED
+  PAID
+}
+
+/// クライアント（呉服店）。撮影会の主催者であって請求先ではない（請求先は京プロ）。
+model KyoproClient {
+  id             String   @id @default(uuid())
+  tenantId       String   @default("") @map("tenant_id")
+  name           String
+  shortName      String?  @map("short_name")
+  /// カレンダーでの識別色（8色プリセットのHEX）
+  colorHex       String   @default("#0d6b52") @map("color_hex")
+  /// 会場が空欄の撮影会で既定として使う会場（店舗開催など）
+  defaultVenueId String?  @map("default_venue_id")
+  active         Boolean  @default(true)
+  note           String?  @db.Text
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  defaultVenue KyoproVenue?  @relation(fields: [defaultVenueId], references: [id], onDelete: SetNull)
+  shoots       KyoproShoot[]
+
+  @@unique([tenantId, name])
+  @@map("kyopro_clients")
+}
+
+/// 会場マスタ
+model KyoproVenue {
+  id        String   @id @default(uuid())
+  tenantId  String   @default("") @map("tenant_id")
+  name      String
+  colorHex  String   @default("#7c3aed") @map("color_hex")
+  address   String?
+  active    Boolean  @default(true)
+  note      String?  @db.Text
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  shoots            KyoproShoot[]
+  defaultForClients KyoproClient[]
+
+  @@unique([tenantId, name])
+  @@map("kyopro_venues")
+}
+
+/// 派遣する人材。1人が複数職種をこなす（例: 染宮＝セレクト＋案内）。
+model KyoproStaff {
+  id       String       @id @default(uuid())
+  tenantId String       @default("") @map("tenant_id")
+  name     String
+  kana     String?
+  phone    String?
+  email    String?
+  /// 対応可能職種
+  roles    KyoproRole[]
+  /// 職種別の個別発注単価 { "MC": 18000 }。レートマスタより優先する。
+  payOverrides Json?    @map("pay_overrides")
+  /// 振込先メモ（admin のみ表示）
+  bankInfo  String?     @map("bank_info") @db.Text
+  active    Boolean     @default(true)
+  /// スプレッドシート原文（括弧書き等）の保持先
+  note      String?     @db.Text
+  sortOrder Int         @default(0) @map("sort_order")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  assignments KyoproAssignment[]
+  payouts     KyoproPayout[]
+
+  @@unique([tenantId, name])
+  @@map("kyopro_staff")
+}
+
+/// 職種別レート（1名1日あたり・税抜）。改定は effectiveFrom 違いの行を足して履歴を残す。
+model KyoproRate {
+  id             String     @id @default(uuid())
+  tenantId       String     @default("") @map("tenant_id")
+  role           KyoproRole
+  /// 受注単価（京プロへの請求）
+  billRate       Int        @map("bill_rate")
+  /// 発注単価（人材への支払）の既定値
+  payRateDefault Int        @map("pay_rate_default")
+  /// 発注単価の下限・上限（司会のように人・案件で変動する職種で使う）
+  payRateMin     Int?       @map("pay_rate_min")
+  payRateMax     Int?       @map("pay_rate_max")
+  /// 片付け対応の加算。現状は京プロへ +3,000 円請求し、人材への支払は 0 円。
+  cleanupBillAmount Int     @default(3000) @map("cleanup_bill_amount")
+  cleanupPayAmount  Int     @default(0) @map("cleanup_pay_amount")
+  effectiveFrom  DateTime   @map("effective_from")
+  note           String?    @db.Text
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  @@unique([tenantId, role, effectiveFrom])
+  @@map("kyopro_rates")
+}
+
+/// 京プロ機能のテナント設定（1テナント1行）
+model KyoproSetting {
+  id              String   @id @default(uuid())
+  tenantId        String   @default("") @map("tenant_id")
+  /// 人材への支払期日 = 撮影月 + N ヶ月の月末。既定 2（＝翌々月末）。
+  payoutDueMonths Int      @default(2) @map("payout_due_months")
+  /// 請求書の税率（税込＝税抜×(1+taxRate)）
+  taxRate         Float    @default(0.1) @map("tax_rate")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId])
+  @@map("kyopro_settings")
+}
+
+/// 撮影会（1日 × 1クライアント × 1会場）。前日設営は kind=SETUP の別レコード。
+model KyoproShoot {
+  id       String            @id @default(uuid())
+  tenantId String            @default("") @map("tenant_id")
+  date     DateTime          @db.Date
+  kind     KyoproShootKind   @default(SHOOT)
+  clientId String            @map("client_id")
+  /// 会場は任意（クライアント店舗開催・会場未定の行があるため）
+  venueId  String?           @map("venue_id")
+  status   KyoproShootStatus @default(PLANNED)
+  /// 職種別の依頼人数 { "CAMERA":1, "SELECT":3, "MC":3, "GUIDE":2 }
+  requiredCounts Json?       @map("required_counts")
+  startTime String?          @map("start_time")
+  endTime   String?          @map("end_time")
+  note      String?          @db.Text
+  /// 初期投入（派遣リストCSV）の冪等キー。再実行しても重複しない。
+  sourceKey String?          @map("source_key")
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  client      KyoproClient       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  venue       KyoproVenue?       @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  assignments KyoproAssignment[]
+
+  @@unique([tenantId, sourceKey])
+  @@index([tenantId, date])
+  @@index([clientId])
+  @@index([venueId])
+  @@map("kyopro_shoots")
+}
+
+/// 撮影会 × 人材 × 職種。請求・支払の最小単位。
+/// 金額は確定時点のレートをスナップショットして持つ（後のレート改定を過去に波及させない）。
+model KyoproAssignment {
+  id       String             @id @default(uuid())
+  tenantId String             @default("") @map("tenant_id")
+  shootId  String             @map("shoot_id")
+  staffId  String             @map("staff_id")
+  role     KyoproRole
+  status   KyoproAssignStatus @default(CONFIRMED)
+  /// 受注額（京プロへの請求。片付け加算は cleanupBillAmount に別途持つ）
+  billAmount Int              @map("bill_amount")
+  /// 発注額（人材への支払）
+  payAmount  Int              @map("pay_amount")
+  /// 片付け対応（現場でチェック）
+  cleanup           Boolean   @default(false)
+  cleanupBillAmount Int       @default(0) @map("cleanup_bill_amount")
+  cleanupPayAmount  Int       @default(0) @map("cleanup_pay_amount")
+  /// 交通費・キャンセル料などの発注側調整
+  adjustAmount Int            @default(0) @map("adjust_amount")
+  adjustNote   String?        @map("adjust_note")
+  note      String?           @db.Text
+  sourceKey String?           @map("source_key")
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  shoot KyoproShoot @relation(fields: [shootId], references: [id], onDelete: Cascade)
+  staff KyoproStaff @relation(fields: [staffId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, shootId, staffId, role])
+  @@index([tenantId, staffId])
+  @@map("kyopro_assignments")
+}
+
+/// 月次：京プロへの請求（yearMonth = "2026-11"）
+model KyoproBillingPeriod {
+  id          String           @id @default(uuid())
+  tenantId    String           @default("") @map("tenant_id")
+  yearMonth   String           @map("year_month")
+  billStatus  KyoproBillStatus @default(NOT_SENT) @map("bill_status")
+  invoiceDate DateTime?        @map("invoice_date")
+  dueDate     DateTime?        @map("due_date")
+  paidDate    DateTime?        @map("paid_date")
+  /// 締め時点の金額（税抜／税込）。未締めなら null で、画面は実績集計を表示する。
+  amountNet   Int?             @map("amount_net")
+  amountGross Int?             @map("amount_gross")
+  note        String?          @db.Text
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@unique([tenantId, yearMonth])
+  @@map("kyopro_billing_periods")
+}
+
+/// 月次 × スタッフの支払。dueDate = 撮影月 + KyoproSetting.payoutDueMonths ヶ月の月末。
+model KyoproPayout {
+  id        String             @id @default(uuid())
+  tenantId  String             @default("") @map("tenant_id")
+  yearMonth String             @map("year_month")
+  staffId   String             @map("staff_id")
+  amount    Int
+  dueDate   DateTime           @map("due_date")
+  status    KyoproPayoutStatus @default(UNPAID)
+  paidDate  DateTime?          @map("paid_date")
+  note      String?            @db.Text
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  staff KyoproStaff @relation(fields: [staffId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, yearMonth, staffId])
+  @@map("kyopro_payouts")
+}
