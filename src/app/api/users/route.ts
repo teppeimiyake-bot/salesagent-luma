@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
+import { prisma, prismaUnscoped } from "@/lib/db";
 import { getSession, hasPermission, hashPassword } from "@/lib/auth";
+import { getRequestTenant } from "@/lib/tenant-context";
 
 export async function GET() {
   const users = await prisma.user.findMany({
@@ -38,6 +39,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid input", detail: parsed.error.flatten() }, { status: 400 });
   }
   const { email, name, role, permission } = parsed.data;
+
+  // 追加先の会社（サイドバーで選択中のテナント）。
+  // user_tenants を作らないと、そのユーザーはログインできても所属会社が無く
+  // TENANT_STRICT=1 の本番では全ページが例外で落ちる。
+  const ctx = await getRequestTenant();
+  if (!ctx || !ctx.tenantId) {
+    return NextResponse.json(
+      { error: "追加先の会社が特定できません。サイドバーで Luma / リージー を選んでから実行してください。" },
+      { status: 400 },
+    );
+  }
+  const tenantId = ctx.tenantId;
+
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     return NextResponse.json({ error: "Email already registered" }, { status: 409 });
@@ -47,9 +61,23 @@ export async function POST(req: Request) {
   const passwordHash = await hashPassword(password);
   const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 
-  const user = await prisma.user.create({
-    data: { email, name, role, permission, passwordHash, avatarColor },
-    select: { id: true, name: true, email: true, role: true, permission: true, avatarColor: true },
+  // ユーザーと所属は同時に作る（片方だけ出来ると壊れたアカウントになる）
+  const user = await prismaUnscoped.$transaction(async (tx) => {
+    const created = await tx.user.create({
+      data: { email, name, role, permission, passwordHash, avatarColor },
+      select: { id: true, name: true, email: true, role: true, permission: true, avatarColor: true },
+    });
+    await tx.userTenant.create({
+      data: {
+        userId: created.id,
+        tenantId,
+        permission,
+        role,
+        isDefault: true,
+        crossTenantRead: false,
+      },
+    });
+    return created;
   });
   return NextResponse.json({ user, initialPassword: parsed.data.password ? undefined : password });
 }

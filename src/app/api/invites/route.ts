@@ -3,6 +3,7 @@ import { z } from "zod";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import { getSession, hasPermission } from "@/lib/auth";
+import { getRequestTenant } from "@/lib/tenant-context";
 
 async function requireAdmin() {
   const session = await getSession();
@@ -43,6 +44,17 @@ export async function POST(req: Request) {
   }
   const { email, name, role, permission } = parsed.data;
   const hours = parsed.data.expiresInHours ?? 168;
+
+  // 招待は「どの会社に招くか」が決まっていないと発行できない。
+  // 全社統合ビュー（__all__）のままだと Prisma Extension が書き込みを例外で弾き、
+  // 画面には理由の分からない 500 が出るだけなので、ここで明示的に止める。
+  const ctx = await getRequestTenant();
+  if (!ctx || !ctx.tenantId) {
+    return NextResponse.json(
+      { error: "招待先の会社が特定できません。サイドバーで Luma / リージー を選んでから発行してください。" },
+      { status: 400 },
+    );
+  }
 
   // 既存ユーザーチェック
   const existingUser = await prisma.user.findUnique({ where: { email } });

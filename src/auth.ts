@@ -91,21 +91,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         },
       });
       if (invite) {
-        const created = await prisma.user.create({
-          data: {
-            email,
-            name: invite.name ?? user.name ?? email.split("@")[0],
-            image: user.image ?? null,
-            emailVerified: new Date(),
-            role: invite.role,
-            permission: invite.permission,
-            // パスワード未設定（Googleログインのみ）
-            passwordHash: null,
-          },
-        });
-        await prisma.invite.update({
-          where: { id: invite.id },
-          data: { used: true, usedAt: new Date() },
+        // 招待に所属会社が乗っていない（マルチテナント化前の残骸など）は受け付けない。
+        // 通してしまうと user_tenants が無いユーザーができ、ログインはできるのに
+        // TENANT_STRICT=1 の本番では全画面がテナントコンテキスト無しで落ちる。
+        if (!invite.tenantId) return false;
+
+        // User / UserTenant / Invite.used は必ずまとめて確定させる
+        const created = await prisma.$transaction(async (tx) => {
+          const u = await tx.user.create({
+            data: {
+              email,
+              name: invite.name ?? user.name ?? email.split("@")[0],
+              image: user.image ?? null,
+              emailVerified: new Date(),
+              role: invite.role,
+              permission: invite.permission,
+              // パスワード未設定（Googleログインのみ）
+              passwordHash: null,
+            },
+          });
+          // 実効権限の正本は user_tenants（招待を出した会社に所属させる）
+          await tx.userTenant.create({
+            data: {
+              userId: u.id,
+              tenantId: invite.tenantId,
+              permission: invite.permission,
+              role: invite.role,
+              isDefault: true,
+              crossTenantRead: false,
+            },
+          });
+          await tx.invite.update({
+            where: { id: invite.id },
+            data: { used: true, usedAt: new Date() },
+          });
+          return u;
         });
         // サインイン後の jwt callback で User.id を解決できるように、
         // user オブジェクトを書き換え

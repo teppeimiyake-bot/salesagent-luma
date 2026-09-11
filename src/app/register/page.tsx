@@ -21,6 +21,9 @@ type Invite = {
   role: string;
   permission: string;
   expiresAt: string;
+  tenantCode: string | null;
+  tenantName: string | null;
+  tenantShortName: string | null;
 };
 
 function RegisterInner() {
@@ -41,19 +44,34 @@ function RegisterInner() {
 
   useEffect(() => {
     if (!inviteToken) return;
+    let cancelled = false;
     setInviteLoading(true);
-    fetch(`/api/invites/${inviteToken}`)
-      .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
-      .then(({ ok, j }) => {
-        if (!ok) {
-          setInviteError(j.error ?? "招待URLが無効です");
-        } else {
-          setInvite(j.invite);
-          setEmail(j.invite.email);
-          if (j.invite.name) setName(j.invite.name);
+    // サーバーが 500 を返すと本文が JSON ではないため、r.json() がそのまま throw する。
+    // 以前はこれを拾っておらず「読み込み中のまま何も出ない」白画面になっていた。
+    // 必ず catch して理由を画面に出す。
+    (async () => {
+      try {
+        const r = await fetch(`/api/invites/${encodeURIComponent(inviteToken)}`);
+        const j = await r.json().catch(() => null);
+        if (cancelled) return;
+        if (!r.ok || !j?.invite) {
+          setInviteError(
+            j?.error ?? `招待URLを確認できませんでした（サーバーエラー: ${r.status}）`,
+          );
+          return;
         }
-      })
-      .finally(() => setInviteLoading(false));
+        setInvite(j.invite);
+        setEmail(j.invite.email);
+        if (j.invite.name) setName(j.invite.name);
+      } catch {
+        if (!cancelled) setInviteError("招待URLの確認中に通信エラーが発生しました");
+      } finally {
+        if (!cancelled) setInviteLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [inviteToken]);
 
   async function onSubmit(e: React.FormEvent) {
@@ -117,6 +135,11 @@ function RegisterInner() {
                 招待を確認しました
               </p>
               <div className="mt-2 space-y-1 text-xs text-emerald-800">
+                {invite.tenantName && (
+                  <p>
+                    所属会社: <span className="font-semibold">{invite.tenantName}</span>
+                  </p>
+                )}
                 <p>
                   メール: <span className="font-mono">{invite.email}</span>
                 </p>
