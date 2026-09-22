@@ -74,7 +74,11 @@ export function getTranscribeBackend(): GoogleBackend {
 export function getVertexConfig() {
   return {
     project: process.env.GCP_PROJECT_ID ?? "",
-    location: process.env.VERTEX_LOCATION ?? "asia-northeast1",
+    // 既定は global。2026-09-22 の実測で、asia-northeast1 では
+    // gemini-2.5-flash-lite と gemini-flash-latest が 404 になり、
+    // gemini-2.5-flash しか使えないことが分かったため。
+    // データ所在地の要件が出たら asia-northeast1 + gemini-2.5-flash に寄せる。
+    location: process.env.VERTEX_LOCATION ?? "global",
   };
 }
 
