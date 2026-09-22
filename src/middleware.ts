@@ -33,6 +33,14 @@ function isAgentIngestPath(pathname: string) {
   return /^\/api\/agents(\/|$)/.test(pathname);
 }
 
+// /api/health/* は運用監視用。cookie セッションを持たない経路から叩くため
+// middleware のゲートはバイパスし、認証は各ルート内で Bearer トークンで行う
+// (/api/health/ai は AI_DEBUG_TOKEN を timingSafeEqual で検証する。
+//  トークン未設定なら常に 401 なので、バイパスしても全開放にはならない)。
+function isHealthPath(pathname: string) {
+  return /^\/api\/health(\/|$)/.test(pathname);
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -50,7 +58,8 @@ export async function middleware(req: NextRequest) {
     PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/")) ||
     isPublicAuthPath(pathname) ||
     isPublicInviteToken(pathname) ||
-    isAgentIngestPath(pathname);
+    isAgentIngestPath(pathname) ||
+    isHealthPath(pathname);
   const token = req.cookies.get(COOKIE_NAME)?.value;
   const isAuthed = token ? await isValidToken(token) : false;
 
