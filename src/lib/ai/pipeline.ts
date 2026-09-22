@@ -84,8 +84,16 @@ export interface PipelineResult {
   scores: Scores;
   /** 自己改善で再生成された場合 true */
   improved: boolean;
-  /** AIキー無しでフォールバック動作した場合 true */
+  /**
+   * 1段でも決定論フォールバックに落ちた場合 true。
+   * 設定が無い場合だけでなく、**設定はあるが呼び出しが失敗した場合も含む**
+   * (旧実装はキー有無しか見ておらず、認証エラーを検知できなかった)。
+   */
   fallback: boolean;
+  /** フォールバックに落ちた段の一覧。どこで壊れたかの特定に使う */
+  fallbackSteps: string[];
+  /** どのバックエンドで実行したか (A/B 比較の証跡) */
+  backend: string;
   /** 各STEPの生入出力（ai_logs用） */
   trace: Array<{ step: string; input: unknown; output: unknown }>;
 }
@@ -148,6 +156,7 @@ JSONのみ出力。`;
 
   const result = await callClaudeJSON<Structured>({ system, user, maxTokens: 3000 });
   if (result && Array.isArray(result.speaker_turns)) return result;
+  noteFallback("step1_structure");
   return fallbackStructured(transcript);
 }
 
@@ -194,6 +203,7 @@ ${JSON.stringify(structured, null, 2)}
 JSONのみ出力。`;
   const r = await callClaudeJSON<Analysis>({ system, user, maxTokens: 2500 });
   if (r && r.bant) return r;
+  noteFallback("step2_analysis");
   return fallbackAnalysis(structured);
 }
 
@@ -245,6 +255,7 @@ ${JSON.stringify(analysis, null, 2)}
 JSONのみ出力。`;
   const r = await callClaudeJSON<TopSales>({ system, user, maxTokens: 2000, temperature: 0.4 });
   if (r && r.real_intent) return normalizeTopSales(r);
+  noteFallback("step3_top_sales");
   return fallbackTopSales(analysis);
 }
 
@@ -300,6 +311,7 @@ ${JSON.stringify(topSales, null, 2)}
 JSONのみ出力。`;
   const r = await callClaudeJSON<Strategy>({ system, user, maxTokens: 1500 });
   if (r && r.strategy) return normalizeStrategy(r);
+  noteFallback("step4_strategy");
   return fallbackStrategy(topSales);
 }
 
@@ -386,6 +398,7 @@ JSONのみ出力。`;
   if (r && Array.isArray(r.next_actions) && r.next_actions.length > 0) {
     return { next_actions: r.next_actions.map(normalizeNextAction) };
   }
+  noteFallback("step5_next_actions");
   return fallbackNextActions(strategy, topSales);
 }
 
@@ -444,6 +457,7 @@ ${JSON.stringify(actions, null, 2)}
 JSONのみ出力。`;
   const r = await callClaudeJSON<Scores>({ system, user, maxTokens: 400 });
   if (r && r.scores) return r;
+  noteFallback("step6_scores");
   return fallbackScores(actions);
 }
 
@@ -504,6 +518,22 @@ JSONのみ出力。具体性を最大化せよ。`;
 }
 
 // ============================================================
+// フォールバックの可視化
+//
+// 全段に決定論フォールバックが入っているため、認証がコケても例外にならず
+// 劣化出力がそのまま保存される。どの段が落ちたかを残さないと移行の失敗に
+// 気づけないので、run ごとに記録する。
+// ============================================================
+
+let _fallbackSteps: string[] = [];
+
+function noteFallback(step: string): void {
+  const backend = process.env.GOOGLE_AI_BACKEND ?? "aistudio";
+  console.warn(`[ai-fallback] step=${step} backend=${backend}`);
+  _fallbackSteps.push(step);
+}
+
+// ============================================================
 // 全段ランナー
 // ============================================================
 export async function runPipeline(
@@ -511,8 +541,9 @@ export async function runPipeline(
   ctx: PipelineContext,
 ): Promise<PipelineResult> {
   const trace: PipelineResult["trace"] = [];
-  // プロバイダ抽象化済み：AI_PROVIDER に応じて Gemini or Anthropic のキー有無を見る
+  // プロバイダ抽象化済み：AI_PROVIDER に応じて Gemini or Anthropic の設定有無を見る
   const hasKey = hasAiTextKey();
+  _fallbackSteps = [];
 
   const structured = await step1Structure(transcript, ctx);
   trace.push({ step: "step1_structure", input: { transcript_excerpt: transcript.slice(0, 200) }, output: structured });
@@ -538,6 +569,8 @@ export async function runPipeline(
     trace.push({ step: "step7_self_improved", input: { scores }, output: improved });
   }
 
+  const fallbackSteps = [..._fallbackSteps];
+
   return {
     structured,
     analysis,
@@ -546,7 +579,11 @@ export async function runPipeline(
     nextActions,
     scores,
     improved: !!improved,
-    fallback: !hasKey,
+    // 旧実装は `!hasKey` だけを見ていたため、設定があって全段失敗しても false を返していた。
+    // それでは Vertex 移行で認証がコケても検知できない。
+    fallback: !hasKey || fallbackSteps.length > 0,
+    fallbackSteps,
+    backend: process.env.GOOGLE_AI_BACKEND ?? "aistudio",
     trace,
   };
 }

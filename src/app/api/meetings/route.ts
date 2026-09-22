@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import crypto from "node:crypto";
 import { transcribeFile } from "@/lib/ai/openai";
+import { TranscriptionTooLargeError } from "@/lib/ai/gemini";
 import {
   putFile,
   writeTempFile,
@@ -82,6 +83,7 @@ export async function POST(req: Request) {
     //    （Blobモードでは保存先と独立した一時ファイル、Localモードでは保存先そのものを使えるが
     //     実装簡略化のため一律 temp に書く）
     let transcript: string | null = null;
+    let tooLargeMB: number | null = null;
     let tmp: string | null = null;
     try {
       if (isBlobEnabled()) {
@@ -92,12 +94,25 @@ export async function POST(req: Request) {
         const localPath = path.join(process.cwd(), "uploads", "recordings", safeName);
         transcript = await transcribeFile(localPath);
       }
+    } catch (e) {
+      // ファイルサイズ超過は「なぜ失敗したか」が分かる文言を残す。
+      // 従来は null → 汎用フォールバック文言になり、UI 上は成功に見えていた。
+      if (e instanceof TranscriptionTooLargeError) {
+        tooLargeMB = e.sizeMB;
+      } else {
+        throw e;
+      }
     } finally {
       if (tmp) await cleanupTempFile(tmp);
     }
 
     if (!transcript) {
-      transcript = `[文字起こしフォールバック] ファイル ${file.name} を保存しました（AIキー未設定 or 失敗）。商談要約は手動で入力してください。`;
+      transcript =
+        tooLargeMB !== null
+          ? `[書き起こし失敗: ファイルサイズ超過 ${tooLargeMB.toFixed(1)}MB] ファイル ${file.name} は保存しましたが、` +
+            "現在の上限 (18MB) を超えているため書き起こしできませんでした。分割してアップロードするか、" +
+            "Google Meet の自動文字起こしを取り込んでください。"
+          : `[文字起こしフォールバック] ファイル ${file.name} を保存しました（AIキー未設定 or 失敗）。商談要約は手動で入力してください。`;
     }
 
     const meeting = await prisma.meeting.create({

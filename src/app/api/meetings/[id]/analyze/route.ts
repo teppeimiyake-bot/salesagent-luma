@@ -72,7 +72,14 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       strategy: result.strategy as object,
       nextActions: result.nextActions as object,
       scores: result.scores as object,
-      meta: { improved: result.improved, fallback: result.fallback },
+      // backend / fallbackSteps は Vertex 移行の A/B 証跡。
+      // meta は Json 列なので、スキーマ変更なしで持てる。
+      meta: {
+        improved: result.improved,
+        fallback: result.fallback,
+        fallbackSteps: result.fallbackSteps,
+        backend: result.backend,
+      },
     },
   });
 
