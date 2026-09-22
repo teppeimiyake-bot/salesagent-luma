@@ -18,6 +18,7 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 
+import { tryParseJSON } from "@/lib/ai/anthropic";
 import { geminiCallText } from "@/lib/ai/gemini";
 import { peekOidcSubject, vertexAuthMode } from "@/lib/ai/google-auth";
 import {
@@ -80,6 +81,36 @@ export async function GET(req: Request) {
       body.live = {
         ok: false,
         latencyMs: Date.now() - started,
+        error: e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300),
+      };
+    }
+
+    // JSON モードの疎通も見る。
+    // 7段推論・BANT・事前準備など主要機能はすべて callClaudeJSON 経由なので、
+    // ここが通るかどうかがそれらの代理指標になる。providerOptions のキー名が
+    // バックエンドで違う可能性があり、外すと JSON パースが崩れて全機能が
+    // 静かにフォールバックへ落ちる。
+    const jsonStarted = Date.now();
+    try {
+      const raw = await geminiCallText({
+        system:
+          'Reply with a JSON object only. Schema: {"status":"ok","n":1}. No prose, no code fence.',
+        user: "health check",
+        maxTokens: 64,
+        temperature: 0,
+        json: true,
+      });
+      const parsed = raw ? tryParseJSON<{ status?: string }>(raw) : null;
+      body.liveJson = {
+        ok: parsed?.status === "ok",
+        latencyMs: Date.now() - jsonStarted,
+        parsed: parsed !== null,
+        raw: raw?.slice(0, 80) ?? null,
+      };
+    } catch (e) {
+      body.liveJson = {
+        ok: false,
+        latencyMs: Date.now() - jsonStarted,
         error: e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300),
       };
     }
