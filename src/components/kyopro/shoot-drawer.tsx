@@ -8,6 +8,7 @@ import {
   SHOOT_KIND_LABEL,
   SHOOT_STATUS_LABEL,
   ASSIGN_STATUS_LABEL,
+  SETUP_PAY_AMOUNT,
   formatJPY,
   isPayRateUnexpected,
   payRateFor,
@@ -33,6 +34,9 @@ type DetailAssignment = {
   cleanup: boolean;
   cleanupBillAmount: number;
   cleanupPayAmount: number;
+  setup: boolean;
+  setupBillAmount: number;
+  setupPayAmount: number;
   adjustAmount: number;
   note: string | null;
 };
@@ -242,8 +246,9 @@ export function ShootDrawer({
                     <div className="space-y-1.5">
                       {rows.map((a) => (
                         <AssignmentRow
-                          key={`${a.id}:${a.payAmount}:${a.cleanup}:${a.trainee}`}
+                          key={`${a.id}:${a.payAmount}:${a.cleanup}:${a.setup}:${a.trainee}`}
                           a={a}
+                          shootKind={data.shoot.kind}
                           rate={resolveRate(rates, role, new Date(`${data.shoot.date}T00:00:00Z`))}
                           conflict={sameDayMap.get(a.staffId) ?? []}
                           canEdit={canEdit}
@@ -360,6 +365,7 @@ export function ShootDrawer({
 
 function AssignmentRow({
   a,
+  shootKind,
   rate,
   conflict,
   canEdit,
@@ -368,6 +374,7 @@ function AssignmentRow({
   onDelete,
 }: {
   a: DetailAssignment;
+  shootKind: "SHOOT" | "SETUP";
   rate: RateLike | null;
   conflict: string[];
   canEdit: boolean;
@@ -377,8 +384,8 @@ function AssignmentRow({
 }) {
   // 保存後は親が key を変えて作り直すので、初期値の同期は不要
   const [pay, setPay] = useState(String(a.payAmount));
-  const unexpected = isPayRateUnexpected(rate, a.role, a.trainee, Number(pay || 0));
-  const rateAmount = payRateFor(rate, a.role, a.trainee);
+  const unexpected = isPayRateUnexpected(rate, a.role, a.trainee, Number(pay || 0), shootKind);
+  const rateAmount = shootKind === "SETUP" ? SETUP_PAY_AMOUNT : payRateFor(rate, a.role, a.trainee);
 
   return (
     <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
@@ -402,6 +409,34 @@ function AssignmentRow({
         >
           {a.trainee ? "研修中" : "規定"}
         </button>
+
+        {shootKind === "SETUP" &&
+          (a.payAmount !== SETUP_PAY_AMOUNT || a.billAmount !== SETUP_PAY_AMOUNT) &&
+          canEdit && (
+          <button
+            disabled={busy}
+            onClick={() => onPatch({ payAmount: SETUP_PAY_AMOUNT, billAmount: SETUP_PAY_AMOUNT })}
+            className="rounded-full border border-sky-300 bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700 transition-colors hover:border-sky-500 hover:bg-sky-100 disabled:opacity-50"
+            title="このアサインの発注金額を設営規定額の7,000円に変更します"
+          >
+            設営 ¥7,000に変更
+          </button>
+        )}
+
+        {shootKind === "SHOOT" && (
+          <button
+            disabled={!canEdit || busy}
+            onClick={() => onPatch({ setup: !a.setup })}
+            className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
+              a.setup
+                ? "border-sky-500 bg-sky-50 text-sky-700"
+                : "border-zinc-200 text-zinc-400 hover:border-sky-300 hover:text-sky-700"
+            }`}
+            title="設営対応（京プロへの請求・人材への発注へ各7,000円加算）"
+          >
+            設営{a.setup ? " +¥7,000 ✓" : ""}
+          </button>
+        )}
 
         {a.status === "TENTATIVE" && (
           <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] text-zinc-500">
@@ -434,7 +469,7 @@ function AssignmentRow({
 
         <div className="ml-auto flex items-center gap-2 text-xs tabular-nums text-zinc-500">
           <span title="受注（京プロ請求）">
-            受注 {formatJPY(a.billAmount + a.cleanupBillAmount)}
+            受注 {formatJPY(a.billAmount + a.cleanupBillAmount + a.setupBillAmount)}
           </span>
           <span className="text-zinc-300">／</span>
           <label className="inline-flex items-center gap-1" title="発注（人材支払）">
@@ -471,7 +506,7 @@ function AssignmentRow({
       </div>
       {unexpected && (
         <p className="mt-1 text-[11px] text-amber-700">
-          {a.trainee ? "研修中" : "規定"}のレート（{formatJPY(rateAmount)}）と違う額で計上しています。
+          {shootKind === "SETUP" ? "設営" : a.trainee ? "研修中" : "規定"}のレート（{formatJPY(rateAmount)}）と違う額で計上しています。
         </p>
       )}
     </div>

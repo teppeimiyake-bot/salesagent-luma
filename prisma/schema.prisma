@@ -1528,6 +1528,10 @@ model KyoproAssignment {
   cleanup           Boolean   @default(false)
   cleanupBillAmount Int       @default(0) @map("cleanup_bill_amount")
   cleanupPayAmount  Int       @default(0) @map("cleanup_pay_amount")
+  /// 撮影当日の設営対応。通常の受発注額とは分けて7,000円ずつ加算する。
+  setup             Boolean   @default(false)
+  setupBillAmount   Int       @default(0) @map("setup_bill_amount")
+  setupPayAmount    Int       @default(0) @map("setup_pay_amount")
   /// 交通費・キャンセル料などの発注側調整
   adjustAmount Int            @default(0) @map("adjust_amount")
   adjustNote   String?        @map("adjust_note")

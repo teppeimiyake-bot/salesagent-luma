@@ -71,6 +71,7 @@ export default async function KyoproBillingPage({
       staffName: a.staff.name,
       role: a.role,
       cleanup: a.cleanup,
+      setup: a.setup,
       trainee: a.trainee,
       bill: billTotal(a),
       pay: payTotal(a),
@@ -88,6 +89,7 @@ export default async function KyoproBillingPage({
         days: 0,
         total: 0,
         cleanupDays: 0,
+        setupDays: 0,
         traineeDays: 0,
         status: payoutByStaff.get(l.staffId)?.status ?? "UNPAID",
         paidDate: payoutByStaff.get(l.staffId)?.paidDate?.toISOString().slice(0, 10) ?? null,
@@ -96,6 +98,7 @@ export default async function KyoproBillingPage({
     cur.days += 1;
     cur.total += l.pay;
     if (l.cleanup) cur.cleanupDays += 1;
+    if (l.setup) cur.setupDays += 1;
     if (l.trainee) cur.traineeDays += 1;
     cur.lines.push({ date: l.date, clientName: l.clientName, role: l.role, pay: l.pay, trainee: l.trainee });
     grouped.set(l.staffId, cur);

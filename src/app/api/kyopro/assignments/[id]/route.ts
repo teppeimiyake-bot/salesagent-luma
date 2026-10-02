@@ -7,6 +7,7 @@ import {
   computeAssignmentAmounts,
   DEFAULT_CLEANUP_BILL,
   DEFAULT_CLEANUP_PAY,
+  SETUP_PAY_AMOUNT,
   type RateLike,
 } from "@/lib/kyopro";
 
@@ -21,6 +22,8 @@ const updateSchema = z.object({
   trainee: z.boolean().optional(),
   /** 現場での片付けチェック。金額はレートから引き直す（画面から金額を渡させない）。 */
   cleanup: z.boolean().optional(),
+  /** 撮影当日の設営兼務。請求・発注へそれぞれ7,000円加算する。 */
+  setup: z.boolean().optional(),
   adjustAmount: z.number().int().min(-1_000_000).max(1_000_000).optional(),
   adjustNote: z.string().max(200).nullish(),
   note: z.string().max(500).nullish(),
@@ -38,7 +41,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const current = await prisma.kyoproAssignment.findUnique({
     where: { id },
-    include: { shoot: { select: { date: true } }, staff: { select: { payOverrides: true } } },
+    include: { shoot: { select: { date: true, kind: true } }, staff: { select: { payOverrides: true } } },
   });
   if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -62,12 +65,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           }
         : { cleanupBillAmount: 0, cleanupPayAmount: 0 };
 
+  const setupEnabled = current.shoot.kind === "SHOOT" && d.setup === true;
+  const setupAmounts =
+    d.setup === undefined
+      ? undefined
+      : {
+          setup: setupEnabled,
+          setupBillAmount: setupEnabled ? SETUP_PAY_AMOUNT : 0,
+          setupPayAmount: setupEnabled ? SETUP_PAY_AMOUNT : 0,
+        };
+
   // 研修区分を切り替えたら発注額を引き直す（同時に金額を手入力していればそちらを優先）
   const recomputedPay =
     d.trainee !== undefined && d.payAmount === undefined
       ? computeAssignmentAmounts({
           rate,
           role: current.role,
+          shootKind: current.shoot.kind,
           trainee: d.trainee,
           payOverrides: current.staff.payOverrides,
         }).payAmount
@@ -82,6 +96,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ...(d.billAmount !== undefined ? { billAmount: d.billAmount } : {}),
       ...(d.trainee !== undefined ? { trainee: d.trainee } : {}),
       ...(d.cleanup !== undefined ? { cleanup: d.cleanup, ...cleanupAmounts } : {}),
+      ...(setupAmounts ?? {}),
       ...(d.adjustAmount !== undefined ? { adjustAmount: d.adjustAmount } : {}),
       ...(d.adjustNote !== undefined ? { adjustNote: d.adjustNote } : {}),
       ...(d.note !== undefined ? { note: d.note } : {}),

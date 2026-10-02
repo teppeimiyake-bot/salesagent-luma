@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prismaUnscoped } from "@/lib/db";
 import { createSessionToken, hashPassword, setSessionCookie } from "@/lib/auth";
+import { normalizeEmail } from "@/lib/email";
 
 const schema = z.object({
-  email: z.string().email().optional(),
+  // 保存する値は必ず正規形にする（ログイン時の照合と同じ形に揃える）
+  email: z.string().transform(normalizeEmail).pipe(z.string().email()).optional(),
   password: z.string().min(8),
   name: z.string().optional(),
   // 招待トークン（指定時はメール固定・権限/所属会社はトークン由来）
@@ -64,7 +66,10 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
-    const existing = await prismaUnscoped.user.findUnique({ where: { email: invite.email } });
+    // 招待レコードは正規化前に作られたものが残っている可能性があるため、
+    // ここでも必ず正規形に直してから照合・保存する。
+    const inviteEmail = normalizeEmail(invite.email);
+    const existing = await prismaUnscoped.user.findUnique({ where: { email: inviteEmail } });
     if (existing) {
       return NextResponse.json({ error: "Email already registered" }, { status: 409 });
     }
@@ -76,9 +81,9 @@ export async function POST(req: Request) {
     const user = await prismaUnscoped.$transaction(async (tx) => {
       const created = await tx.user.create({
         data: {
-          email: invite.email,
+          email: inviteEmail,
           passwordHash,
-          name: parsed.data.name ?? invite.name ?? invite.email.split("@")[0],
+          name: parsed.data.name ?? invite.name ?? inviteEmail.split("@")[0],
           role: invite.role,
           permission: invite.permission,
         },

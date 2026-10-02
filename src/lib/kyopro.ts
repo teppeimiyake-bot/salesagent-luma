@@ -84,6 +84,8 @@ export const DEFAULT_RATES: Record<
 
 export const DEFAULT_CLEANUP_BILL = 3000;
 export const DEFAULT_CLEANUP_PAY = 0;
+/** 設営のみ（SETUP）の人材向け規定発注額。職種・研修区分によらず固定。 */
+export const SETUP_PAY_AMOUNT = 7000;
 
 export type RateLike = {
   role: KyoproRole;
@@ -140,6 +142,7 @@ export function payRateFor(rate: RateLike | null, role: KyoproRole, trainee: boo
 export function computeAssignmentAmounts(opts: {
   rate: RateLike | null;
   role: KyoproRole;
+  shootKind?: "SHOOT" | "SETUP";
   payOverrides?: unknown;
   /** この稼働が研修中扱いか */
   trainee?: boolean;
@@ -148,21 +151,30 @@ export function computeAssignmentAmounts(opts: {
   /** 画面で手入力された受注単価（未指定ならレート） */
   billAmountInput?: number | null;
   cleanup?: boolean;
+  /** SHOOT当日に設営も担当する場合の加算。SETUP日は基本額自体が設営費なので加算しない。 */
+  setup?: boolean;
 }) {
   const trainee = opts.trainee ?? false;
   const billRate = opts.rate?.billRate ?? DEFAULT_RATES[opts.role].billRate;
   const rateAmount = payRateFor(opts.rate, opts.role, trainee);
   const override = staffPayOverride(opts.payOverrides, opts.role);
 
-  const billAmount = opts.billAmountInput ?? billRate;
-  const payAmount = opts.payAmountInput ?? override ?? rateAmount;
+  const billAmount =
+    opts.billAmountInput ?? (opts.shootKind === "SETUP" ? SETUP_PAY_AMOUNT : billRate);
+  // 手入力は常に最優先。自動決定時だけ、設営の固定額を職種別・研修別単価より優先する。
+  const payAmount =
+    opts.payAmountInput ??
+    (opts.shootKind === "SETUP" ? SETUP_PAY_AMOUNT : override ?? rateAmount);
   const cleanup = opts.cleanup ?? false;
+  const setup = opts.shootKind === "SHOOT" && (opts.setup ?? false);
 
   return {
     billAmount,
     payAmount,
     cleanupBillAmount: cleanup ? (opts.rate?.cleanupBillAmount ?? DEFAULT_CLEANUP_BILL) : 0,
     cleanupPayAmount: cleanup ? (opts.rate?.cleanupPayAmount ?? DEFAULT_CLEANUP_PAY) : 0,
+    setupBillAmount: setup ? SETUP_PAY_AMOUNT : 0,
+    setupPayAmount: setup ? SETUP_PAY_AMOUNT : 0,
   };
 }
 
@@ -175,8 +187,10 @@ export function isPayRateUnexpected(
   role: KyoproRole,
   trainee: boolean,
   pay: number,
+  shootKind: "SHOOT" | "SETUP" = "SHOOT",
 ): boolean {
-  return pay !== payRateFor(rate, role, trainee);
+  const expected = shootKind === "SETUP" ? SETUP_PAY_AMOUNT : payRateFor(rate, role, trainee);
+  return pay !== expected;
 }
 
 export type AssignmentAmounts = {
@@ -184,18 +198,20 @@ export type AssignmentAmounts = {
   payAmount: number;
   cleanupBillAmount: number;
   cleanupPayAmount: number;
+  setupBillAmount: number;
+  setupPayAmount: number;
   adjustAmount: number;
   status?: string;
 };
 
 /** アサイン1件の受注額（京プロへの請求） */
 export function billTotal(a: AssignmentAmounts): number {
-  return a.billAmount + a.cleanupBillAmount;
+  return a.billAmount + a.cleanupBillAmount + a.setupBillAmount;
 }
 
 /** アサイン1件の発注額（人材への支払） */
 export function payTotal(a: AssignmentAmounts): number {
-  return a.payAmount + a.cleanupPayAmount + a.adjustAmount;
+  return a.payAmount + a.cleanupPayAmount + a.setupPayAmount + a.adjustAmount;
 }
 
 /** キャンセル分を除いた集計（受注・発注・粗利） */

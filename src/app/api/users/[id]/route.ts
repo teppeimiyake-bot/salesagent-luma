@@ -2,12 +2,19 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getSession, hasPermission } from "@/lib/auth";
+import { normalizeEmail } from "@/lib/email";
 
 const schema = z.object({
   permission: z.enum(["admin", "user", "viewer"]).optional(),
   role: z.string().optional(),
-  // メール/氏名は admin のみ編集可能
-  email: z.string().email("メールアドレスの形式が不正です").optional(),
+  // メール/氏名は admin のみ編集可能。
+  // メールは正規化してから保存する（管理画面から非正規形を入れられると
+  // その人だけログインできなくなるため）。
+  email: z
+    .string()
+    .transform(normalizeEmail)
+    .pipe(z.string().email("メールアドレスの形式が不正です"))
+    .optional(),
   name: z.string().min(1, "名前は必須です").max(100).optional(),
   // フリガナ（カタカナ読み）。担当者をカナでも検索できるようにする。空文字は null 化。
   nameKana: z.string().max(100).optional(),

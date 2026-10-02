@@ -51,6 +51,8 @@ export default async function KyoproCalendarPage({
             payAmount: true,
             cleanupBillAmount: true,
             cleanupPayAmount: true,
+            setupBillAmount: true,
+            setupPayAmount: true,
             adjustAmount: true,
           },
         },

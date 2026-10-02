@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma, prismaUnscoped } from "@/lib/db";
 import { getSession, hasPermission, hashPassword } from "@/lib/auth";
 import { getRequestTenant } from "@/lib/tenant-context";
+import { normalizeEmail } from "@/lib/email";
 
 export async function GET() {
   const users = await prisma.user.findMany({
@@ -18,7 +19,8 @@ const AVATAR_COLORS = [
 ];
 
 const createSchema = z.object({
-  email: z.string().email(),
+  // 保存形＝照合形。ログイン時の normalizeEmail と必ず同じ形に揃える。
+  email: z.string().transform(normalizeEmail).pipe(z.string().email()),
   name: z.string().min(1),
   role: z.enum(["sales", "manager"]).default("sales"),
   permission: z.enum(["admin", "user", "viewer"]).default("user"),

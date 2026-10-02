@@ -2,9 +2,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { createSessionToken, setSessionCookie, verifyPassword } from "@/lib/auth";
+import { normalizeEmail } from "@/lib/email";
 
+// メールは必ず正規化してから検証・照合する。
+// users.email は正規化済みの値で保存されているため、ここで揃えないと
+// 「大文字が混ざっていた」「IMEで全角になっていた」「前後に空白が入っていた」
+// だけでアカウントは存在するのに Invalid credentials になる。
 const schema = z.object({
-  email: z.string().email(),
+  email: z.string().transform(normalizeEmail).pipe(z.string().email()),
   password: z.string().min(1),
 });
 

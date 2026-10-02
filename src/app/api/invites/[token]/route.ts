@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prismaUnscoped } from "@/lib/db";
+import { normalizeEmail } from "@/lib/email";
 
 // ============================================================
 // 招待トークンの検証（未ログインで叩かれる公開エンドポイント）
@@ -34,7 +35,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   // すでに同じメールのユーザーが存在する場合は、登録画面まで進ませても
   // 最後に 409 で落ちるだけなので、この時点で理由を返す。
   const existingUser = await prismaUnscoped.user.findUnique({
-    where: { email: invite.email },
+    where: { email: normalizeEmail(invite.email) },
     select: { id: true },
   });
   if (existingUser) {

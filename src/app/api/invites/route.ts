@@ -4,6 +4,7 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import { getSession, hasPermission } from "@/lib/auth";
 import { getRequestTenant } from "@/lib/tenant-context";
+import { normalizeEmail } from "@/lib/email";
 
 async function requireAdmin() {
   const session = await getSession();
@@ -26,7 +27,9 @@ export async function GET() {
 }
 
 const createSchema = z.object({
-  email: z.string().email(),
+  // 招待の時点で正規形にしておく。ここが素通しだと、登録されるユーザーの
+  // email も非正規形になり、本人がログイン画面で正しく打っても一致しなくなる。
+  email: z.string().transform(normalizeEmail).pipe(z.string().email()),
   name: z.string().optional(),
   role: z.enum(["sales", "manager"]).default("sales"),
   permission: z.enum(["admin", "user", "viewer"]).default("user"),

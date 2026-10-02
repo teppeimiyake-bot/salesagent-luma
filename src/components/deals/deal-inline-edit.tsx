@@ -5,6 +5,7 @@ import { AlertTriangle } from "lucide-react";
 import { YOMI_OPTIONS, yomiColor } from "@/lib/deal-aggregations";
 import { stripYomiPrefix } from "@/lib/yomi-status";
 import { NextActionInput } from "@/components/deals/next-action-input";
+import { DateInput } from "@/components/ui/date-input";
 import { DueBadge } from "@/components/ui/due-badge";
 import { dueState } from "@/lib/due-date";
 
@@ -226,14 +227,18 @@ export function DealNextActionEdit({
               : "border-zinc-200")
         }
       />
-      {/* 期日：入力欄＋超過アラート付きバッジ */}
+      {/* 期日：入力欄＋超過アラート付きバッジ
+          ブラウザ標準の <input type="date"> は月送りしただけで change が飛び、
+          日付を選ぶ前に保存されてしまうため、自前カレンダーの DateInput を使う
+          （2026-09 社長報告）。 */}
       <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-        <input
-          type="date"
+        <DateInput
+          size="sm"
+          className="shrink-0"
           value={toDateInputValue(nextActionAt)}
           disabled={pending}
-          onChange={(e) => {
-            const v = e.target.value; // "YYYY-MM-DD" or ""
+          invalid={overdue}
+          onChange={(v) => {
             if (v === "") {
               patchDeal({ nextActionAt: null });
             } else {
@@ -241,11 +246,6 @@ export function DealNextActionEdit({
               if (!Number.isNaN(dt.getTime())) patchDeal({ nextActionAt: dt.toISOString() });
             }
           }}
-          className={
-            "shrink-0 rounded border bg-white px-1.5 py-1 text-[11px] tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait disabled:bg-zinc-50 " +
-            (overdue ? "border-red-300 text-red-700 font-semibold" : "border-zinc-200")
-          }
-          title="ネクストアクションの期日を変更"
         />
         {nextActionAt && <DueBadge date={nextActionAt} size="sm" />}
       </div>

@@ -2,6 +2,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { DueBadge } from "@/components/ui/due-badge";
+import { DateInput } from "@/components/ui/date-input";
 import { dueState } from "@/lib/due-date";
 
 /**
@@ -10,6 +11,10 @@ import { dueState } from "@/lib/due-date";
  *
  * 商談一覧の行内と商談詳細の「次の一手」カードの両方から使う。
  * 期限超過・本日期日は入力欄自体を赤くして気づけるようにする。
+ *
+ * 入力欄は自前カレンダーの DateInput（@/components/ui/date-input）。
+ * ブラウザ標準の <input type="date"> は月送りしただけで change が飛び、
+ * 日付を選ぶ前に保存されてしまうため使わないこと（2026-09 社長報告）。
  */
 export function NextActionDateInput({
   dealId,
@@ -39,12 +44,11 @@ export function NextActionDateInput({
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <input
-        type="date"
+      <DateInput
         value={toDateInputValue(value)}
         disabled={pending}
-        onChange={(e) => {
-          const v = e.target.value; // "YYYY-MM-DD" or ""
+        invalid={overdue}
+        onChange={(v) => {
           if (v === "") {
             save(null);
             return;
@@ -52,11 +56,6 @@ export function NextActionDateInput({
           const dt = new Date(`${v}T00:00:00`);
           if (!Number.isNaN(dt.getTime())) save(dt.toISOString());
         }}
-        className={
-          "shrink-0 rounded border bg-white px-2 py-1 text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-amber-400 disabled:cursor-wait disabled:bg-zinc-50 " +
-          (overdue ? "border-red-300 text-red-700 font-semibold" : "border-zinc-200")
-        }
-        title="ネクストアクションの期日を変更"
       />
       {showBadge && value && <DueBadge date={value} size="sm" />}
     </div>
@@ -64,7 +63,7 @@ export function NextActionDateInput({
 }
 
 /**
- * Date | string | null → <input type="date"> 用の "YYYY-MM-DD"
+ * Date | string | null → "YYYY-MM-DD"
  * 商談一覧のインライン編集（deal-inline-edit.tsx）と同じ変換にしてある。
  * ここを変えると同じ日付が一覧と詳細で1日ずれて見えるので揃えること。
  */

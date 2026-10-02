@@ -21,6 +21,8 @@ const createSchema = z.object({
   payAmount: z.number().int().min(0).max(1_000_000).nullish(),
   billAmount: z.number().int().min(0).max(1_000_000).nullish(),
   cleanup: z.boolean().optional(),
+  /** SHOOT当日に通常業務と設営を兼務する場合の加算 */
+  setup: z.boolean().optional(),
   /** 研修中扱いか。未指定なら人材マスタの現在の状態を使う */
   trainee: z.boolean().optional(),
   note: z.string().max(500).nullish(),
@@ -61,11 +63,13 @@ export async function POST(req: Request) {
   const amounts = computeAssignmentAmounts({
     rate,
     role,
+    shootKind: shoot.kind,
     trainee,
     payOverrides: staff.payOverrides,
     payAmountInput: d.payAmount ?? null,
     billAmountInput: d.billAmount ?? null,
     cleanup: d.cleanup ?? false,
+    setup: d.setup ?? false,
   });
 
   const assignment = await prisma.kyoproAssignment.create({
@@ -80,6 +84,9 @@ export async function POST(req: Request) {
       cleanup: d.cleanup ?? false,
       cleanupBillAmount: amounts.cleanupBillAmount,
       cleanupPayAmount: amounts.cleanupPayAmount,
+      setup: shoot.kind === "SHOOT" && (d.setup ?? false),
+      setupBillAmount: amounts.setupBillAmount,
+      setupPayAmount: amounts.setupPayAmount,
       note: d.note ?? null,
     },
     include: { staff: { select: { name: true } } },

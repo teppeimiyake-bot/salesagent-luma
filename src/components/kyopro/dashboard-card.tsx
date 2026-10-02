@@ -35,6 +35,8 @@ export async function KyoproDashboardCard() {
     payAmount: true,
     cleanupBillAmount: true,
     cleanupPayAmount: true,
+    setupBillAmount: true,
+    setupPayAmount: true,
     adjustAmount: true,
   } as const;
 

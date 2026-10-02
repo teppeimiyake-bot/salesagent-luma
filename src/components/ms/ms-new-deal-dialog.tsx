@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { matchCompaniesByName } from "@/lib/company-search";
 import {
   Select,
   SelectContent,
@@ -100,13 +101,11 @@ export function MsNewDealDialog({
       .then((j) => setCompanies(j.companies ?? []));
   }, [open]);
 
-  const filteredCompanies = useMemo(() => {
-    const q = companySearch.trim().toLowerCase();
-    if (!q) return companies.slice(0, 20);
-    return companies
-      .filter((c) => c.name.toLowerCase().includes(q))
-      .slice(0, 20);
-  }, [companies, companySearch]);
+  // 全半角・法人格の有無/位置・記号の揺れを吸収（@/lib/company-search）
+  const filteredCompanies = useMemo(
+    () => matchCompaniesByName(companies, companySearch, 20),
+    [companies, companySearch],
+  );
 
   const selectedCompany = companies.find((c) => c.id === companyId);
 

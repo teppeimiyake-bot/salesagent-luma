@@ -37,6 +37,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { DateInput } from "@/components/ui/date-input";
+import { matchCompaniesByName } from "@/lib/company-search";
 import {
   STAGE_GROUP_LABEL,
   rowToStageDef,
@@ -303,19 +304,12 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
   }, [companyId]);
 
   // 検索ヒット企業
-  const filteredCompanies = useMemo(() => {
-    const q = companySearch.trim();
-    if (!q) return companies.slice(0, 20);
-    const lq = q.toLowerCase();
-    const startsWith: Company[] = [];
-    const includes: Company[] = [];
-    for (const c of companies) {
-      const name = c.name.toLowerCase();
-      if (name.startsWith(lq)) startsWith.push(c);
-      else if (name.includes(lq)) includes.push(c);
-    }
-    return [...startsWith, ...includes].slice(0, 20);
-  }, [companies, companySearch]);
+  // 全半角・法人格の有無/位置・記号の揺れを吸収する（@/lib/company-search）。
+  // 素の includes だと「株式会社◯◯」で0件なのに1文字消すと出る、が起きる。
+  const filteredCompanies = useMemo(
+    () => matchCompaniesByName(companies, companySearch, 20),
+    [companies, companySearch],
+  );
 
   const selectedCompany = companies.find((c) => c.id === companyId);
   const selectedOwner = users.find((u) => u.id === ownerUserId);

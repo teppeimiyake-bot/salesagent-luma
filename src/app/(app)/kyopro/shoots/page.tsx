@@ -38,6 +38,8 @@ export default async function KyoproShootsPage({
             payAmount: true,
             cleanupBillAmount: true,
             cleanupPayAmount: true,
+            setupBillAmount: true,
+            setupPayAmount: true,
             adjustAmount: true,
             staff: { select: { name: true } },
           },

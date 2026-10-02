@@ -1,52 +1,23 @@
 /**
- * 受注 → 入金管理 の自動連携（依頼1の仕組み化）。
- *
- * 背景・設計判断：
- *   入金管理の正本はスプレッドシート由来の行（sourceKey='spot::%' / 'recurring::%'）。
- *   過去 Phase 9 で「受注 DealProduct 全件」から一括生成（sourceKey='dpid::%'）したが、
- *   シートに無い空行を大量に生んで不整合になり、Phase 10 で 'dpid::' を全削除した。
- *
- *   今回は「全件一括」ではなく「受注ステータスへ遷移したイベント時に1件ずつ」生成する。
- *   生成行の sourceKey は 'spot::auto::<dealProductId>' とし、spot 一覧 GET の
- *   `startsWith: "spot::"` フィルタにそのまま乗せる（UIフィルタ変更不要）。
- *   過去の 'dpid::' とは名前空間が異なるため cleanup スクリプトとも干渉しない。
- *
- * 冪等性（重複作成しないルール）：
- *   1) この DealProduct から既に自動生成済み（sourceKey='spot::auto::<dpId>'）→ 何もしない。
- *   2) 同じ会社(companyId)について、シート由来 or 他の入金レコードが既にある → 何もしない。
- *      （= 既に入金管理に存在する受注企業は重複作成しない、という依頼の要件）
- *   3) 上記いずれにも当たらない初出の受注会社 → 1件作成する。
- *
- * 区分（スポット/定期）：
- *   入金管理タブの「スポット」(InvoiceRecord) に作成する。
- *   SNS（定期/月額）は RecurringBilling 側だが、月次セル設計が重く、受注直後の
- *   自動起票には不向きなため、まずスポット行で起票し、定期へは運用で振替える方針。
- *   （依頼は「入金管理タブにレコードが作成・反映される」こと。スポットで満たす。）
+ * 受注した DealProduct を入金管理へ同期する。
+ * SNS は定期、それ以外はスポットへ、会社単位ではなく商材単位で登録する。
  */
-import type { Prisma } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import type { prisma } from "@/lib/db";
+import { categoryFromDealProduct } from "@/lib/product-categories";
 import { isWonYomi } from "@/lib/yomi-status";
 import { grossFromNet } from "@/lib/payments";
 
-/**
- * トランザクションでも通常クライアントでも受けられる最小型。
- * 通常クライアント側はテナント境界の Extension を適用した型（typeof prisma）を指す。
- * 素の PrismaClient を指定すると Extension 付きクライアントを渡せなくなるため注意。
- */
-type Db = typeof prisma | Prisma.TransactionClient;
+type Db = typeof prisma | PrismaClient | Prisma.TransactionClient;
 
 export type PaymentSyncResult =
-  | { created: true; invoiceRecordId: string; reason: "first_won_company" }
-  | { created: false; reason: "not_won" | "no_company" | "already_auto" | "company_covered" };
+  | { created: true; paymentType: "spot"; invoiceRecordId: string; reason: "won_product" | "moved_from_recurring" }
+  | { created: true; paymentType: "recurring"; recurringBillingId: string; reason: "won_product" | "moved_from_spot" }
+  | { created: false; reason: "not_won" | "no_company" | "already_synced" };
 
 /**
- * 指定 DealProduct が受注になったとき、入金管理（スポット）レコードを未作成なら1件作成する。
- * - 受注（isWonYomi）でなければ何もしない。
- * - 会社が無ければ何もしない（顧客名だけでは重複判定できないため）。
- * - 既にこの DealProduct から自動生成済み / 同じ会社の入金レコードが存在すれば作らない。
- *
- * @param db prisma クライアント（or トランザクションクライアント）
- * @param dealProductId 受注になった DealProduct の id
+ * 受注商材に対応する入金管理レコードを冪等に作成する。
+ * 誤ったタブにある未入力の自動生成行は正しいタブへ移す。
  */
 export async function syncWonProductToPayments(
   db: Db,
@@ -59,60 +30,122 @@ export async function syncWonProductToPayments(
       productName: true,
       yomiStatus: true,
       amount: true,
+      product: { select: { name: true, category: true } },
       deal: {
         select: {
           id: true,
           deletedAt: true,
-          companyId: true,
           company: { select: { id: true, name: true } },
         },
       },
     },
   });
 
-  if (!dp || !dp.deal || dp.deal.deletedAt) return { created: false, reason: "not_won" };
-  if (!isWonYomi(dp.yomiStatus)) return { created: false, reason: "not_won" };
-
+  if (!dp?.deal || dp.deal.deletedAt || !isWonYomi(dp.yomiStatus)) {
+    return { created: false, reason: "not_won" };
+  }
   const company = dp.deal.company;
   if (!company) return { created: false, reason: "no_company" };
 
-  const sourceKey = `spot::auto::${dp.id}`;
+  const isSns = categoryFromDealProduct(dp) === "SNS";
+  const spotSourceKey = `spot::auto::${dp.id}`;
+  const recurringSourceKey = `recurring::auto::${dp.id}`;
 
-  // ルール1：この DealProduct から既に自動生成済みなら何もしない
-  const existingAuto = await db.invoiceRecord.findFirst({
-    where: { sourceKey },
+  if (isSns) {
+    const existing = await db.recurringBilling.findFirst({
+      where: { OR: [{ dealProductId: dp.id }, { sourceKey: recurringSourceKey }] },
+      select: { id: true },
+    });
+    if (existing) return { created: false, reason: "already_synced" };
+
+    const wrongSpot = await db.invoiceRecord.findFirst({
+      where: { sourceKey: spotSourceKey, dealProductId: dp.id },
+      select: {
+        id: true,
+        invoiceStatus: true,
+        paymentStatus: true,
+        deliveryDate: true,
+        expectedPaymentDate: true,
+        note: true,
+      },
+    });
+    const canMoveWrongSpot =
+      wrongSpot?.invoiceStatus === "NOT_SENT" &&
+      wrongSpot.paymentStatus === "UNCONFIRMED" &&
+      wrongSpot.deliveryDate == null &&
+      wrongSpot.expectedPaymentDate == null;
+
+    const created = await db.recurringBilling.create({
+      data: {
+        sourceKey: recurringSourceKey,
+        customerName: company.name,
+        companyId: company.id,
+        dealId: dp.deal.id,
+        dealProductId: dp.id,
+        note: canMoveWrongSpot ? wrongSpot.note : null,
+      },
+      select: { id: true },
+    });
+    if (canMoveWrongSpot) await db.invoiceRecord.delete({ where: { id: wrongSpot.id } });
+
+    return {
+      created: true,
+      paymentType: "recurring",
+      recurringBillingId: created.id,
+      reason: canMoveWrongSpot ? "moved_from_spot" : "won_product",
+    };
+  }
+
+  const existing = await db.invoiceRecord.findFirst({
+    where: { OR: [{ dealProductId: dp.id }, { sourceKey: spotSourceKey }] },
     select: { id: true },
   });
-  if (existingAuto) return { created: false, reason: "already_auto" };
+  if (existing) return { created: false, reason: "already_synced" };
 
-  // ルール2：同じ会社について、既に入金レコードが存在するなら重複作成しない
-  //   （シート由来 spot:: / 他の自動生成 / 手入力、いずれも含む）
-  const companyCovered = await db.invoiceRecord.findFirst({
-    where: { companyId: company.id },
-    select: { id: true },
+  const wrongRecurring = await db.recurringBilling.findFirst({
+    where: { sourceKey: recurringSourceKey, dealProductId: dp.id },
+    select: {
+      id: true,
+      initialFee: true,
+      monthlyFee: true,
+      startDate: true,
+      endDate: true,
+      note: true,
+      periods: { select: { id: true }, take: 1 },
+    },
   });
-  if (companyCovered) return { created: false, reason: "company_covered" };
+  const canMoveWrongRecurring =
+    wrongRecurring != null &&
+    wrongRecurring.initialFee == null &&
+    wrongRecurring.monthlyFee == null &&
+    wrongRecurring.startDate == null &&
+    wrongRecurring.endDate == null &&
+    wrongRecurring.periods.length === 0;
 
-  // ルール3：初出の受注会社 → スポット入金レコードを1件作成
   const net = dp.amount ?? null;
   const created = await db.invoiceRecord.create({
     data: {
-      sourceKey,
+      sourceKey: spotSourceKey,
       customerName: company.name,
       companyId: company.id,
       dealId: dp.deal.id,
       dealProductId: dp.id,
-      // 受注＝契約済み。前払いポリシー（Lumaは前払い必須）に合わせ既定値を設定。
       paymentTiming: "PREPAID",
       contractStatus: "SIGNED",
       invoiceStatus: "NOT_SENT",
       paymentStatus: "UNCONFIRMED",
       amountNet: net,
       amountGross: grossFromNet(net),
-      note: "受注ステータスへの遷移で自動作成",
+      note: canMoveWrongRecurring ? wrongRecurring.note : "受注ステータスへの遷移で自動作成",
     },
     select: { id: true },
   });
+  if (canMoveWrongRecurring) await db.recurringBilling.delete({ where: { id: wrongRecurring.id } });
 
-  return { created: true, invoiceRecordId: created.id, reason: "first_won_company" };
+  return {
+    created: true,
+    paymentType: "spot",
+    invoiceRecordId: created.id,
+    reason: canMoveWrongRecurring ? "moved_from_recurring" : "won_product",
+  };
 }

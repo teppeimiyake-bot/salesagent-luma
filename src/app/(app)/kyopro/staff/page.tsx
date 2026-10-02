@@ -31,6 +31,8 @@ export default async function KyoproStaffPage({
         payAmount: true,
         cleanupPayAmount: true,
         cleanupBillAmount: true,
+        setupBillAmount: true,
+        setupPayAmount: true,
         billAmount: true,
         adjustAmount: true,
         status: true,

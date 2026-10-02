@@ -16,6 +16,7 @@ export type BillLine = {
   staffName: string;
   role: KyoproRole;
   cleanup: boolean;
+  setup: boolean;
   trainee: boolean;
   bill: number;
   pay: number;
@@ -26,6 +27,7 @@ export type PayoutRow = {
   staffName: string;
   days: number;
   cleanupDays: number;
+  setupDays: number;
   traineeDays: number;
   total: number;
   status: "UNPAID" | "SCHEDULED" | "PAID";
@@ -127,7 +129,7 @@ export function BillingClient({
 
   function exportBill() {
     downloadCsv(`京プロ請求明細_${yearMonth}.csv`, [
-      ["日付", "区分", "クライアント", "会場", "氏名", "職種", "片付け", "受注額(税抜)"],
+      ["日付", "区分", "クライアント", "会場", "氏名", "職種", "設営", "片付け", "受注額(税抜)"],
       ...lines.map((l) => [
         l.date,
         l.kind === "SETUP" ? "設営" : "撮影",
@@ -135,27 +137,29 @@ export function BillingClient({
         l.venueName ?? "",
         l.staffName,
         ROLE_LABEL[l.role],
+        l.setup ? "あり" : "",
         l.cleanup ? "あり" : "",
         l.bill,
       ]),
-      ["合計(税抜)", "", "", "", "", "", "", totalBill],
-      ["合計(税込)", "", "", "", "", "", "", gross],
+      ["合計(税抜)", "", "", "", "", "", "", "", totalBill],
+      ["合計(税込)", "", "", "", "", "", "", "", gross],
     ]);
   }
 
   function exportPayout() {
     downloadCsv(`京プロ人材支払_${yearMonth}.csv`, [
-      ["氏名", "稼働日数", "うち研修中", "片付け日数", "支払額", "支払期日", "ステータス"],
+      ["氏名", "稼働日数", "うち研修中", "設営日数", "片付け日数", "支払額", "支払期日", "ステータス"],
       ...payouts.map((p) => [
         p.staffName,
         p.days,
         p.traineeDays,
+        p.setupDays,
         p.cleanupDays,
         p.total,
         payoutDue,
         PAYOUT_STATUS.find((s) => s.v === p.status)?.label ?? "",
       ]),
-      ["合計", "", "", "", totalPay, "", ""],
+      ["合計", "", "", "", "", totalPay, "", ""],
     ]);
   }
 
@@ -275,6 +279,14 @@ export function BillingClient({
                           >
                             <Sparkles className="h-2.5 w-2.5" />
                             片付け
+                          </span>
+                        )}
+                        {l.setup && (
+                          <span
+                            className="ml-1 rounded bg-sky-50 px-1 py-0.5 text-[10px] font-semibold text-sky-700"
+                            title="設営対応（請求・発注へ各7,000円）"
+                          >
+                            設営
                           </span>
                         )}
                       </td>
@@ -397,6 +409,9 @@ function PayoutRowView({
           )}
           {row.cleanupDays > 0 && (
             <span className="ml-1 text-[10px] text-emerald-600" title="片付け対応">片{row.cleanupDays}</span>
+          )}
+          {row.setupDays > 0 && (
+            <span className="ml-1 text-[10px] text-sky-600" title="設営対応">設{row.setupDays}</span>
           )}
         </td>
         <td className="px-3 py-1.5 text-right tabular-nums">{formatJPY(row.total)}</td>

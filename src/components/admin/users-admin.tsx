@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, AlertTriangle, Pencil, Check, X } from "lucide-react";
+import { Trash2, AlertTriangle, Pencil, Check, X, KeyRound, Copy } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -41,6 +41,11 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
     invites: number;
   } | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // パスワード再発行（ログインできなくなった社員の復旧）
+  const [resetTarget, setResetTarget] = useState<User | null>(null);
+  const [resetPassword, setResetPassword] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   // インライン編集（メール / 氏名 / フリガナ）
   const [editing, setEditing] = useState<{ id: string; field: "email" | "name" | "nameKana" } | null>(null);
   const [draft, setDraft] = useState("");
@@ -99,6 +104,30 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
     setEditing(null);
     setDraft("");
     setEditError(null);
+  }
+
+  function confirmReset() {
+    if (!resetTarget) return;
+    setResetError(null);
+    setResetPassword(null);
+    setCopied(false);
+    const targetId = resetTarget.id;
+    start(async () => {
+      const r = await fetch(`/api/users/${targetId}/password`, { method: "POST" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.password) {
+        setResetError(j.error ?? "パスワードの再発行に失敗しました");
+        return;
+      }
+      setResetPassword(j.password);
+    });
+  }
+
+  function closeReset() {
+    setResetTarget(null);
+    setResetPassword(null);
+    setResetError(null);
+    setCopied(false);
   }
 
   function confirmDelete() {
@@ -301,6 +330,26 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
               <Button
                 variant="outline"
                 size="sm"
+                className="h-8 px-3 disabled:opacity-30"
+                disabled={self || pending}
+                title={
+                  self
+                    ? "自分のパスワードは 設定 > パスワード変更 から"
+                    : "パスワードを再発行（ログインできない時の復旧）"
+                }
+                onClick={() => {
+                  setResetError(null);
+                  setResetPassword(null);
+                  setCopied(false);
+                  setResetTarget(u);
+                }}
+              >
+                <KeyRound className="w-4 h-4 mr-1" />
+                パスワード再発行
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 className="h-8 px-3 border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-30"
                 disabled={self || pending}
                 title={self ? "自分自身は削除できません" : "このユーザーを削除"}
@@ -317,6 +366,79 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
           );
         })}
       </div>
+
+      {/* パスワード再発行：平文はこのダイアログでしか見られない */}
+      <Dialog open={resetTarget !== null} onOpenChange={(open) => !open && closeReset()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-amber-600" />
+              パスワードの再発行
+            </DialogTitle>
+            <DialogDescription>
+              {resetTarget && !resetPassword && (
+                <span>
+                  <strong className="text-zinc-900">{resetTarget.name}</strong>{" "}
+                  さん（{resetTarget.email}）の新しいパスワードを発行します。
+                  <br />
+                  現在のパスワードは使えなくなります。発行後の文字列はこの画面でしか
+                  確認できないため、本人に伝えたうえで初回ログイン後に
+                  「設定 &gt; パスワード変更」で変更してもらってください。
+                </span>
+              )}
+              {resetPassword && (
+                <span>
+                  再発行しました。下のパスワードを本人に伝えてください（この画面を閉じると
+                  二度と表示できません）。
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {resetError && (
+            <div className="text-sm rounded border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2">
+              {resetError}
+            </div>
+          )}
+
+          {resetPassword && (
+            <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-3 space-y-2">
+              <p className="text-xs text-emerald-800 font-semibold">新しいパスワード</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 font-mono text-base tracking-wider bg-white border border-emerald-200 rounded px-3 py-2 select-all">
+                  {resetPassword}
+                </code>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(resetPassword).then(
+                      () => setCopied(true),
+                      () => setCopied(false),
+                    );
+                  }}
+                >
+                  <Copy className="w-4 h-4 mr-1" />
+                  {copied ? "コピー済み" : "コピー"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={closeReset} disabled={pending}>
+              {resetPassword ? "閉じる" : "キャンセル"}
+            </Button>
+            {!resetPassword && (
+              <Button onClick={confirmReset} disabled={pending}>
+                <KeyRound className="w-4 h-4 mr-1" />
+                {pending ? "発行中..." : "再発行する"}
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={deleteTarget !== null}
