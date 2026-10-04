@@ -14,6 +14,7 @@ import {
   isWonDeal,
   type DealProductLite,
 } from "@/lib/deal-aggregations";
+import { getRequestTenant } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,8 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
       })
     : null;
   const canEdit = hasPermission(me?.permission, "user");
+  const ctx = await getRequestTenant();
+  const tenantId = ctx?.crossTenant ? null : (ctx?.tenantId ?? null);
   const company = await prisma.company.findUnique({
     where: { id },
     include: {
@@ -34,7 +37,10 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
         orderBy: [{ isPrimary: "desc" }, { isDecisionMaker: "desc" }, { createdAt: "asc" }],
       },
       deals: {
-        where: { deletedAt: null },
+        // Company は2社共通だが Deal はテナント所有。
+        // Prisma Extension はネストした relation の where には介入しないため、
+        // ここで絞らないと別テナントの商談リンクが表示され、遷移先で 404 になる。
+        where: { deletedAt: null, ...(tenantId ? { tenantId } : {}) },
         include: {
           owner: { select: { id: true, name: true, avatarColor: true } },
           products: {

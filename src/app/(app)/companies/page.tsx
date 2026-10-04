@@ -48,9 +48,16 @@ export default async function CompaniesPage({
   const companiesRaw = await prisma.company.findMany({
     where: { deletedAt: null, ...scopeFilter },
     include: {
-      _count: { select: { deals: true, contacts: true } },
+      _count: {
+        select: {
+          deals: { where: { deletedAt: null, ...(tenantId ? { tenantId } : {}) } },
+          contacts: true,
+        },
+      },
       deals: {
-        where: { deletedAt: null },
+        // Company は共有モデルなので、ネストした Deal には Extension の
+        // tenant 条件が自動注入されない。現在の会社の商談だけを集計する。
+        where: { deletedAt: null, ...(tenantId ? { tenantId } : {}) },
         select: {
           id: true,
           status: true,

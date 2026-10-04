@@ -24,8 +24,8 @@ function LoginInner() {
   const search = useSearchParams();
   const from = search.get("from") || "/";
   const errorCode = search.get("error");
-  const [email, setEmail] = useState("demo@salesagent.local");
-  const [password, setPassword] = useState("demo1234");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(
     errorCode ? ERROR_MESSAGES[errorCode] ?? `認証エラー: ${errorCode}` : null,
@@ -140,9 +140,6 @@ function LoginInner() {
             <Link href="/register" className="text-orange-600 hover:underline">
               新規登録
             </Link>
-          </p>
-          <p className="text-xs text-zinc-400 text-center">
-            デモ：demo@salesagent.local / demo1234（seed後）
           </p>
         </form>
       </CardContent>
