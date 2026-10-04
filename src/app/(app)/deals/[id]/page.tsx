@@ -1,8 +1,8 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/layout/header";
 import { Badge } from "@/components/ui/badge";
-import { prisma } from "@/lib/db";
+import { prisma, prismaUnscoped } from "@/lib/db";
 import { UploadRecording } from "@/components/deals/upload-recording";
 import { MeetingRecorder } from "@/components/deals/meeting-recorder";
 import { AiPanel } from "@/components/deals/ai-panel";
@@ -33,6 +33,7 @@ import { PmDealPanel } from "@/components/pm/pm-deal-panel";
 import { DealIndustryEditor } from "@/components/deals/deal-industry-editor";
 import { ArrowLeft } from "lucide-react";
 import type { DealStatus } from "@prisma/client";
+import { getRequestTenant } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,26 @@ export default async function DealDetailPage({
   const rawFrom = typeof sp.from === "string" ? sp.from : "";
   const safeFrom = rawFrom && !rawFrom.includes("\n") && !rawFrom.startsWith("/") ? rawFrom : "";
   const backHref = safeFrom ? `/deals?${safeFrom}` : "/deals";
+
+  // エージェントや全体検索のリンクは、現在選択中とは別テナントの商談を指すことがある。
+  // そのまま tenant-scoped な findUnique を呼ぶと存在する商談でも 404 になるため、
+  // 所属確認を行う Route Handler を経由して会社 Cookie を切り替えてから戻す。
+  const tenantCtx = await getRequestTenant();
+  if (tenantCtx && !tenantCtx.crossTenant && tenantCtx.tenantId) {
+    const target = await prismaUnscoped.deal.findUnique({
+      where: { id },
+      select: { tenantId: true },
+    });
+    if (target && target.tenantId !== tenantCtx.tenantId) {
+      const nextParams = new URLSearchParams();
+      if (safeFrom) nextParams.set("from", safeFrom);
+      if (sp.tab === "pm") nextParams.set("tab", "pm");
+      const nextPath = `/deals/${id}${nextParams.size ? `?${nextParams.toString()}` : ""}`;
+      redirect(
+        `/api/tenant/ensure-deal?dealId=${encodeURIComponent(id)}&next=${encodeURIComponent(nextPath)}`,
+      );
+    }
+  }
 
   const session = await getSession();
   const me = session
