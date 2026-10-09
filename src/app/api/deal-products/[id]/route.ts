@@ -8,6 +8,7 @@ import { generateContractDraft, isAPlusYomi } from "@/lib/contract-generate";
 import { syncWonProductToPayments } from "@/lib/payment-sync";
 import { syncWonProductToPm } from "@/lib/pm-sync";
 import { isWonYomi } from "@/lib/yomi-status";
+import { getRequestTenant, runWithTenant } from "@/lib/tenant-context";
 
 const updateSchema = z.object({
   productId: z.string().uuid().nullable().optional(),
@@ -110,19 +111,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   // ============================================================
   // 依頼1：受注 → 入金管理の自動連携。
-  //   受注ステータス（プレフィックス付き含む isWonYomi）へ「遷移」した時、
-  //   入金管理（スポット）レコードが未作成なら1件だけ自動作成する。
-  //   - 遷移検知（before が受注でなく after が受注）に限定し、受注内の別更新では走らない。
-  //   - 同じ会社が既に入金管理にあれば重複作成しない（syncWonProductToPayments 側で判定）。
+  //   受注済みで入金行が未作成なら1件だけ自動作成する。
+  //   遷移時だけに限定すると、一時的なDBエラー時に永久に欠落するため、
+  //   受注済み商材のPATCHごとに冪等同期を再試行する。
   //   - 失敗は PATCH 本体の成否に影響させない（ログのみ）。
   // ============================================================
   let paymentSync: Awaited<ReturnType<typeof syncWonProductToPayments>> | null = null;
   // 受注遷移で PM（受注管理）にも案件を1件起票する。
   // これが無かったため、バックフィル後に受注になった商材が PM 一覧に出ていなかった。
   let pmSync: Awaited<ReturnType<typeof syncWonProductToPm>> | null = null;
-  if (isWonYomi(updated.yomiStatus) && !isWonYomi(prevYomi)) {
+  if (isWonYomi(updated.yomiStatus)) {
     try {
-      paymentSync = await syncWonProductToPayments(prisma, updated.id);
+      const tenant = await getRequestTenant();
+      if (!tenant || tenant.crossTenant) throw new Error("入金同期用のテナントを特定できません");
+      paymentSync = await runWithTenant(tenant, () => syncWonProductToPayments(prisma, updated.id));
     } catch (e) {
       console.error("[deal-products PATCH] payment sync failed:", e);
     }

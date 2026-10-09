@@ -5,6 +5,7 @@ import { probabilityToYomi, YOMI_TO_PROBABILITY } from "@/lib/deal-aggregations"
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
 import { stripYomiPrefix, isWonYomi } from "@/lib/yomi-status";
 import { syncWonProductToPayments } from "@/lib/payment-sync";
+import { getRequestTenant, runWithTenant } from "@/lib/tenant-context";
 
 /**
  * yomiStatus（接頭辞付き含む）から確度% を引く。不明なら null。
@@ -107,7 +108,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let paymentSync: Awaited<ReturnType<typeof syncWonProductToPayments>> | null = null;
   if (isWonYomi(created.yomiStatus)) {
     try {
-      paymentSync = await syncWonProductToPayments(prisma, created.id);
+      const tenant = await getRequestTenant();
+      if (!tenant || tenant.crossTenant) throw new Error("入金同期用のテナントを特定できません");
+      paymentSync = await runWithTenant(tenant, () => syncWonProductToPayments(prisma, created.id));
     } catch (e) {
       console.error("[deals/products POST] payment sync failed:", e);
     }
