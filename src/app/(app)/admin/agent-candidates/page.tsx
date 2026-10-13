@@ -18,8 +18,8 @@ export default async function AdminAgentCandidatesPage() {
   return (
     <>
       <Header
-        title="エージェント候補"
-        subtitle="営業リストエージェントの会社候補レビュー ／ 管理者のみ"
+        title="リスト作成AI 候補"
+        subtitle="リスト作成AIの会社候補レビュー ／ 管理者のみ"
       />
       <div className="flex-1 overflow-y-auto p-6 bg-zinc-50">
         <Card>
@@ -27,7 +27,7 @@ export default async function AdminAgentCandidatesPage() {
             <div className="text-sm text-zinc-600 mb-4 inline-flex items-center gap-2">
               <Badge variant="danger">管理者専用</Badge>
               <span>
-                エージェントが収集した会社候補です。内容を確認して承認/却下し、「承認済みを取り込み」で
+                リスト作成AIが収集した会社候補です。内容を確認して承認/却下し、「承認済みを取り込み」で
                 Company/Contact に反映します。取り込み前に CRM へ自動反映はしません。
               </span>
             </div>

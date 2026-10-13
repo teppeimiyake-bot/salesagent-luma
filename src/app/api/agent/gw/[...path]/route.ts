@@ -38,7 +38,7 @@ async function handler(
   const secret = process.env.AGENT_PROXY_GRANT_SECRET;
   if (!proxyUrl || !secret) {
     return NextResponse.json(
-      { error: "エージェント接続が未設定です（AGENT_PROXY_URL / AGENT_PROXY_GRANT_SECRET）" },
+      { error: "リスト作成AIへの接続が未設定です（AGENT_PROXY_URL / AGENT_PROXY_GRANT_SECRET）" },
       { status: 503 },
     );
   }
@@ -86,7 +86,7 @@ async function handler(
     });
   } catch (err) {
     return NextResponse.json(
-      { error: `エージェントへの接続に失敗しました: ${(err as Error).message}` },
+      { error: `リスト作成AIへの接続に失敗しました: ${(err as Error).message}` },
       { status: 502 },
     );
   }

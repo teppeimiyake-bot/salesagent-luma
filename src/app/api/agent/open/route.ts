@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   const secret = process.env.AGENT_PROXY_GRANT_SECRET;
   if (!proxyUrl || !secret) {
     return new NextResponse(
-      "エージェント接続が未設定です（AGENT_PROXY_URL / AGENT_PROXY_GRANT_SECRET）。",
+      "リスト作成AIへの接続が未設定です（AGENT_PROXY_URL / AGENT_PROXY_GRANT_SECRET）。",
       { status: 500, headers: { "content-type": "text/plain; charset=utf-8" } },
     );
   }

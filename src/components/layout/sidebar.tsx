@@ -39,7 +39,7 @@ const baseGroups = [
     label: "ワーク",
     items: [
       { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard, color: "text-orange-500", activeBg: "bg-orange-500" },
-      { href: "/agent", label: "エージェント", icon: Bot, color: "text-indigo-500", activeBg: "bg-indigo-500" },
+      { href: "/agent", label: "リスト作成AI", icon: Bot, color: "text-indigo-500", activeBg: "bg-indigo-500" },
       { href: "/todos", label: "ToDo", icon: CheckSquare, color: "text-orange-500", activeBg: "bg-orange-500" },
       // 架電エージェント（Luma 架電管理）へ別タブで遷移する外部リンク
       { href: "https://callagent-luma.vercel.app", label: "架電エージェント", icon: PhoneOutgoing, color: "text-orange-600", activeBg: "bg-orange-600", external: true },
@@ -75,7 +75,7 @@ const adminGroup = {
     { href: "/admin/products", label: "カテゴリ", icon: Package, color: "text-rose-500", activeBg: "bg-rose-500" },
     { href: "/admin/plan-proposals", label: "企画提案", icon: Film, color: "text-orange-500", activeBg: "bg-orange-500" },
     { href: "/admin/lead-sources", label: "リード獲得経由", icon: Sparkle, color: "text-fuchsia-500", activeBg: "bg-fuchsia-500" },
-    { href: "/admin/agent-candidates", label: "エージェント候補", icon: ClipboardCheck, color: "text-indigo-500", activeBg: "bg-indigo-500" },
+    { href: "/admin/agent-candidates", label: "リスト作成AI 候補", icon: ClipboardCheck, color: "text-indigo-500", activeBg: "bg-indigo-500" },
     { href: "/admin/industries", label: "業種", icon: Tag, color: "text-emerald-500", activeBg: "bg-emerald-500" },
     { href: "/admin/pipeline-stages", label: "商談プロセス", icon: GitBranch, color: "text-violet-500", activeBg: "bg-violet-500" },
     { href: "/admin/pm-staff", label: "PMスタッフ", icon: Users2, color: "text-rose-400", activeBg: "bg-rose-400" },

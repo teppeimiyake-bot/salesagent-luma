@@ -47,7 +47,7 @@ background:#f6f6f9;color:#1a1730;display:flex;min-height:100vh;align-items:cente
 box-shadow:0 8px 24px rgba(30,20,60,.06);text-align:center}
 h1{font-size:18px;margin:0 0 10px}p{color:#5c5670;font-size:14px;line-height:1.7;margin:0}</style></head>
 <body><div class="card"><h1>ログインが必要です</h1>
-<p>このエージェントは Luma からのみ開けます。<br>Luma にログインし、サイドバーの「エージェント」を開いてください。</p>
+<p>リスト作成AIは Luma からのみ開けます。<br>Luma にログインし、サイドバーの「リスト作成AI」を開いてください。</p>
 </div></body></html>`;
 }
 
@@ -131,7 +131,7 @@ async function handler(req: NextRequest): Promise<Response> {
     });
   } catch (err) {
     return new NextResponse(
-      `エージェントへの接続に失敗しました: ${(err as Error).message}`,
+      `リスト作成AIへの接続に失敗しました: ${(err as Error).message}`,
       { status: 502, headers: { "content-type": "text/plain; charset=utf-8" } },
     );
   }

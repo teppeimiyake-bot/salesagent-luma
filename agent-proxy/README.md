@@ -1,17 +1,17 @@
 # agent-proxy — 非公開 Cloud Run への認証付きリバースプロキシ
 
-Luma サイドバー「エージェント」から、**手元でローカルプロキシを起動しなくても**
-非公開の Cloud Run 上のエージェント UI（`sales-agent`）へオンラインで到達するための、
+Luma サイドバー「リスト作成AI」から、**手元でローカルプロキシを起動しなくても**
+非公開の Cloud Run 上のリスト作成AI の画面（`sales-agent`）へオンラインで到達するための、
 Vercel 上の小さなリバースプロキシです。
 
 ## 仕組み
 
 ```
-Luma ログイン済み → /agent「エージェントを開く」
+Luma ログイン済み → /agent（サイドバー「リスト作成AI」）を開く
   → GET /api/agent/open (Luma: セッション確認 → 短命グラントJWT発行) → 302
   → https://<このプロキシ>/__grant?token=…  (グラント検証 → セッションCookie発行) → 302 /
   → キャッチオール (Cookie検証 → Google IDトークン付与 → 非公開 Cloud Run へ転送)
-  → エージェントUI 表示
+  → リスト作成AI の画面を表示
 ```
 
 - Cloud Run は `--no-allow-unauthenticated`（非公開）のまま。公開しない。
@@ -107,8 +107,8 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 1. `sales-agent` の run.app URL を認証なしで直叩き → **403**（非公開維持）。
 2. プロキシ URL を Cookie 無しで直叩き → 「ログインが必要です」HTML（401）。
-3. Luma にログイン → サイドバー「エージェント」→「開く」→ **ローカルプロキシ未起動**の状態で
-   エージェント UI が HTTPS 表示される。dry-run を実行してログが流れ、結果が出ることを確認。
+3. Luma にログイン → サイドバー「リスト作成AI」→「開く」→ **ローカルプロキシ未起動**の状態で
+   リスト作成AI の画面が HTTPS 表示される。dry-run を実行してログが流れ、結果が出ることを確認。
 
 ## 既知の制限
 

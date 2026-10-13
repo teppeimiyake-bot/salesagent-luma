@@ -296,7 +296,7 @@ export function AgentWorkspace({
             </div>
             <div className="min-w-0">
               <h1 className="truncate text-[15px] font-semibold tracking-tight text-zinc-900">
-                エージェント
+                リスト作成AI
               </h1>
               <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
                 <span
@@ -315,7 +315,7 @@ export function AgentWorkspace({
                     ? "実行中"
                     : "スタンバイ"}
                 <span className="text-zinc-300">·</span>
-                営業リスト作成エージェント
+                営業リストの自動作成
               </div>
             </div>
           </div>
@@ -491,7 +491,7 @@ function RunPanel({
       ]);
       if (!srcRes.ok) {
         const d = await srcRes.json().catch(() => ({}));
-        throw new Error(d.error ?? `エージェントに接続できません（${srcRes.status}）`);
+        throw new Error(d.error ?? `リスト作成AIに接続できません（${srcRes.status}）`);
       }
       const srcData = await srcRes.json();
       // 「いまの一覧をもう一度しらべる」(sheets) は UI から除外。CLI 経路は残す。
@@ -722,14 +722,14 @@ function RunPanel({
     return (
       <CenterCard
         icon={<Bot className="h-6 w-6 text-zinc-400" />}
-        title="エージェント接続が未設定です"
+        title="リスト作成AIへの接続が未設定です"
         body={
           <>
             環境変数{" "}
             <code className="rounded bg-zinc-100 px-1 py-0.5 text-[11px]">
               AGENT_PROXY_URL
             </code>{" "}
-            を設定すると、この画面でエージェントを直接操作できます。
+            を設定すると、この画面でリスト作成AIを直接操作できます。
           </>
         }
       />
@@ -744,7 +744,7 @@ function RunPanel({
         </div>
         <div className="text-center">
           <div className="text-sm font-semibold text-zinc-800">
-            エージェントに接続しています
+            リスト作成AIに接続しています
           </div>
           <div className="mt-1 text-xs text-zinc-500">収集先の情報を取得中…</div>
         </div>
@@ -756,7 +756,7 @@ function RunPanel({
     return (
       <CenterCard
         icon={<AlertCircle className="h-6 w-6 text-zinc-400" />}
-        title="エージェントに接続できません"
+        title="リスト作成AIに接続できません"
         body={bootError}
         action={
           <button
@@ -1546,7 +1546,7 @@ function OverviewPanel({
         <div>
           <h2 className="text-xl font-bold tracking-tight text-zinc-900">概要</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            エージェントの実行状況と候補企業のステータス
+            リスト作成AIの実行状況と候補企業のステータス
           </p>
         </div>
         <button
@@ -1792,7 +1792,7 @@ function CandidatesPanel({
         <div>
           <h2 className="text-xl font-bold tracking-tight text-zinc-900">候補リスト</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            エージェントが収集した候補企業のレビューと CRM への取り込み
+            リスト作成AIが収集した候補企業のレビューと CRM への取り込み
           </p>
         </div>
         <div className="flex items-center gap-2">
