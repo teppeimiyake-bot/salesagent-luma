@@ -103,6 +103,11 @@ git push -u origin main
 
 → `DATABASE_URL` `DATABASE_URL_UNPOOLED` `POSTGRES_*` 系の環境変数が**自動で全環境にセットされる**。手動入力不要。
 
+**関数のリージョンは DB と揃える**：`vercel.json` の `regions` は DB と同じ場所にする（本番 DB は Singapore なので `sin1`）。
+東京（`hnd1`）の関数からシンガポールの DB へは1クエリごとに 70〜100ms かかり、件数ぶんクエリを投げる処理は
+トランザクションの上限（既定5秒）を超えて失敗する（2026-09〜10 のエージェント候補受け取りがこれで全件失敗した）。
+DB を移した場合は `regions` も合わせて変えること。
+
 **注意**：自動セットされる `DATABASE_URL` は pooler 経由 URL。Prisma はこのままでOK。
 `DATABASE_URL_UNPOOLED` は migration 専用（Vercel ビルドコマンドで `prisma migrate deploy` を使う場合のみ参照）。今は `db push` 派なので使わない。
 
