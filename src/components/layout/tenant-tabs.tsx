@@ -1,6 +1,5 @@
 "use client";
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Building2, Check, Loader2 } from "lucide-react";
 import type { MyTenant } from "@/lib/tenant-context";
@@ -37,9 +36,8 @@ export function TenantTabs({
   activeCode: string;
   canViewAll: boolean;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
   const [switching, setSwitching] = useState<string | null>(null);
+  const [switchError, setSwitchError] = useState<string | null>(null);
 
   // 所属が1社だけなら切り替える先が無いので出さない
   if (tenants.length < 2) return null;
@@ -52,6 +50,7 @@ export function TenantTabs({
   async function switchTo(code: string) {
     if (code === activeCode || switching) return;
     setSwitching(code);
+    setSwitchError(null);
     try {
       const res = await fetch("/api/tenant/switch", {
         method: "POST",
@@ -59,15 +58,18 @@ export function TenantTabs({
         body: JSON.stringify({ code }),
       });
       if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+        setSwitchError(payload?.error ?? "会社の切り替えに失敗しました");
         setSwitching(null);
         return;
       }
-      // サーバー側のデータを引き直す（表示中の商談・KPIが切替先のものに入れ替わる）
-      startTransition(() => {
-        router.refresh();
-        setSwitching(null);
-      });
+      // 選択中テナントは HttpOnly Cookie に保存され、ルートレイアウトを含む全ての
+      // Server Component が参照する。router.refresh() だけだと Next.js のクライアント
+      // キャッシュから切替前のレイアウトが再利用される場合があるため、同じURLを
+      // フル再読込して新しい Cookie を確実に全リクエストへ反映する。
+      window.location.reload();
     } catch {
+      setSwitchError("通信エラーで会社を切り替えられませんでした");
       setSwitching(null);
     }
   }
@@ -77,7 +79,7 @@ export function TenantTabs({
       <div className="flex items-center gap-1.5 px-1 mb-1.5">
         <Building2 className="h-3 w-3 text-zinc-400" />
         <span className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">会社</span>
-        {(pending || switching) && <Loader2 className="h-3 w-3 text-zinc-400 animate-spin" />}
+        {switching && <Loader2 className="h-3 w-3 text-zinc-400 animate-spin" />}
       </div>
       <div className="flex gap-1 rounded-lg bg-zinc-100 p-1">
         {tabs.map((t) => {
@@ -105,6 +107,11 @@ export function TenantTabs({
           );
         })}
       </div>
+      {switchError && (
+        <p role="alert" className="mt-1.5 px-1 text-[10px] leading-tight text-red-600">
+          {switchError}
+        </p>
+      )}
       {activeCode === ALL_TENANTS_CODE && (
         <div className="mt-1.5 px-1 text-[10px] leading-tight text-zinc-500">
           全社の合算表示です。データの登録・編集はできません。
