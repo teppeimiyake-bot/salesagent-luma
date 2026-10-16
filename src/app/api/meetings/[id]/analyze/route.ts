@@ -95,14 +95,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     });
   }
 
-  // dealのnext_actionを最高優先度のものに更新
-  const top = result.nextActions.next_actions[0];
-  if (top) {
-    await prisma.deal.update({
-      where: { id: meeting.dealId },
-      data: { nextAction: top.action },
-    });
-  }
-
+  // AI の Next Action は候補として Meeting.nextActions に保持するだけにする。
+  // 営業担当者が入力した Deal.nextAction は、議事録の保存・再分析では上書きしない。
   return NextResponse.json({ ok: true, result, meetingId: id });
 }
