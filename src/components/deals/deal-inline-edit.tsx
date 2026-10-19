@@ -7,7 +7,8 @@ import { stripYomiPrefix } from "@/lib/yomi-status";
 import { NextActionInput } from "@/components/deals/next-action-input";
 import { DateInput } from "@/components/ui/date-input";
 import { DueBadge } from "@/components/ui/due-badge";
-import { dueState } from "@/lib/due-date";
+import { dueState, jstDateInputToIso } from "@/lib/due-date";
+import { toJstDateStr } from "@/lib/meeting-datetime";
 
 // 期日判定 dueState() は純粋ユーティリティ（@/lib/due-date）へ移動した。
 // 後方互換のため、このモジュールからも引き続き利用できるよう re-export しておく。
@@ -28,15 +29,12 @@ function yomiSelectOptions(current: string | null): string[] {
   return base;
 }
 
-/** "Date | string | null" → <input type="date"> 用の "YYYY-MM-DD"（ローカル日付） */
+/**
+ * "Date | string | null" → <input type="date"> 用の "YYYY-MM-DD"（JST の暦日）
+ * サーバー（UTC）描画とブラウザ描画で値がズレないよう、ローカルTZではなく JST 固定で変換する。
+ */
 function toDateInputValue(d: Date | string | null | undefined): string {
-  if (!d) return "";
-  const dt = typeof d === "string" ? new Date(d) : d;
-  if (Number.isNaN(dt.getTime())) return "";
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, "0");
-  const day = String(dt.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return toJstDateStr(d);
 }
 
 function AmountInput({
@@ -72,7 +70,7 @@ function AmountInput({
           if (Number.isNaN(v as number)) return;
           if (v !== value) onCommit(v);
         }}
-        className="w-24 rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-right text-[11px] tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait disabled:bg-zinc-50"
+        className="w-24 rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-right text-[11px] tabular-nums focus:outline-none focus:ring-1 focus:ring-orange-400 disabled:cursor-wait disabled:bg-zinc-50"
         title="提案金額（円）を変更"
       />
     </span>
@@ -124,8 +122,8 @@ export function DealInlineEdit({
           const bare = stripYomiPrefix(p.yomiStatus);
           const c = yomiColor(bare);
           return (
-            <span key={p.id} className="inline-flex items-center gap-1.5">
-              <span className="text-[11px] text-zinc-500">{p.productName}</span>
+            <span key={p.id} className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-zinc-500 [overflow-wrap:anywhere]">{p.productName}</span>
               <select
                 value={bare ?? ""}
                 onChange={(e) =>
@@ -135,7 +133,7 @@ export function DealInlineEdit({
                 }
                 disabled={pending}
                 title={`${p.productName} のヨミを変更`}
-                className={`cursor-pointer rounded-full border px-1.5 py-0.5 text-[11px] font-semibold ${c.bg} ${c.text} ${c.border} focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait`}
+                className={`cursor-pointer rounded-full border px-1.5 py-0.5 text-[11px] font-semibold ${c.bg} ${c.text} ${c.border} focus:outline-none focus:ring-1 focus:ring-orange-400 disabled:cursor-wait`}
               >
                 <option value="">-</option>
                 {yomiSelectOptions(bare).map((y) => (
@@ -219,7 +217,7 @@ export function DealNextActionEdit({
         value={nextAction}
         rows={3}
         className={
-          "w-full resize-y rounded border bg-white px-2 py-1 text-sm leading-snug focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait disabled:bg-zinc-50 " +
+          "w-full resize-y rounded border bg-white px-2 py-1 text-sm leading-snug focus:outline-none focus:ring-1 focus:ring-orange-400 disabled:cursor-wait disabled:bg-zinc-50 " +
           (overdue
             ? "border-red-300 ring-1 ring-red-200"
             : today
@@ -242,8 +240,9 @@ export function DealNextActionEdit({
             if (v === "") {
               patchDeal({ nextActionAt: null });
             } else {
-              const dt = new Date(`${v}T00:00:00`);
-              if (!Number.isNaN(dt.getTime())) patchDeal({ nextActionAt: dt.toISOString() });
+              // 選んだ日の JST 0:00 として保存（ブラウザのTZに依存させない）
+              const iso = jstDateInputToIso(v);
+              if (iso) patchDeal({ nextActionAt: iso });
             }
           }}
         />

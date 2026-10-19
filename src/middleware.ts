@@ -41,6 +41,12 @@ function isHealthPath(pathname: string) {
   return /^\/api\/health(\/|$)/.test(pathname);
 }
 
+// /api/cron/* は Vercel Cron 用。cookie セッションを持たないため middleware の
+// cookie ゲートはバイパスし、CRON_SECRET 認証は各ルート内で行う。
+function isCronPath(pathname: string) {
+  return /^\/api\/cron(\/|$)/.test(pathname);
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -59,7 +65,8 @@ export async function middleware(req: NextRequest) {
     isPublicAuthPath(pathname) ||
     isPublicInviteToken(pathname) ||
     isAgentIngestPath(pathname) ||
-    isHealthPath(pathname);
+    isHealthPath(pathname) ||
+    isCronPath(pathname);
   const token = req.cookies.get(COOKIE_NAME)?.value;
   const isAuthed = token ? await isValidToken(token) : false;
 
@@ -92,5 +99,10 @@ async function isValidToken(token: string) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // /api/meetings と /api/documents（どちらもちょうどこのパス）は大容量 multipart のため除外する。
+  // middleware/proxy はボディをメモリに複製し、既定の上限（10MB）で切るため、52分級の mp4 や
+  // 10MB を超える資料で formData 解析が壊れる。認証は route handler 側（GET/POST とも getSession）で行い、
+  // テナントは route 内の Prisma Extension が Cookie とセッションから決める（middleware では見ていない）。
+  // /api/documents/[id] などの下位のパスは対象のまま。
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/meetings$|api/documents$).*)"],
 };

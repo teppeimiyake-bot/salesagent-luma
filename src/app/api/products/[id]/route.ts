@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -13,10 +13,7 @@ const updateSchema = z.object({
 async function requireAdmin() {
   const session = await getSession();
   if (!session) return null;
-  const me = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { permission: true },
-  });
+  const me = { permission: await getCurrentPermission() };
   return hasPermission(me?.permission, "admin");
 }
 

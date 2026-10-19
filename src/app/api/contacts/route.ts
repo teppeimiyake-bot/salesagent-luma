@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { requireWriter } from "@/lib/write-guard";
 
 const createSchema = z.object({
   companyId: z.string().uuid(),
@@ -25,6 +26,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  // 書き込み・AI 呼び出し・外部取得は、操作中の会社で利用者以上（閲覧のみ・全社統合ビューは 403）
+  const denied = await requireWriter();
+  if (denied) return denied;
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {

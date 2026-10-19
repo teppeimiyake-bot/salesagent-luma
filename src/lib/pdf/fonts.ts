@@ -1,17 +1,22 @@
 /**
  * @react-pdf/renderer 用の日本語フォント登録。
  *
- * Noto Sans JP（日本語サブセットの静的TTF・glyf アウトライン）を src/lib/pdf/fonts に同梱。
- *   - Regular (fontWeight: normal)
- *   - Bold    (fontWeight: bold)
- * 合計 約4.7MB。Vercel のサーバレス関数バンドルに含めるため、import 経由ではなく
- * 絶対パス（process.cwd() ベース）で読み込む。`next.config` で serverExternalPackages 指定済みの
- * Prisma と同様、フォントファイルはトレース対象に含まれるよう PDFルートで明示参照する。
+ * Noto Sans JP（SIL OFL 1.1。静的TTF・glyf アウトライン）を src/lib/pdf/fonts に同梱。
+ *   - Regular (fontWeight: normal) … 可変フォント NotoSansJP[wght] を wght=400 に固定したもの
+ *   - Bold    (fontWeight: bold)   … 同じく wght=700
+ * JIS X 0208 全字（≒ は上流に無いため同じフォントの字形から合成）、JIS X 0213 の漢字、
+ * NEC/IBM 拡張（髙・﨑・①・㈱ など）、全角英数を収録する。各 約5.8MB。
+ * 入手元・作成コマンド・ライセンスは docs/development-t14-pdf-fonts.md と fonts/OFL.txt を参照。
+ *
+ * サーバーのバンドルに含めるため、import 経由ではなく絶対パス（process.cwd() ベース）で読み込む。
+ * Cloud Run 用のビルドは scripts/cloud-development-next-config.mjs の outputFileTracingIncludes と
+ * Dockerfile でこのディレクトリをコピーしている。
  *
  * registerFonts() は何度呼んでも一度だけ実際の登録を行う（idempotent）。
  */
 import path from "node:path";
 import { Font } from "@react-pdf/renderer";
+import { splitForLineBreak } from "./line-break";
 
 export const PDF_FONT_FAMILY = "NotoSansJP";
 
@@ -31,9 +36,8 @@ export function registerFonts(): void {
       { src: fontPath("NotoSansJP-Bold.ttf"), fontWeight: "bold" },
     ],
   });
-  // CJK は単語区切りが無く、@react-pdf のデフォルト改行（スペース基準）だと行が溢れる。
-  // 文字単位で折り返せるように、ハイフネーションを「分割しない」コールバックにしておくと
-  // fontkit 側の禁則そのままで素直に文字単位改行される。
-  Font.registerHyphenationCallback((word) => [word]);
+  // 日本語は1文字ずつ（禁則を守って）ハイフン無しで折り返し、英単語は途中で切らない。
+  // 詳細は line-break.ts。以前の (w) => [w] は日本語の途中に「-」を挟んだり列からはみ出したりした。
+  Font.registerHyphenationCallback(splitForLineBreak);
   registered = true;
 }

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileSignature, Wand2 } from "lucide-react";
+import { notifyDealContractsChanged } from "@/components/deals/deal-contracts";
 
 type DealProductLite = {
   id: string;
@@ -50,6 +51,10 @@ export function ContractGenerator({
       } else {
         setMsg(`✓ ${j.category}契約書ドラフトを生成しました。下の「個別契約書」に表示されます。`);
       }
+      // T14: 「この商談の個別契約書」はクライアント側で一覧を取るため、router.refresh() だけでは更新されない。
+      // 生成（または既存ドラフトへの案内）のあとに一覧へ取り直しを知らせる。
+      // （API は dealId を返さないが、このカードと一覧は同じ商談ページに1つずつなので全一覧に知らせてよい）
+      if (r.ok) notifyDealContractsChanged();
       router.refresh();
       setTimeout(() => setMsg(null), 5000);
     } finally {
@@ -58,32 +63,32 @@ export function ContractGenerator({
   }
 
   return (
-    <Card className="border-amber-200 bg-gradient-to-br from-amber-50/40 via-white to-orange-50/30">
+    <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <div className="rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white p-1.5 shadow-sm">
+          <div className="rounded-lg bg-zinc-100 p-1.5 text-zinc-500">
             <FileSignature className="h-4 w-4" />
           </div>
           契約書 自動生成
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-xs text-zinc-500 mb-3">
+        <p className="text-[13px] text-zinc-500 mb-3">
           映像・SNS の商材は雛形から契約書ドラフトを自動生成できます。
           ヨミが <span className="font-medium">A+ヨミ</span> になった時点でも自動生成されます（重複は生成しません）。
         </p>
-        {msg && <p className="text-xs text-amber-800 bg-amber-50 px-3 py-2 rounded mb-3">{msg}</p>}
+        {msg && <p className="text-[13px] text-amber-800 bg-amber-50 px-3 py-2 rounded mb-3">{msg}</p>}
         <ul className="space-y-2">
           {targets.map((dp) => (
             <li key={dp.id} className="flex items-center gap-3 p-2 rounded-md border border-amber-100 bg-white">
-              <Badge variant={dp.category === "映像" ? "warning" : "info"} className="text-[10px] shrink-0">
+              <Badge variant={dp.category === "映像" ? "warning" : "info"} className="text-[12px] shrink-0">
                 {dp.category}
               </Badge>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
                   {[dp.productName, dp.planName].filter(Boolean).join(" / ")}
                 </p>
-                <p className="text-[11px] text-zinc-400">
+                <p className="text-[12.5px] text-zinc-400">
                   {dp.amount ? `¥${dp.amount.toLocaleString("ja-JP")}（税抜）` : "金額未設定"}
                   {dp.yomiStatus ? ` ／ ${dp.yomiStatus}` : ""}
                 </p>

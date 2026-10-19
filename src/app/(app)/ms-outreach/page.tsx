@@ -3,7 +3,7 @@ import { YearTabs } from "@/components/kpi/year-tabs";
 import { QuarterTabs } from "@/components/ms-outreach/quarter-tabs";
 import { MsOutreachBoard } from "@/components/ms-outreach/ms-outreach-board";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 import { getFiscalStartMonth } from "@/lib/tenant-context";
 import {
   getFiscalYear,
@@ -30,10 +30,7 @@ export default async function MsOutreachPage({
 }) {
   const session = await getSession();
   const me = session
-    ? await prisma.user.findUnique({
-        where: { id: session.userId },
-        select: { permission: true },
-      })
+    ? { permission: await getCurrentPermission() }
     : null;
   const canEdit = hasPermission(me?.permission, "user"); // 週次入力
   const isAdmin = hasPermission(me?.permission, "admin"); // ワーカー追加・KPI目標編集

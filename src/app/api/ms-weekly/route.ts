@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getFiscalStartMonth } from "@/lib/tenant-context";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
 import { getFiscalQuarterMonths } from "@/lib/config";
+import { writeForbidden } from "@/lib/write-guard";
 
 // 週次実績の取得（閲覧は全ロール）。
 // クエリ: ?fy=2026&q=1 で会計年度の四半期に属する3暦月のレコードだけ返す。
@@ -54,7 +55,7 @@ const upsertSchema = z.object({
 export async function POST(req: Request) {
   const perm = await getCurrentPermission();
   if (!hasPermission(perm, "user")) {
-    return NextResponse.json({ error: "Forbidden: user 以上が必要です" }, { status: 403 });
+    return await writeForbidden();
   }
   const body = await req.json().catch(() => null);
   const parsed = upsertSchema.safeParse(body);

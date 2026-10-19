@@ -9,10 +9,13 @@
  * docx をそのまま画像化せず、文面を @react-pdf/renderer で再構成する（serverless互換・崩れ防止）。
  */
 import React from "react";
-import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import { Document, Image, Page, View, StyleSheet } from "@react-pdf/renderer";
 import { PDF_FONT_FAMILY } from "./fonts";
+import { Text } from "./text"; // 日本語の折り返しで「-」を足さない Text（text.tsx）
 import { LUMA_COMPANY } from "@/lib/company-profile";
 import { toWareki, yen, groupDigits } from "./format";
+import { calculateQuote, formatJstDate, lineAmount, normalizeHonorific, type CalculableQuoteLine } from "@/lib/quote-calculation";
+import { isAcceptableLogoUrl } from "@/lib/quote-issuer";
 
 export interface QuoteLineData {
   name: string;
@@ -106,9 +109,7 @@ export function QuotePdf({ data }: { data: QuotePdfData }) {
 
         <View style={styles.headerRow}>
           <View style={styles.clientBlock}>
-            <Text style={styles.clientName}>
-              {data.clientName}　{data.clientHonorific}
-            </Text>
+            <Text style={styles.clientName}>{`${data.clientName}　${data.clientHonorific}`}</Text>
             {data.version ? <Text style={{ fontSize: 8, color: "#888", marginTop: 3 }}>{data.version}</Text> : null}
           </View>
           <View style={styles.senderBlock}>
@@ -159,7 +160,7 @@ export function QuotePdf({ data }: { data: QuotePdfData }) {
             <Text style={styles.sumValue}>{yen(subtotal)}</Text>
           </View>
           <View style={styles.sumRow}>
-            <Text style={styles.sumLabel}>消費税（{data.taxRate}%）</Text>
+            <Text style={styles.sumLabel}>{`消費税（${data.taxRate}%）`}</Text>
             <Text style={styles.sumValue}>{yen(tax)}</Text>
           </View>
           <View style={styles.sumTotalRow}>
@@ -176,6 +177,129 @@ export function QuotePdf({ data }: { data: QuotePdfData }) {
             <Text>{data.note}</Text>
           </View>
         ) : null}
+      </Page>
+    </Document>
+  );
+}
+
+export interface QuoteIssuerPdfData {
+  legalName: string;
+  postalCode: string;
+  addressLine1: string;
+  addressLine2: string;
+  logoUrl?: string | null;
+}
+
+export interface QuotePdfV2Data {
+  quoteNumber: string;
+  clientName: string;
+  clientHonorific: string;
+  subject?: string | null;
+  issueDate: Date | string;
+  note?: string | null;
+  issuer: QuoteIssuerPdfData;
+  lines: CalculableQuoteLine[];
+}
+
+const v2 = StyleSheet.create({
+  page: { fontFamily: PDF_FONT_FAMILY, fontSize: 9, color: "#111", paddingTop: 34, paddingBottom: 42, paddingHorizontal: 38 },
+  title: { fontSize: 22, fontWeight: "bold", textAlign: "center", letterSpacing: 5, marginBottom: 18 },
+  header: { flexDirection: "row", justifyContent: "space-between", minHeight: 92, marginBottom: 12 },
+  recipient: { width: "54%", paddingTop: 10 },
+  recipientName: { fontSize: 14, fontWeight: "bold", borderBottomWidth: 1, paddingBottom: 4 },
+  issuer: { width: "42%", alignItems: "flex-end" },
+  logo: { maxWidth: 100, maxHeight: 24, objectFit: "contain", marginBottom: 3 },
+  issuerName: { fontSize: 11, fontWeight: "bold" },
+  meta: { marginTop: 7, alignItems: "flex-end" },
+  total: { fontSize: 15, fontWeight: "bold", borderBottomWidth: 1.2, paddingVertical: 6, marginBottom: 12 },
+  subject: { marginBottom: 8 },
+  // T14: 罫線は外枠の View に持たせない。外枠はページをまたいで分割されるため、1ページ目では左罫線だけが
+  // 下余白まで伸び、2ページ目では繰り返しの見出し行に上罫線が付かなかった。
+  // 左罫線は各行（見出し行・明細行）、上罫線は見出し行、下罫線は各行に持たせ、行ごとに閉じた枠にする。
+  table: {},
+  row: { flexDirection: "row", borderLeftWidth: 1, borderLeftColor: "#777", borderBottomWidth: 1, borderBottomColor: "#aaa", minHeight: 26 },
+  head: { backgroundColor: "#f1f1f1", fontWeight: "bold", minHeight: 24, borderTopWidth: 1, borderTopColor: "#777" },
+  cell: { paddingHorizontal: 5, paddingVertical: 5, borderRightWidth: 1, borderColor: "#aaa" },
+  name: { width: "42%" },
+  price: { width: "18%", textAlign: "right" },
+  qty: { width: "10%", textAlign: "right" },
+  unit: { width: "10%", textAlign: "center" },
+  amount: { width: "20%", textAlign: "right" },
+  detail: { fontSize: 7.2, color: "#555", marginTop: 2 },
+  summaries: { width: "48%", alignSelf: "flex-end", marginTop: 8 },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between", borderBottomWidth: 0.5, borderColor: "#bbb", paddingVertical: 3 },
+  grand: { fontSize: 11, fontWeight: "bold", borderTopWidth: 1, marginTop: 2, paddingTop: 4 },
+  notes: { marginTop: 16, borderWidth: 1, borderColor: "#aaa", padding: 8, minHeight: 54 },
+  noteTitle: { fontWeight: "bold", marginBottom: 3 },
+  footer: { position: "absolute", bottom: 18, left: 38, width: 519, height: 14, textAlign: "center", fontSize: 8, color: "#666" },
+});
+
+/**
+ * PDF に描くロゴ。取得済みの PNG/JPEG の data URL だけを描く（https の URL は発行・プレビューの前に
+ * src/lib/quote-logo-pdf.ts が短い上限時間で取得して data URL にする）。react-pdf に URL やファイルを
+ * 取りに行かせない：取得の失敗を黙って省き、時間の上限も無く、サーバー内部へも接続できてしまうため。
+ */
+export function renderableQuoteLogo(value: string | null | undefined): string | null {
+  return value && value.startsWith("data:") && isAcceptableLogoUrl(value) ? value : null;
+}
+
+/**
+ * T14 V2。印影は仕様上常に描画しない。
+ *
+ * 1つの <Text> の中身は1つの文字列にまとめる（`{a}：{b}` のように分けない）。react-pdf は文字列の
+ * 境目を「ハイフンを足す改行位置」として扱うため、分けると境目で「-」付きの折り返しが起きうる。
+ */
+export function QuotePdfV2({ data }: { data: QuotePdfV2Data }) {
+  const totals = calculateQuote(data.lines);
+  const recipient = normalizeHonorific(data.clientName, data.clientHonorific);
+  const renderableLogo = renderableQuoteLogo(data.issuer.logoUrl);
+  return (
+    <Document>
+      <Page size="A4" style={v2.page} wrap>
+        <Text style={v2.title}>見　積　書</Text>
+        <View style={v2.header}>
+          <View style={v2.recipient}>
+            <Text style={v2.recipientName}>{`${recipient.clientName}　${recipient.honorific}`}</Text>
+            {data.subject ? <Text style={{ marginTop: 10 }}>{`件名：${data.subject}`}</Text> : null}
+          </View>
+          <View style={v2.issuer}>
+            {/* react-pdf ImageはHTMLのalt属性を持たない。ロゴは発行者名を直後に文字でも表示する。 */}
+            {/* eslint-disable-next-line jsx-a11y/alt-text */}
+            {renderableLogo ? <Image src={renderableLogo} style={v2.logo} /> : null}
+            <Text style={v2.issuerName}>{data.issuer.legalName}</Text>
+            <Text>{`〒${data.issuer.postalCode}`}</Text>
+            <Text>{data.issuer.addressLine1}</Text>
+            <Text>{data.issuer.addressLine2}</Text>
+            <View style={v2.meta}>
+              <Text>{`見積番号：${data.quoteNumber}`}</Text>
+              <Text>{`発行日：${formatJstDate(data.issueDate)}`}</Text>
+            </View>
+          </View>
+        </View>
+        <Text style={v2.total}>{`御見積金額　${yen(totals.grandTotal)}（税込）`}</Text>
+        <View style={v2.table}>
+          <View style={[v2.row, v2.head]} fixed>
+            <Text style={[v2.cell, v2.name]}>品目</Text><Text style={[v2.cell, v2.price]}>単価</Text>
+            <Text style={[v2.cell, v2.qty]}>数量</Text><Text style={[v2.cell, v2.unit]}>単位</Text><Text style={[v2.cell, v2.amount]}>価格</Text>
+          </View>
+          {data.lines.map((line, index) => (
+            <View style={v2.row} key={`${index}-${line.name}`} wrap={false}>
+              <View style={[v2.cell, v2.name]}><Text>{line.name}</Text>{line.detail ? <Text style={v2.detail}>{line.detail}</Text> : null}</View>
+              <Text style={[v2.cell, v2.price]}>{yen(line.unitPrice)}</Text><Text style={[v2.cell, v2.qty]}>{groupDigits(line.qty)}</Text>
+              <Text style={[v2.cell, v2.unit]}>{line.unit}</Text><Text style={[v2.cell, v2.amount]}>{yen(lineAmount(line))}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={v2.summaries} wrap={false}>
+          <View style={v2.summaryRow}><Text>小計</Text><Text>{yen(totals.subtotal)}</Text></View>
+          {totals.groups.filter((g) => g.taxCategory === "taxable").map((group) => (
+            <View style={v2.summaryRow} key={`tax-${group.taxRate}`}><Text>{`${group.taxRate}%対象 / 消費税`}</Text><Text>{`${yen(group.base)} / ${yen(group.tax)}`}</Text></View>
+          ))}
+          {totals.nonTaxableBase > 0 ? <View style={v2.summaryRow}><Text>不課税対象</Text><Text>{yen(totals.nonTaxableBase)}</Text></View> : null}
+          <View style={[v2.summaryRow, v2.grand]}><Text>合計</Text><Text>{yen(totals.grandTotal)}</Text></View>
+        </View>
+        {data.note ? <View style={v2.notes} wrap={false}><Text style={v2.noteTitle}>備考</Text><Text>{data.note}</Text></View> : null}
+        <Text style={v2.footer} render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} fixed />
       </Page>
     </Document>
   );

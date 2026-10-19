@@ -8,7 +8,7 @@ import { KyoproDashboardCard } from "@/components/kyopro/dashboard-card";
 import { NewTaskDialog } from "@/components/todos/new-task-dialog";
 import { getDashboardData, getGoalProgress } from "@/lib/queries";
 import { excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getCurrentPermission, getSession, hasPermission } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getFiscalStartMonth } from "@/lib/tenant-context";
 import { currentFiscalQuarterPeriod } from "@/lib/config";
@@ -22,10 +22,11 @@ export default async function DashboardPage() {
   const me = session
     ? await prisma.user.findUnique({
         where: { id: session.userId },
-        select: { name: true, permission: true },
+        select: { name: true },
       })
     : null;
-  const canEdit = hasPermission(me?.permission, "user");
+  // 書き込みできるかは、操作中の会社での権限で決める
+  const canEdit = hasPermission(await getCurrentPermission(), "user");
   const userId = session?.userId;
   // ToDo化対象から外したいDealのフィルタ
   // （受注/失注/NG/日程調整不可/完全失注/完全受注 を全部弾く）
@@ -97,7 +98,7 @@ export default async function DashboardPage() {
       <Header
         title={`今日のあなた`}
         subtitle={me ? `${me.name}さんが今やるべきこと` : "ログインユーザー"}
-        right={<NewTaskDialog />}
+        right={canEdit ? <NewTaskDialog /> : null}
       />
       <div className="flex-1 overflow-hidden">
         <div className="h-full grid grid-cols-12 gap-0">
@@ -105,7 +106,7 @@ export default async function DashboardPage() {
             <GoalProgress personal={personalGoal} team={teamGoal} />
             {/* 京プロ 撮影会（リージーを見ているときだけ描画される） */}
             <KyoproDashboardCard />
-            <AiTodoList tasks={merged} />
+            <AiTodoList tasks={merged} canEdit={canEdit} />
             <KpiCards kpi={kpi} />
             <DealsTable
               deals={deals}
@@ -114,7 +115,7 @@ export default async function DashboardPage() {
             />
           </div>
           <div className="hidden xl:flex xl:col-span-4 flex-col p-4 bg-white">
-            <AiChat scope="global" />
+            <AiChat scope="global" canSend={canEdit} />
           </div>
         </div>
       </div>

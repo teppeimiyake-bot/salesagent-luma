@@ -32,7 +32,12 @@ import {
 
 type Mode = "invite" | "direct";
 
-export function NewMemberDialog() {
+export function NewMemberDialog({
+  disabledReason = null,
+}: {
+  /** 全社統合ビューなど、メンバーを追加できないときの理由。あればボタンを無効にして理由を出す。 */
+  disabledReason?: string | null;
+} = {}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("invite");
@@ -135,6 +140,19 @@ export function NewMemberDialog() {
     } catch {
       // noop
     }
+  }
+
+  // 追加できないとき（全社統合ビュー）は、押しても 403 で何も起きないように見えないよう、無効のボタンと理由を出す
+  if (disabledReason) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] text-zinc-500 max-w-[18rem] leading-snug">{disabledReason}</span>
+        <Button variant="primary" size="sm" disabled title={disabledReason}>
+          <UserPlus className="h-3.5 w-3.5" />
+          メンバー追加
+        </Button>
+      </div>
+    );
   }
 
   return (

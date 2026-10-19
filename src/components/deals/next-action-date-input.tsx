@@ -3,7 +3,8 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { DueBadge } from "@/components/ui/due-badge";
 import { DateInput } from "@/components/ui/date-input";
-import { dueState } from "@/lib/due-date";
+import { dueState, jstDateInputToIso } from "@/lib/due-date";
+import { toJstDateStr } from "@/lib/meeting-datetime";
 
 /**
  * ネクストアクションの期日（Deal.nextActionAt）をその場で変更する入力欄。
@@ -53,8 +54,9 @@ export function NextActionDateInput({
             save(null);
             return;
           }
-          const dt = new Date(`${v}T00:00:00`);
-          if (!Number.isNaN(dt.getTime())) save(dt.toISOString());
+          // 選んだ日の JST 0:00 として保存（ブラウザのTZに依存させない）
+          const iso = jstDateInputToIso(v);
+          if (iso) save(iso);
         }}
       />
       {showBadge && value && <DueBadge date={value} size="sm" />}
@@ -63,16 +65,11 @@ export function NextActionDateInput({
 }
 
 /**
- * Date | string | null → "YYYY-MM-DD"
+ * Date | string | null → "YYYY-MM-DD"（JST の暦日）
  * 商談一覧のインライン編集（deal-inline-edit.tsx）と同じ変換にしてある。
  * ここを変えると同じ日付が一覧と詳細で1日ずれて見えるので揃えること。
+ * サーバー（UTC）描画とブラウザ描画で値がズレないよう、ローカルTZではなく JST 固定で変換する。
  */
 function toDateInputValue(v: Date | string | null): string {
-  if (!v) return "";
-  const d = typeof v === "string" ? new Date(v) : v;
-  if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return toJstDateStr(v);
 }

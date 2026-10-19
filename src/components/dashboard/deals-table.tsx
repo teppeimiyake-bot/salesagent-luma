@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ChevronRight, Layers, FileSignature, Calendar, Sparkle, ArrowRight, AlertTriangle } from "lucide-react";
-import { formatJPY } from "@/lib/utils";
+import { cn, formatJPY } from "@/lib/utils";
 import { STATUS_LABEL, statusColor } from "@/lib/deal-status";
 import { DueBadge } from "@/components/ui/due-badge";
 import { CompanyLogo } from "@/components/ui/company-logo";
@@ -18,6 +18,7 @@ import {
 import { leadSourceColor } from "@/lib/lead-source";
 import { DealInlineEdit, DealNextActionEdit } from "@/components/deals/deal-inline-edit";
 import { dueState } from "@/lib/due-date";
+import { jstYmd } from "@/lib/calendar-date";
 import type { DealStatus } from "@prisma/client";
 
 type DealRow = {
@@ -35,13 +36,19 @@ type DealRow = {
   owner: { id: string; name: string; avatarColor: string | null } | null;
   products: Array<DealProductLite & { id: string; yomiStatus: string | null }>;
   _count?: { tasks: number };
+  /**
+   * T16：自社Meetの記録を自動で取り込めず、確認が必要（商談ページの Meetセッション欄が「確認が必要です」）。
+   * 商談一覧だけが渡す。未指定なら何も出さない。
+   */
+  meetAttention?: boolean;
 };
 
+/** 日本時間の暦日で表示する（サーバー UTC とブラウザ日本時間で同じ表示にし、KPI の計上月とも合わせる）。 */
 function formatYmd(d: Date | string | null | undefined): string | null {
   if (!d) return null;
   const dt = typeof d === "string" ? new Date(d) : d;
   if (Number.isNaN(dt.getTime())) return null;
-  return `${dt.getFullYear()}/${String(dt.getMonth() + 1).padStart(2, "0")}/${String(dt.getDate()).padStart(2, "0")}`;
+  return jstYmd(dt).replaceAll("-", "/");
 }
 
 export function DealsTable({
@@ -50,6 +57,7 @@ export function DealsTable({
   showAllLink = true,
   canDelete = false,
   editable = false,
+  stackOnTablet = false,
   linkQuery,
 }: {
   deals: DealRow[];
@@ -58,6 +66,8 @@ export function DealsTable({
   canDelete?: boolean;
   /** true の場合、各行でヨミ・提案金額・ネクストアクション(テキスト/期日)をインライン編集できる */
   editable?: boolean;
+  /** サイドバーのある一覧では、本文幅が十分になるまでカードを縦に並べる。 */
+  stackOnTablet?: boolean;
   /**
    * 商談詳細リンクに付与するクエリ文字列（`from` 用、`?` は含めない）。
    * 商談一覧から詳細に遷移する際に、戻りボタン用のフィルタ状態を引き継ぐためのもの。
@@ -87,7 +97,12 @@ export function DealsTable({
             return (
               <div
                 key={d.id}
-                className="relative grid grid-cols-12 gap-x-4 gap-y-2 items-center px-5 py-3 hover:bg-emerald-50/30 transition-colors group"
+                // ダッシュボード（stackOnTablet なし）は lg 以上で列配分を 8:5:5:7 にする。12列の 4:3:3:2 では 1440px でも担当者の列が
+                // 約103pxしかなく、削除ボタン・矢印を除くと名前が2文字ほどで「…」になっていた（UI確認 2026-10-01）。
+                className={cn(
+                  "relative grid grid-cols-12 gap-x-4 gap-y-2 items-center px-5 py-3 hover:bg-emerald-50/30 transition-colors group",
+                  !stackOnTablet && "lg:grid-cols-[minmax(0,8fr)_minmax(0,5fr)_minmax(0,5fr)_minmax(0,7fr)]",
+                )}
               >
                 {/* 行全体を覆う遷移用リンク。入力欄（relative z-10）はこの上に出る */}
                 <Link
@@ -100,7 +115,7 @@ export function DealsTable({
                   className="absolute inset-0"
                 />
                 {/* 左：企業ロゴ＋名＋プロダクト構成 */}
-                <div className="col-span-12 md:col-span-4 min-w-0 flex items-start gap-3">
+                <div className={cn("col-span-12 min-w-0 flex items-start gap-3", stackOnTablet ? "xl:col-span-4" : "md:col-span-4 lg:col-span-1")}>
                   <CompanyLogo
                     name={d.company.name}
                     logoUrl={d.company.logoUrl}
@@ -115,6 +130,16 @@ export function DealsTable({
                       <Badge variant={statusColor(d.status)} className="shrink-0">
                         {STATUS_LABEL[d.status]}
                       </Badge>
+                      {d.meetAttention && (
+                        <span
+                          data-testid="deal-meet-attention"
+                          title="Meetの記録を自動で取り込めませんでした。商談を開いて「商談記録」で確認してください"
+                          className="inline-flex items-center gap-1 text-[10px] font-bold border border-amber-300 bg-amber-50 text-amber-800 rounded px-1.5 py-0.5 shrink-0"
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                          要対応
+                        </span>
+                      )}
                       {d.contractDate && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold border border-emerald-300 bg-emerald-50 text-emerald-700 rounded px-1.5 py-0.5 shrink-0">
                           <FileSignature className="h-3 w-3" />
@@ -181,12 +206,12 @@ export function DealsTable({
                 </div>
 
                 {/* 中央：提案金額＋ヨミ */}
-                <div className="col-span-6 md:col-span-3 text-right md:text-left">
+                <div className={stackOnTablet ? "col-span-12 xl:col-span-3 text-left" : "col-span-6 md:col-span-3 lg:col-span-1 text-right md:text-left"}>
                   <p className="text-xs text-zinc-500 mb-0.5">提案金額</p>
                   <p className="font-bold text-lg tabular-nums text-emerald-700">
                     {formatJPY(totalAmt)}
                   </p>
-                  <div className="mt-1 flex justify-end md:justify-start">
+                  <div className={cn("mt-1 flex", stackOnTablet ? "justify-start" : "justify-end md:justify-start")}>
                     {repYomi ? (
                       <span
                         className={`inline-flex items-center text-[11px] font-semibold border rounded-full px-2 py-0.5 ${repYomiColor.bg} ${repYomiColor.text} ${repYomiColor.border}`}
@@ -200,7 +225,7 @@ export function DealsTable({
                 </div>
 
                 {/* 右側：ネクストアクション＋期日（編集可ユーザーはインライン編集、それ以外は表示専用コンパクト版） */}
-                <div className="col-span-12 md:col-span-3 min-w-0">
+                <div className={cn("col-span-12 min-w-0", stackOnTablet ? "xl:col-span-3" : "md:col-span-3 lg:col-span-1")}>
                   {editable ? (
                     <DealNextActionEdit
                       dealId={d.id}
@@ -257,9 +282,10 @@ export function DealsTable({
                 </div>
 
                 {/* 担当者 + 削除 + chevron */}
-                <div className="hidden md:flex md:col-span-2 items-center justify-end gap-1 min-w-0">
-                  <div className="min-w-0 flex-1 flex justify-end">
-                    <OwnerBadge owner={d.owner} size="sm" />
+                <div className={cn("items-center justify-end gap-1 min-w-0", stackOnTablet ? "col-span-12 flex xl:col-span-2" : "hidden md:flex md:col-span-2 lg:col-span-1")}>
+                  {/* バッジを列の幅まで縮め、長い名前は「…」で切る（左のネクストアクション列へはみ出させない）。全文は title で読める */}
+                  <div className="min-w-0 flex-1 flex justify-end" title={d.owner?.name}>
+                    <OwnerBadge owner={d.owner} size="sm" className="min-w-0 max-w-full" />
                   </div>
                   {canDelete && (
                     <span className="relative z-10">

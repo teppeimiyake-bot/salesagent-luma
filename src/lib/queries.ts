@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { getFiscalStartMonth, currentTenantId } from "@/lib/tenant-context";
+import { listCurrentTenantUsers } from "@/lib/tenant-users";
 import { DealStatus, TaskStatus } from "@prisma/client";
 import {
   fyPeriodLabel,
@@ -18,6 +19,19 @@ import {
   yearMonthToPeriod,
   type RevenueEntry,
 } from "@/lib/revenue-recognition";
+import { addDaysYmd, jstCalendarParts, jstYmd } from "@/lib/calendar-date";
+
+/**
+ * 受注の計上日（日本時間の暦日 "YYYY-MM-DD"）。contractDate → appointmentDate(商談日) → bantUpdatedAt の優先。
+ * KPI の月・週・期間への振り分けはすべてこの暦日で行う（保存形式の違う既存データも同じ暦日になる。calendar-date.ts）。
+ */
+function bookedDay(d: { contractDate: Date | null; appointmentDate: Date | null; bantUpdatedAt: Date | null }): string | null {
+  const bd = d.contractDate ?? d.appointmentDate ?? d.bantUpdatedAt ?? null;
+  return bd ? jstYmd(bd) : null;
+}
+
+/** 日本時間の暦日で数えるため、UTC の暦日の範囲で DB を絞るときは開始を9時間前に広げる（日本時間 0:00 に保存された値を含める）。 */
+const JST_LOOKBACK_MS = 9 * 60 * 60 * 1000;
 import { isExcludedFromNextAction } from "@/lib/deal-status";
 import { excludeNGDealsWhere, excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
 
@@ -210,43 +224,29 @@ export async function getKpiTimeseries(userId?: string) {
     },
   });
 
-  const now = new Date();
-  const buckets: { label: string; weekStart: Date; weekEnd: Date }[] = [];
+  // 週は日本時間の暦日で7日ずつ（今日を含む直近の週から12週）。計上日も日本時間の暦日で比べる。
+  const today = jstYmd(new Date());
+  const buckets: { label: string; weekStart: string; weekEnd: string }[] = [];
   for (let i = 11; i >= 0; i--) {
-    const end = new Date(now);
-    end.setDate(end.getDate() - i * 7);
-    const start = new Date(end);
-    start.setDate(start.getDate() - 6);
-    buckets.push({
-      label: `${end.getMonth() + 1}/${end.getDate()}`,
-      weekStart: start,
-      weekEnd: end,
-    });
+    const end = addDaysYmd(today, -i * 7);
+    const [, month, day] = end.split("-").map(Number);
+    buckets.push({ label: `${month}/${day}`, weekStart: addDaysYmd(end, -6), weekEnd: end });
   }
-
-  // 計上日：contractDate → appointmentDate → bantUpdatedAt の優先で確定
-  const bookedDate = (d: {
-    contractDate: Date | null;
-    appointmentDate: Date | null;
-    bantUpdatedAt: Date | null;
-  }): Date | null => d.contractDate ?? d.appointmentDate ?? d.bantUpdatedAt ?? null;
 
   return buckets.map((b) => {
     const wonDealsInWeek = deals.filter((d) => {
-      const bd = bookedDate(d);
-      return bd && bd >= b.weekStart && bd <= b.weekEnd;
+      const bd = bookedDay(d);
+      return !!bd && bd >= b.weekStart && bd <= b.weekEnd;
     });
     const wonAmt = wonDealsInWeek.reduce(
       (s, d) => s + wonAmount(d.products as DealProductLite[]),
       0,
     );
-    const tasksDoneInWeek = tasks.filter(
-      (t) =>
-        t.status === "DONE" &&
-        t.completedAt &&
-        t.completedAt >= b.weekStart &&
-        t.completedAt <= b.weekEnd,
-    ).length;
+    const tasksDoneInWeek = tasks.filter((t) => {
+      if (t.status !== "DONE" || !t.completedAt) return false;
+      const done = jstYmd(t.completedAt);
+      return done >= b.weekStart && done <= b.weekEnd;
+    }).length;
     return {
       label: b.label,
       wonAmount: Math.round(wonAmt / 10000),
@@ -256,13 +256,15 @@ export async function getKpiTimeseries(userId?: string) {
   });
 }
 
-/** 担当者一覧（タブ用） */
+/**
+ * 担当者一覧（タブ・担当者の絞り込み・担当者の選択用）。
+ * 操作中の会社に所属するユーザーだけにする（絞り方・全社統合ビュー・TENANT_STRICT の扱いは src/lib/tenant-users.ts）。
+ */
 export async function getSalesUsers() {
-  return prisma.user.findMany({
-    where: { role: { in: ["sales", "manager"] } },
-    select: { id: true, name: true, avatarColor: true, email: true, role: true },
-    orderBy: { createdAt: "asc" },
-  });
+  return listCurrentTenantUsers(
+    { id: true, name: true, avatarColor: true, email: true, role: true },
+    { role: { in: ["sales", "manager"] } },
+  );
 }
 
 /**
@@ -428,9 +430,12 @@ function bookedDateOf(d: {
   appointmentDate: Date | null;
   bantUpdatedAt: Date | null;
 }): { date: Date | null; source: BookedDateSource } {
-  if (d.contractDate) return { date: d.contractDate, source: "contractDate" };
-  if (d.appointmentDate) return { date: d.appointmentDate, source: "appointmentDate" };
-  if (d.bantUpdatedAt) return { date: d.bantUpdatedAt, source: "bantUpdatedAt" };
+  // 計上月は日本時間の暦日で決める（calendar-date.ts）。以前の保存形式（日本時間 0:00 ＝前日の UTC 15:00）も
+  // 同じ暦日になるよう、その暦日の UTC 0:00 にそろえてから月に振り分ける（toYearMonth は UTC で読む）。
+  const asDay = (x: Date) => new Date(`${jstYmd(x)}T00:00:00.000Z`);
+  if (d.contractDate) return { date: asDay(d.contractDate), source: "contractDate" };
+  if (d.appointmentDate) return { date: asDay(d.appointmentDate), source: "appointmentDate" };
+  if (d.bantUpdatedAt) return { date: asDay(d.bantUpdatedAt), source: "bantUpdatedAt" };
   return { date: null, source: null };
 }
 
@@ -744,9 +749,8 @@ export async function getMonthlyWonDealsByPeriod(
   const result: Record<string, WonDealCard[]> = {};
   for (const p of monthPeriods) result[p] = [];
 
-  // Date → "YYYY-MM-DD"（KPIの月帰属は UTC レンジ判定なので UTC で日付化して表記を揃える）
-  const toYmd = (dt: Date | null): string | null =>
-    dt ? dt.toISOString().slice(0, 10) : null;
+  // Date → "YYYY-MM-DD"（KPIの月帰属と同じく日本時間の暦日で表記する）
+  const toYmd = (dt: Date | null): string | null => (dt ? jstYmd(dt) : null);
 
   for (const d of wonDeals) {
     const { date: bd, source: bookedSource } = bookedDateOf(d);
@@ -849,7 +853,8 @@ export async function getMonthlyKpiBases(
   // FY全体を1回で取り、メモリ上で月別に振り分ける
   const fyStart = getFiscalMonth(startMonth, fy, 0);
   const fyEnd = getFiscalMonth(startMonth, fy, 11);
-  const rangeStart = new Date(Date.UTC(fyStart.year, fyStart.month - 1, 1, 0, 0, 0));
+  // 日本時間の暦日で月へ振り分けるため、開始は日本時間 0:00 に保存された値を含むよう9時間前から取る。
+  const rangeStart = new Date(Date.UTC(fyStart.year, fyStart.month - 1, 1, 0, 0, 0) - JST_LOOKBACK_MS);
   const rangeEnd = new Date(Date.UTC(fyEnd.year, fyEnd.month, 0, 23, 59, 59));
   // FY内12ヶ月の暦年月。MS週次実績（暦年月で持つ）の絞り込みに使う。
   const fyMonths = Array.from({ length: 12 }, (_, i) => getFiscalMonth(startMonth, fy, i));
@@ -857,9 +862,19 @@ export async function getMonthlyKpiBases(
   const [wonDeals, dealCountDeals, entries, msEntries] = await Promise.all([
     // 受注件数（受注計上日ベース）
     prisma.deal.findMany({
-      where: { ...where, contractDate: { gte: rangeStart, lte: rangeEnd } },
+      where: {
+        ...where,
+        products: { some: { OR: [{ yomiStatus: { contains: "受注" } }, { yomiStatus: { contains: "締結済み" } }] } },
+        OR: [
+          { contractDate: { gte: rangeStart, lte: rangeEnd } },
+          { contractDate: null, appointmentDate: { gte: rangeStart, lte: rangeEnd } },
+          { contractDate: null, appointmentDate: null, bantUpdatedAt: { gte: rangeStart, lte: rangeEnd } },
+        ],
+      },
       select: {
         contractDate: true,
+        appointmentDate: true,
+        bantUpdatedAt: true,
         products: { select: { amount: true, yomiStatus: true } },
       },
     }),
@@ -894,11 +909,12 @@ export async function getMonthlyKpiBases(
         }),
   ]);
 
-  // 会計年度内の月インデックス（0〜11）。範囲外は -1。
-  const monthIndexOf = (d: Date): number => {
+  // 会計年度内の月インデックス（0〜11。日本時間の暦月）。範囲外は -1。
+  const monthIndexOf = (d: Date | string): number => {
+    const { year, month } = typeof d === "string" ? { year: Number(d.slice(0, 4)), month: Number(d.slice(5, 7)) } : jstCalendarParts(d);
     for (let i = 0; i < 12; i++) {
       const fm = getFiscalMonth(startMonth, fy, i);
-      if (d.getUTCFullYear() === fm.year && d.getUTCMonth() + 1 === fm.month) return i;
+      if (year === fm.year && month === fm.month) return i;
     }
     return -1;
   };
@@ -920,8 +936,9 @@ export async function getMonthlyKpiBases(
     bases[idx].revenue += e.amount;
   }
   for (const d of wonDeals) {
-    if (!d.contractDate) continue;
-    const idx = monthIndexOf(d.contractDate);
+    const day = bookedDay(d);
+    if (!day) continue;
+    const idx = monthIndexOf(day);
     if (idx < 0) continue;
     const products = d.products as DealProductLite[];
     if (!isWonDeal(products)) continue;

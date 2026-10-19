@@ -2,6 +2,8 @@
 // 全社設定（Luma版）
 // ============================================================
 
+import { jstCalendarParts } from "@/lib/calendar-date";
+
 /**
  * 会計年度の開始月は会社ごとに異なるため、定数ではなく引数で受け取る。
  *   株式会社Luma     … 6（6月始まり・5月決算）
@@ -20,17 +22,18 @@
 // 会計年度ヘルパー
 // ============================================================
 
+// 「今月・今期」は日本時間の暦日で決める（KPI の月・週への振り分けと同じ。src/lib/calendar-date.ts）。
+
 /** 指定日が属する会計年度（FY2026 等の数字部分）を返す */
 export function getFiscalYear(startMonth: number, date: Date = new Date()): number {
-  const m = date.getUTCMonth() + 1; // 1〜12
-  const y = date.getUTCFullYear();
+  const { year: y, month: m } = jstCalendarParts(date); // m: 1〜12
   // 開始月以降ならその年がFY、開始月より前なら前年がFY
   return m >= startMonth ? y : y - 1;
 }
 
 /** 指定日が属する会計年度の四半期（1〜4） */
 export function getFiscalQuarter(startMonth: number, date: Date = new Date()): number {
-  const m = date.getUTCMonth() + 1;
+  const m = jstCalendarParts(date).month;
   const offset = (m - startMonth + 12) % 12; // 0〜11
   return Math.floor(offset / 3) + 1;
 }
@@ -68,7 +71,7 @@ export function getFiscalMonth(startMonth: number, fy: number, monthIndex: numbe
 
 /** 指定日が会計年度の中で何ヶ月目か（0〜11） */
 export function getFiscalMonthIndex(startMonth: number, date: Date = new Date()): number {
-  const m = date.getUTCMonth() + 1;
+  const m = jstCalendarParts(date).month;
   return (m - startMonth + 12) % 12;
 }
 
@@ -99,8 +102,8 @@ export function currentFiscalQuarterPeriod(startMonth: number): string {
 
 /** 現在の月次 period ラベル（暦月） */
 export function currentMonthPeriod(): string {
-  const now = new Date();
-  return monthPeriodLabel(now.getUTCFullYear(), now.getUTCMonth() + 1);
+  const { year, month } = jstCalendarParts(new Date());
+  return monthPeriodLabel(year, month);
 }
 
 /** 会計年度の表示用ラベル

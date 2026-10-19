@@ -8,7 +8,7 @@
  * （未設定時のみ appointmentDate→bantUpdatedAt にフォールバック）、
  * ここで contractDate を書き換えると、その案件が別の月へ移動し KPI 数値が再計算される。
  *
- *   - 保存: PATCH /api/deals/[id]  body: { contractDate: ISO文字列 | null }
+ *   - 保存: PATCH /api/deals/[id]  body: { contractDate: その暦日の UTC 0:00 の ISO 文字列 | null }
  *   - 保存後 router.refresh() で KPI 集計（月次セル/カード一覧/年間KGI）をサーバー再取得して即反映する。
  *
  * 注意：保存に成功すると、計上月が変わった場合この案件は今開いている月のカードから消える
@@ -19,6 +19,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { DateInput } from "@/components/ui/date-input";
 import { Button } from "@/components/ui/button";
+import { dateOnlyInputToIso } from "@/lib/calendar-date";
 import { CalendarCheck2, Check, X, Pencil, Loader2, AlertTriangle } from "lucide-react";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -61,10 +62,13 @@ export function WonDealContractDateEditor({
 
   function save() {
     setError(null);
-    // 空 → null（未設定に戻す）。値あり → JST 0時の ISO に変換（他の日付編集と同じ流儀）
-    const iso = draft.trim()
-      ? new Date(`${draft.trim()}T00:00:00+09:00`).toISOString()
-      : null;
+    // 空 → null（未設定に戻す）。値あり → その暦日の UTC 0:00（商談画面の日付欄・本日でセット・受注時の自動設定と同じ形）。
+    // KPI はこの値を日本時間の暦日で月へ振り分ける（src/lib/calendar-date.ts）。
+    const iso = draft.trim() ? dateOnlyInputToIso(draft) : null;
+    if (draft.trim() && !iso) {
+      setError("日付を正しく入力してください（例: 2026-10-01）");
+      return;
+    }
     start(async () => {
       try {
         const res = await fetch(`/api/deals/${dealId}`, {

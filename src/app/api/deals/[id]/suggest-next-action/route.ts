@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { callClaudeJSON } from "@/lib/ai/anthropic";
 import { JP_JSON_TEXT_STYLE_RULE } from "@/lib/ai/text-style";
+import { toJstDateStr } from "@/lib/meeting-datetime";
+import { requireWriter } from "@/lib/write-guard";
 
 export const maxDuration = 30;
 
@@ -12,6 +14,9 @@ interface Suggestion {
 }
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  // 書き込み・AI 呼び出し・外部取得は、操作中の会社で利用者以上（閲覧のみ・全社統合ビューは 403）
+  const denied = await requireWriter();
+  if (denied) return denied;
   const { id } = await params;
   const deal = await prisma.deal.findUnique({
     where: { id },
@@ -66,7 +71,7 @@ ${deal.meetings[0]?.minutes ?? "なし"}
 ${deal.tasks.map((t) => `- ${t.title}`).join("\n") || "なし"}
 
 # 今日
-${today.toISOString().slice(0, 10)}
+${toJstDateStr(today)}
 
 JSONのみ出力。`;
 
@@ -95,7 +100,8 @@ JSONのみ出力。`;
             : deal.status === "NEGOTIATION"
               ? "条件合意のため、契約ドラフトを48時間以内に先方に送付"
               : "契約書最終版の社内承認を取り、本日中に先方へ返送",
-    next_action_at: target.toISOString().slice(0, 10),
+    // 画面側は JST の暦日として保存する（UTC の日付だと JST 0:00〜8:59 に1日早くなる）
+    next_action_at: toJstDateStr(target),
     reason: "ステータスに応じた標準アクション（AIキー未設定のためフォールバック）",
   };
   return NextResponse.json({ suggestion: fallback, fallback: true });

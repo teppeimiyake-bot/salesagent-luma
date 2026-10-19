@@ -6,7 +6,7 @@ import { CompanyTabs } from "@/components/companies/company-tabs";
 import { NextActionsSummary } from "@/components/companies/next-actions-summary";
 import { DeleteButton } from "@/components/shared/delete-button";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 import { ArrowLeft } from "lucide-react";
 import {
   totalProposedAmount,
@@ -22,10 +22,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const session = await getSession();
   const me = session
-    ? await prisma.user.findUnique({
-        where: { id: session.userId },
-        select: { permission: true },
-      })
+    ? { permission: await getCurrentPermission() }
     : null;
   const canEdit = hasPermission(me?.permission, "user");
   const ctx = await getRequestTenant();
@@ -100,6 +97,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
       <div className="flex-1 overflow-y-auto p-6 bg-zinc-50 space-y-5">
         <CompanyHero
           company={company}
+          canEdit={canEdit}
           stats={{
             proposedAmount,
             wonAmount,
@@ -108,7 +106,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
           }}
         />
         <NextActionsSummary deals={company.deals} />
-        <CompanyTabs company={company} />
+        <CompanyTabs company={company} canEdit={canEdit} />
       </div>
     </>
   );

@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 import crypto from "node:crypto";
 import { putFile, StorageConfigError } from "@/lib/storage";
+import { currentTenant, getRequestTenant } from "@/lib/tenant-context";
+import {
+  DOCUMENT_UPLOAD_BODY_MARGIN_BYTES,
+  DOCUMENT_UPLOAD_MAX_BYTES,
+  documentTooLargeMessage,
+} from "@/lib/document-upload";
+import { writeForbidden } from "@/lib/write-guard";
 
 const META_SCHEMA = z.object({
   name: z.string().min(1),
@@ -21,6 +28,9 @@ const META_SCHEMA = z.object({
 const ADMIN_ONLY_CATEGORIES = new Set(["contract"]);
 
 export async function GET(req: Request) {
+  // middleware を大容量の資料の添付のためバイパスしているので、ここで認証する（src/middleware.ts の matcher）
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const url = new URL(req.url);
   const category = url.searchParams.get("category");
   const scope = url.searchParams.get("scope");
@@ -38,20 +48,48 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  // middleware を大容量の資料の添付のためバイパスしているので、ここで認証する（src/middleware.ts の matcher）
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const me = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { permission: true },
-  });
-  if (me?.permission === "viewer") {
-    return NextResponse.json({ error: "Forbidden: viewer cannot upload" }, { status: 403 });
+  // 全社統合ビューは読み取り専用（Prisma Extension が書き込みを例外にするため、そのままだと 500 になる）
+  const tenant = currentTenant() ?? (await getRequestTenant());
+  if (tenant?.crossTenant) {
+    return NextResponse.json(
+      { error: "全社統合ビューでは資料を追加できません。会社を Luma / リージー のいずれかに切り替えてから操作してください。" },
+      { status: 403 },
+    );
+  }
+  // 操作中の会社での権限（全社共通の User.permission ではない）。閲覧のみ・権限が取れないときは追加できない。
+  const me = { permission: await getCurrentPermission() };
+  if (!hasPermission(me.permission, "user")) {
+    return await writeForbidden();
   }
 
   const ct = req.headers.get("content-type") ?? "";
 
   if (ct.startsWith("multipart/form-data")) {
-    const form = await req.formData();
+    // 上限を大きく超える本文は読まずに断る（Cloud Run の上限32MiB以内でも、メモリに全部載せない）
+    const contentLength = Number(req.headers.get("content-length") ?? "");
+    if (Number.isFinite(contentLength) && contentLength > DOCUMENT_UPLOAD_MAX_BYTES + DOCUMENT_UPLOAD_BODY_MARGIN_BYTES) {
+      return NextResponse.json({ error: documentTooLargeMessage(), code: "DOCUMENT_TOO_LARGE" }, { status: 413 });
+    }
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch (e) {
+      console.error("[api/documents] formData parse failed:", {
+        message: (e as Error)?.message,
+        contentLength: req.headers.get("content-length"),
+        contentType: ct,
+      });
+      return NextResponse.json(
+        {
+          error: "アップロードデータを読み取れませんでした。通信が途中で切れた可能性があります。ファイルを選び直して、もう一度お試しください。",
+          code: "INVALID_MULTIPART",
+        },
+        { status: 400 },
+      );
+    }
     const name = String(form.get("name") ?? "");
     const category = String(form.get("category") ?? "other");
     const scope = String(form.get("scope") ?? "global");
@@ -62,6 +100,9 @@ export async function POST(req: Request) {
     const tags = tagsRaw.split(",").map((t) => t.trim()).filter(Boolean);
     const file = form.get("file") as File | null;
     if (!name || !file) return NextResponse.json({ error: "name and file required" }, { status: 400 });
+    if (file.size > DOCUMENT_UPLOAD_MAX_BYTES) {
+      return NextResponse.json({ error: documentTooLargeMessage(file.size), code: "DOCUMENT_TOO_LARGE" }, { status: 413 });
+    }
 
     if (ADMIN_ONLY_CATEGORIES.has(category) && !hasPermission(me?.permission, "admin")) {
       return NextResponse.json(

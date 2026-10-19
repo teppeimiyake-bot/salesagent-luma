@@ -5,6 +5,8 @@ import { DealStatus } from "@prisma/client";
 import { probabilityToYomi } from "@/lib/deal-aggregations";
 import { buildDealTitle } from "@/lib/deal-title";
 import { runAsUserTenant } from "@/lib/tenant-context";
+import { getCurrentPermission, hasPermission } from "@/lib/auth";
+import { writeForbidden } from "@/lib/write-guard";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -104,6 +106,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ deal: result });
   }
 
+  // 会社の指定なし（所属1社のとき・画面で選択中の会社）は、操作中の会社での権限で判定する。
+  // 閲覧のみ（全社統合ビューを含む）は作成できない。
+  if (!hasPermission(await getCurrentPermission(), "user")) {
+    return await writeForbidden();
+  }
   const deal = await createDeal(dealData, initialProduct);
   return NextResponse.json({ deal });
 }

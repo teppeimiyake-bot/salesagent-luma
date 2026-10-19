@@ -4,6 +4,7 @@ import { getCurrentPermission, hasPermission } from "@/lib/auth";
 import { suggestQuoteAmount } from "@/lib/quote-suggest";
 import { prisma } from "@/lib/db";
 import { categoryFromDealProduct } from "@/lib/product-categories";
+import { writeForbidden } from "@/lib/write-guard";
 
 /**
  * POST /api/quotes/suggest
@@ -21,7 +22,7 @@ const schema = z.object({
 export async function POST(req: Request) {
   const perm = await getCurrentPermission();
   if (!hasPermission(perm, "user")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return await writeForbidden();
   }
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);

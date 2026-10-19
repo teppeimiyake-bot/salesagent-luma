@@ -1,3 +1,5 @@
+import { vertexTranscribeWithMetrics } from "./vertex-audio";
+import { VertexError } from "./vertex-policy";
 /**
  * 音声書き起こし・埋め込みラッパ（プロバイダ抽象）
  *
@@ -13,7 +15,7 @@
 
 import OpenAI from "openai";
 import fs from "node:fs";
-import { geminiTranscribe, geminiEmbed } from "./gemini";
+import { geminiEmbed, geminiTranscribe, geminiTranscribeWithMetrics } from "./gemini";
 import { getTextProvider, hasOpenAiKey } from "./provider";
 
 const transcribeModel = process.env.OPENAI_TRANSCRIBE_MODEL ?? "whisper-1";
@@ -63,10 +65,36 @@ async function openaiEmbed(text: string): Promise<number[] | null> {
  */
 export async function transcribeFile(filepath: string): Promise<string | null> {
   const provider = getTextProvider();
+  if (provider === "vertex") return (await vertexTranscribeWithMetrics(filepath)).text;
   if (provider === "anthropic") {
     return openaiTranscribe(filepath);
   }
   return geminiTranscribe(filepath);
+}
+
+export async function transcribeFileWithMetrics(filepath: string) {
+  const provider = getTextProvider();
+  if (provider === "vertex") return vertexTranscribeWithMetrics(filepath);
+  if (provider === "gemini") return geminiTranscribeWithMetrics(filepath);
+
+  const started = new Date();
+  const inputBytes = (await fs.promises.stat(filepath)).size;
+  const text = await openaiTranscribe(filepath);
+  const completed = new Date();
+  return {
+    text,
+    metrics: {
+      provider: "openai",
+      model: transcribeModel,
+      inputMode: "audio_api",
+      inputBytes,
+      mimeType: "unknown",
+      startedAt: started.toISOString(),
+      completedAt: completed.toISOString(),
+      elapsedMs: completed.getTime() - started.getTime(),
+      usage: null,
+    },
+  };
 }
 
 /**
@@ -75,6 +103,7 @@ export async function transcribeFile(filepath: string): Promise<string | null> {
  */
 export async function embed(text: string): Promise<number[] | null> {
   const provider = getTextProvider();
+  if (provider === "vertex") throw new VertexError("embedding_disabled", "埋め込み機能は今回のAI接続検証の対象外です。");
   if (provider === "anthropic") {
     return openaiEmbed(text);
   }

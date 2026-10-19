@@ -24,7 +24,7 @@ import { Plus } from "lucide-react";
 
 type Deal = { id: string; productName: string; company: { name: string } };
 
-export function NewTaskDialog({ defaultDealId }: { defaultDealId?: string } = {}) {
+export function NewTaskDialog({ defaultDealId, canEdit = true }: { defaultDealId?: string; canEdit?: boolean } = {}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -66,6 +66,9 @@ export function NewTaskDialog({ defaultDealId }: { defaultDealId?: string } = {}
       router.refresh();
     }
   }
+
+  // 閲覧のみ（操作中の会社での権限）では ToDo を追加できないので、ボタンを出さない
+  if (!canEdit) return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

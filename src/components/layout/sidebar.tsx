@@ -1,10 +1,13 @@
 "use client";
 import Link from "next/link";
+import { useState } from "react";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { TenantTabs, ALL_TENANTS_CODE } from "@/components/layout/tenant-tabs";
 import type { MyTenant } from "@/lib/tenant-context";
 import {
+  Menu,
   LayoutDashboard,
   Briefcase,
   Building2,
@@ -32,6 +35,8 @@ import {
   ClipboardCheck,
   Bot,
   Camera,
+  FileText,
+  FileCog,
 } from "lucide-react";
 
 const baseGroups = [
@@ -78,6 +83,10 @@ const adminGroup = {
     { href: "/admin/agent-candidates", label: "リスト作成AI 候補", icon: ClipboardCheck, color: "text-indigo-500", activeBg: "bg-indigo-500" },
     { href: "/admin/industries", label: "業種", icon: Tag, color: "text-emerald-500", activeBg: "bg-emerald-500" },
     { href: "/admin/pipeline-stages", label: "商談プロセス", icon: GitBranch, color: "text-violet-500", activeBg: "bg-violet-500" },
+    // T17: 見積テンプレート（FEATURE_QUOTE_PDF_V2 がONのときだけ表示）
+    { href: "/admin/quote-templates", label: "見積テンプレート", icon: FileText, color: "text-amber-600", activeBg: "bg-amber-600", quoteV2Only: true },
+    // T14: 見積書の発行者設定（社名・住所・ロゴ・採番・備考。見積テンプレートと同じく FEATURE_QUOTE_PDF_V2 がONのときだけ表示）
+    { href: "/admin/quote-settings", label: "見積書の発行者設定", icon: FileCog, color: "text-amber-600", activeBg: "bg-amber-600", quoteV2Only: true },
     { href: "/admin/pm-staff", label: "PMスタッフ", icon: Users2, color: "text-rose-400", activeBg: "bg-rose-400" },
     { href: "/admin/users", label: "ユーザー権限", icon: Shield, color: "text-red-500", activeBg: "bg-red-500" },
     { href: "/admin/company-merges", label: "企業統合", icon: Merge, color: "text-teal-500", activeBg: "bg-teal-600" },
@@ -145,13 +154,17 @@ export function Sidebar({
   tenants = [],
   activeTenantCode = "luma",
   canViewAllTenants = false,
+  quoteTemplatesEnabled = false,
 }: {
   user: { name: string; email: string; avatarColor: string | null; avatarUrl?: string | null; permission: string } | null;
   tenants?: MyTenant[];
   activeTenantCode?: string;
   canViewAllTenants?: boolean;
+  /** 見積テンプレート管理（T17）をメニューに出すか＝FEATURE_QUOTE_PDF_V2 の状態 */
+  quoteTemplatesEnabled?: boolean;
 }) {
   const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
   const router = useRouter();
   const brand = BRAND[activeTenantCode] ?? BRAND.luma;
   const isAdmin = user?.permission === "admin";
@@ -165,7 +178,12 @@ export function Sidebar({
       return true;
     }),
   }));
-  const groups = isAdmin ? [...visibleBaseGroups, adminGroup] : visibleBaseGroups;
+  // フラグOFFの機能（見積テンプレート）は管理者にもメニューに出さない
+  const visibleAdminGroup = {
+    ...adminGroup,
+    items: adminGroup.items.filter((it) => !("quoteV2Only" in it && it.quoteV2Only) || quoteTemplatesEnabled),
+  };
+  const groups = isAdmin ? [...visibleBaseGroups, visibleAdminGroup] : visibleBaseGroups;
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -173,8 +191,8 @@ export function Sidebar({
     router.refresh();
   }
 
-  return (
-    <aside className="w-72 shrink-0 border-r border-zinc-200 bg-gradient-to-b from-white to-zinc-50 flex flex-col">
+  const sidebar = (
+    <aside className="h-full w-72 shrink-0 border-r border-zinc-200 bg-gradient-to-b from-white to-zinc-50 flex flex-col">
       <div className={cn("px-5 py-5 border-b border-zinc-200 bg-gradient-to-br", brand.gradient)}>
         <div className="text-[10px] font-semibold tracking-widest text-white/80 uppercase mb-1.5">
           {brand.corporateName}
@@ -279,4 +297,22 @@ export function Sidebar({
       </div>
     </aside>
   );
+  // 狭い幅（md 未満）ではどのページでも常設サイドバーを隠し、左上のボタンから開くドロワーに切り替える。
+  // md 以上は従来どおり常設（見た目は変えない）。以前は商談ページだけがこの切り替えの対象だった。
+  return <>
+    <div className="hidden shrink-0 md:block">{sidebar}</div>
+    <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+      <DialogTrigger asChild>
+        <button type="button" aria-label="ナビゲーションを開く" className="fixed left-3 top-4 z-40 rounded-md border border-zinc-200 bg-white p-2 md:hidden">
+          <Menu className="h-5 w-5" />
+        </button>
+      </DialogTrigger>
+      <DialogContent aria-describedby={undefined} className="left-0 top-0 h-dvh w-72 max-w-[85vw] translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-none p-0">
+        <DialogTitle className="sr-only">ナビゲーション</DialogTitle>
+        <div className="min-h-0 h-full" onClickCapture={event => {
+          if ((event.target as HTMLElement).closest("a")) setMobileOpen(false);
+        }}>{sidebar}</div>
+      </DialogContent>
+    </Dialog>
+  </>;
 }

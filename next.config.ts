@@ -6,6 +6,15 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  // middleware/proxy があるとリクエストボディがバッファされる。
+  // デフォルト 10MB だと画面録画(mp4)が途中切断され、POST /api/meetings が 500 になる。
+  experimental: {
+    // 他 API 向け。大容量の POST /api/meetings は middleware matcher 除外でバッファ回避。
+    proxyClientMaxBodySize: "1024mb",
+    serverActions: {
+      bodySizeLimit: "1024mb",
+    },
+  },
   // Vercel 本番では <project>.public.blob.vercel-storage.com から画像を読み込むため
   // next/image を使う場合に備えてリモートホストを許可しておく。
   images: {

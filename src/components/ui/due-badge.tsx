@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Calendar, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { daysUntil } from "@/lib/due-date";
+import { daysUntil, jstMonthDayLabel } from "@/lib/due-date";
 
 /** 期日バッジ。今日／期限超過／明日／今週／その先 で色分け */
 export function DueBadge({
@@ -17,7 +17,6 @@ export function DueBadge({
   if (!date) {
     return <span className={cn("text-zinc-400 inline-flex items-center gap-1", className)}>期日未設定</span>;
   }
-  const d = new Date(date);
   // 期日判定（超過/今日/未来までの日数）は純粋ユーティリティに集約
   const diffDays = daysUntil(date) ?? 0;
 
@@ -53,7 +52,8 @@ export function DueBadge({
             ? `${diffDays}日後`
             : `${Math.floor(diffDays / 7)}週間後`;
 
-  const sub = `${d.getMonth() + 1}/${d.getDate()}`;
+  // 日付はJST固定で表示（サーバーのTZに依存させると hydration mismatch になる）
+  const sub = jstMonthDayLabel(date);
 
   const Icon = done ? CheckCircle2 : diffDays <= 1 ? AlertTriangle : Calendar;
 

@@ -18,8 +18,10 @@ type Permission = "admin" | "user" | "viewer";
 
 export function UserMenu({
   user,
+  compactOnMobile = false,
 }: {
   user: { name: string; email: string; avatarColor: string | null; avatarUrl?: string | null; permission: Permission };
+  compactOnMobile?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -53,6 +55,7 @@ export function UserMenu({
     <>
       <div className="relative" ref={ref}>
         <button
+          aria-label={`${user.name}のユーザーメニュー`}
           onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-2 rounded-md hover:bg-zinc-100 px-2 py-1 transition-colors"
         >
@@ -71,14 +74,14 @@ export function UserMenu({
               {user.name.charAt(0)}
             </div>
           )}
-          <div className="text-left">
+          <div className={compactOnMobile ? "hidden text-left xl:block" : "hidden text-left md:block"}>
             <p className="text-xs font-semibold leading-tight">{user.name}</p>
             <Badge variant={permVariant} className="text-[9px] px-1.5 py-0">
               {permLabel}
             </Badge>
           </div>
           <ChevronDown
-            className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`}
+            className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${compactOnMobile ? "hidden xl:block" : "hidden md:block"} ${open ? "rotate-180" : ""}`}
           />
         </button>
         {open && (
@@ -173,6 +176,7 @@ function NameChangeDialog({
   // ダイアログを開いた時に最新の表示名で初期化
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(currentName);
       setError(null);
       setSuccess(false);

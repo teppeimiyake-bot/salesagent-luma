@@ -44,7 +44,8 @@ type Stats = {
   contacts: number;
 };
 
-export function CompanyHero({ company, stats }: { company: Company; stats: Stats }) {
+export function CompanyHero({ company, stats, canEdit = true }: { company: Company; stats: Stats; canEdit?: boolean }) {
+  // 閲覧のみ（操作中の会社での権限）では、ロゴの取得（外部取得）と会社情報の編集を出さない（API も 403 で止める）
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [v, setV] = useState({
@@ -99,7 +100,7 @@ export function CompanyHero({ company, stats }: { company: Company; stats: Stats
             size="xl"
             className="border-2 border-white/40 shadow-xl"
           />
-          {company.websiteUrl && (
+          {canEdit && company.websiteUrl && (
             <button
               onClick={fetchLogo}
               disabled={fetchingLogo}
@@ -120,6 +121,7 @@ export function CompanyHero({ company, stats }: { company: Company; stats: Stats
             <Stat icon={Wallet} label="累計受注" value={formatJPY(stats.wonAmount)} highlight />
           </div>
         </div>
+        {canEdit && (
         <Button
           variant="secondary"
           size="sm"
@@ -129,6 +131,7 @@ export function CompanyHero({ company, stats }: { company: Company; stats: Stats
           {editing ? <X className="h-4 w-4" /> : <Edit3 className="h-4 w-4" />}
           {editing ? "閉じる" : "編集"}
         </Button>
+        )}
       </div>
 
       {/* 基本情報グリッド */}

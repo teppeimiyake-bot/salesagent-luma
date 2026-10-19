@@ -5,7 +5,7 @@ import { OwnerTabs } from "@/components/deals/owner-tabs";
 import { TodoStatusTabs } from "@/components/todos/todo-status-tabs";
 import { NewTaskDialog } from "@/components/todos/new-task-dialog";
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { getCurrentPermission, getSession, hasPermission } from "@/lib/auth";
 import { getSalesUsers } from "@/lib/queries";
 import { excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
 import { TaskStatus } from "@prisma/client";
@@ -20,6 +20,8 @@ export default async function TodosPage({
   searchParams: Promise<{ owner?: string; status?: string }>;
 }) {
   const session = await getSession();
+  // ToDo の追加・完了・削除は、操作中の会社で利用者以上（閲覧のみでは出さない・無効にする）
+  const canEdit = hasPermission(await getCurrentPermission(), "user");
   const sp = await searchParams;
   // URLに owner が無ければ「自分」、"all"=全員、"me"=自分、その他=個別ユーザーID
   const ownerParam = sp.owner ?? "me";
@@ -202,7 +204,7 @@ export default async function TodosPage({
 
   return (
     <>
-      <Header title="ToDo" subtitle={subtitle} right={<NewTaskDialog />} />
+      <Header title="ToDo" subtitle={subtitle} right={canEdit ? <NewTaskDialog /> : null} />
       <div className="px-8 py-3 border-b border-zinc-200 bg-white space-y-3">
         <OwnerTabs users={users} currentUserId={session?.userId ?? ""} selected={ownerParam} />
         <TodoStatusTabs
@@ -217,7 +219,7 @@ export default async function TodosPage({
       <div className="flex-1 overflow-y-auto p-6 bg-zinc-50">
         <Card>
           <CardContent className="p-0">
-            <TasksAllList tasks={merged} />
+            <TasksAllList tasks={merged} canEdit={canEdit} />
           </CardContent>
         </Card>
       </div>

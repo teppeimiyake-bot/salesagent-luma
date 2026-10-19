@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession, getCurrentPermission, hasPermission } from "@/lib/auth";
 import { generateContractDraft } from "@/lib/contract-generate";
+import { writeForbidden } from "@/lib/write-guard";
 
 export const maxDuration = 60;
 
@@ -12,7 +13,7 @@ export const maxDuration = 60;
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const perm = await getCurrentPermission();
   if (!hasPermission(perm, "user")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return await writeForbidden();
   }
   const { id } = await params;
   const force = new URL(req.url).searchParams.get("force") === "1";

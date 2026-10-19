@@ -274,6 +274,7 @@ export function AgentWorkspace({
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadOverview();
   }, [loadOverview]);
 
@@ -289,8 +290,11 @@ export function AgentWorkspace({
     <div className="flex h-full flex-col bg-[#fafafa]">
       {/* ヘッダー：タイトル + セグメントタブ */}
       <header className="shrink-0 border-b border-zinc-200/80 bg-white/90 backdrop-blur-xl">
-        <div className="flex items-center justify-between gap-4 px-6 py-3">
-          <div className="flex min-w-0 items-center gap-3">
+        {/* md 未満はサイドバーが左上の固定ボタン（fixed left-3 top-4）に畳まれるので左に余白を空け、
+            タイトル・タブ・台帳リンクが1行に収まらない幅（xl 未満。md〜lg もサイドバー込みで本文が約500〜750px）では
+            タブを2行目に回して横スクロールにする。xl 以上は従来どおり1行。 */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3 pl-14 pr-3 md:px-6 xl:flex-nowrap">
+          <div className="flex min-w-0 flex-1 items-center gap-3 xl:flex-none">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 shadow-sm">
               <Bot className="h-5 w-5 text-white" />
             </div>
@@ -298,10 +302,10 @@ export function AgentWorkspace({
               <h1 className="truncate text-[15px] font-semibold tracking-tight text-zinc-900">
                 リスト作成AI
               </h1>
-              <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+              <div className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11px] text-zinc-500">
                 <span
                   className={cn(
-                    "inline-block h-1.5 w-1.5 rounded-full",
+                    "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
                     !proxyConfigured
                       ? "bg-zinc-300"
                       : running
@@ -321,7 +325,7 @@ export function AgentWorkspace({
           </div>
 
           {/* セグメントコントロール */}
-          <div className="flex items-center rounded-xl bg-zinc-100 p-1">
+          <div data-testid="agent-tabs" className="order-last flex w-full items-center overflow-x-auto rounded-xl bg-zinc-100 p-1 xl:order-none xl:w-auto xl:overflow-visible">
             {tabs.map((t) => {
               const Icon = t.icon;
               const active = tab === t.key;
@@ -330,7 +334,7 @@ export function AgentWorkspace({
                   key={t.key}
                   onClick={() => setTab(t.key)}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-all duration-200",
+                    "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-all duration-200",
                     active
                       ? "bg-white text-zinc-900 shadow-sm"
                       : "text-zinc-500 hover:text-zinc-800",
@@ -348,7 +352,7 @@ export function AgentWorkspace({
             href={LEDGER_SHEET_URL}
             target="_blank"
             rel="noreferrer"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[13px] font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50"
+            className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[13px] font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50"
           >
             <Table2 className="h-3.5 w-3.5" />
             営業台帳を開く
@@ -356,6 +360,19 @@ export function AgentWorkspace({
           </a>
         </div>
       </header>
+
+      <div
+        data-testid="uat-generation-hold-notice"
+        className="flex shrink-0 items-start gap-2 border-b border-amber-200 bg-amber-50 px-6 py-2.5 text-amber-900"
+      >
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+        <div>
+          <p className="text-[13px] font-semibold">UAT開始連絡までは生成・実行しないでください</p>
+          <p className="text-[12px] leading-relaxed">
+            「触ってよい」の別連絡が届くまでは、生成・実行ボタンを押さないでください。
+          </p>
+        </div>
+      </div>
 
       {/* コンテンツ（ワークスペースは SSE 維持のためタブ切替でもアンマウントしない） */}
       <div className="relative flex-1 overflow-hidden">
@@ -546,6 +563,7 @@ function RunPanel({
 
   useEffect(() => {
     if (!proxyConfigured) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void boot();
     return () => {
       esRef.current?.close();
@@ -975,10 +993,10 @@ function RunPanel({
     <div className="mx-auto max-w-4xl px-6 py-8">
       <div className="mb-7">
         <h2 className="text-xl font-bold tracking-tight text-zinc-900">
-          新しいリスト作成
+          新しい問い合わせ候補を作成
         </h2>
         <p className="mt-1 text-sm text-zinc-500">
-          収集先とモードを選んで実行すると、会社リストの生成から公式HP・連絡先の解決までを自動で行います。
+          収集先とモードを選んで実行すると、問い合わせ先候補の生成から公式HP・連絡先の解決までを自動で行います。
         </p>
       </div>
 
@@ -1340,6 +1358,7 @@ function HistoryPanel() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 
@@ -1436,7 +1455,7 @@ function HistoryPanel() {
           <h2 className="text-xl font-bold tracking-tight text-zinc-900">
             実行履歴
           </h2>
-          <p className="mt-1 text-sm text-zinc-500">過去のリスト作成の実行結果</p>
+          <p className="mt-1 text-sm text-zinc-500">過去の問い合わせ候補収集の実行結果</p>
         </div>
         <button
           onClick={load}
@@ -1742,6 +1761,7 @@ function CandidatesPanel({
   }, [filter]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 

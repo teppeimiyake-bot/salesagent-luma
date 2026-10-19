@@ -10,8 +10,9 @@
  *   - 運用費用 = 月額・割賦／契約月数
  */
 import React from "react";
-import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, View, StyleSheet } from "@react-pdf/renderer";
 import { PDF_FONT_FAMILY } from "./fonts";
+import { Text } from "./text"; // 日本語の折り返しで「-」を足さない Text（text.tsx）
 import { LUMA_COMPANY } from "@/lib/company-profile";
 import { groupDigits } from "./format";
 

@@ -30,7 +30,17 @@ type User = {
   avatarColor: string | null;
 };
 
-export function UsersAdmin({ initial, currentUserId }: { initial: User[]; currentUserId: string }) {
+export function UsersAdmin({
+  initial,
+  currentUserId,
+  readOnlyReason = null,
+}: {
+  initial: User[];
+  currentUserId: string;
+  /** 全社統合ビューなど、追加・変更・削除できないときの理由。あれば操作を無効にして理由を出す。 */
+  readOnlyReason?: string | null;
+}) {
+  const readOnly = !!readOnlyReason;
   const router = useRouter();
   const [users, setUsers] = useState(initial);
   const [pending, start] = useTransition();
@@ -50,15 +60,23 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
   const [editing, setEditing] = useState<{ id: string; field: "email" | "name" | "nameKana" } | null>(null);
   const [draft, setDraft] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
+  // 役職・権限の変更に失敗したときの理由（以前は何も出ず、変わらないだけに見えた）
+  const [patchError, setPatchError] = useState<string | null>(null);
 
   function patch(id: string, payload: Record<string, unknown>) {
+    if (readOnly) return;
+    setPatchError(null);
     start(async () => {
       const r = await fetch(`/api/users/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const j = await r.json();
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setPatchError(typeof j.error === "string" ? j.error : `更新に失敗しました（HTTP ${r.status}）`);
+        return;
+      }
       if (j.user) {
         setUsers((u) => u.map((x) => (x.id === id ? j.user : x)));
         router.refresh();
@@ -67,7 +85,7 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
   }
 
   function commitEdit() {
-    if (!editing) return;
+    if (!editing || readOnly) return;
     const value = draft.trim();
     // フリガナは空でも可（未設定に戻せる）。氏名/メールは空不可。
     if (!value && editing.field !== "nameKana") {
@@ -131,7 +149,7 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
   }
 
   function confirmDelete() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || readOnly) return;
     setDeleteError(null);
     setDeleteResult(null);
     const targetId = deleteTarget.id;
@@ -155,18 +173,29 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
 
   return (
     <>
+      {readOnlyReason && (
+        <div className="mb-3 text-sm rounded border border-amber-200 bg-amber-50 text-amber-800 px-3 py-2">
+          {readOnlyReason}
+        </div>
+      )}
+      {patchError && (
+        <div role="alert" className="mb-3 text-sm rounded border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2">
+          {patchError}
+        </div>
+      )}
       <div className="divide-y divide-zinc-100">
         {users.map((u) => {
           const self = u.id === currentUserId;
           return (
-            <div key={u.id} className="py-3 flex items-center gap-4">
+            // 狭い幅（スマホ）では、名前の欄を最低 12rem 確保し、役職・権限・削除は次の行に折り返す
+            <div key={u.id} className="py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
               <div
-                className="w-10 h-10 rounded-full text-white font-bold flex items-center justify-center shadow-sm"
+                className="w-10 h-10 shrink-0 rounded-full text-white font-bold flex items-center justify-center shadow-sm"
                 style={{ background: u.avatarColor ?? "#6366f1" }}
               >
                 {u.name.charAt(0)}
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 basis-48">
                 {/* 氏名（インライン編集） */}
                 {editing?.id === u.id && editing.field === "name" ? (
                   <div className="flex items-center gap-1">
@@ -191,18 +220,20 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
                   <div className="flex items-center gap-2 group">
                     <p className="font-semibold">{u.name}</p>
                     {self && <Badge variant="secondary">あなた</Badge>}
-                    <button
-                      type="button"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-zinc-100"
-                      onClick={() => {
-                        setEditError(null);
-                        setEditing({ id: u.id, field: "name" });
-                        setDraft(u.name);
-                      }}
-                      title="氏名を編集"
-                    >
-                      <Pencil className="w-3.5 h-3.5 text-zinc-400" />
-                    </button>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-zinc-100"
+                        onClick={() => {
+                          setEditError(null);
+                          setEditing({ id: u.id, field: "name" });
+                          setDraft(u.name);
+                        }}
+                        title="氏名を編集"
+                      >
+                        <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                      </button>
+                    )}
                   </div>
                 )}
                 {/* フリガナ（カタカナ・インライン編集。担当者をカナ読みでも検索可能にする） */}
@@ -231,18 +262,20 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
                     <p className="text-xs text-zinc-400 truncate">
                       フリガナ: {u.nameKana || <span className="italic text-zinc-300">未設定</span>}
                     </p>
-                    <button
-                      type="button"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-zinc-100 shrink-0"
-                      onClick={() => {
-                        setEditError(null);
-                        setEditing({ id: u.id, field: "nameKana" });
-                        setDraft(u.nameKana ?? "");
-                      }}
-                      title="フリガナ（カタカナ）を編集"
-                    >
-                      <Pencil className="w-3.5 h-3.5 text-zinc-400" />
-                    </button>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-zinc-100 shrink-0"
+                        onClick={() => {
+                          setEditError(null);
+                          setEditing({ id: u.id, field: "nameKana" });
+                          setDraft(u.nameKana ?? "");
+                        }}
+                        title="フリガナ（カタカナ）を編集"
+                      >
+                        <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                      </button>
+                    )}
                   </div>
                 )}
                 {/* メール（インライン編集） */}
@@ -269,31 +302,35 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
                 ) : (
                   <div className="flex items-center gap-2 group">
                     <p className="text-sm text-zinc-500 truncate">{u.email}</p>
-                    <button
-                      type="button"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-zinc-100 shrink-0"
-                      onClick={() => {
-                        setEditError(null);
-                        setEditing({ id: u.id, field: "email" });
-                        setDraft(u.email);
-                      }}
-                      title="メールアドレスを編集"
-                    >
-                      <Pencil className="w-3.5 h-3.5 text-zinc-400" />
-                    </button>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-zinc-100 shrink-0"
+                        onClick={() => {
+                          setEditError(null);
+                          setEditing({ id: u.id, field: "email" });
+                          setDraft(u.email);
+                        }}
+                        title="メールアドレスを編集"
+                      >
+                        <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                      </button>
+                    )}
                   </div>
                 )}
                 {editError && editing?.id === u.id && (
                   <p className="text-xs text-rose-600 mt-1">{editError}</p>
                 )}
               </div>
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-500">役職</span>
+                <span className="text-xs text-zinc-500 shrink-0">役職</span>
                 <Select
                   value={u.role ?? "sales"}
                   onValueChange={(v) => patch(u.id, { role: v })}
+                  disabled={readOnly || pending}
                 >
-                  <SelectTrigger className="h-8 w-36">
+                  <SelectTrigger className="h-8 w-32 sm:w-36">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -303,13 +340,13 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
                 </Select>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-500">権限</span>
+                <span className="text-xs text-zinc-500 shrink-0">権限</span>
                 <Select
                   value={u.permission}
                   onValueChange={(v) => patch(u.id, { permission: v })}
-                  disabled={pending || self}
+                  disabled={readOnly || pending || self}
                 >
-                  <SelectTrigger className="h-8 w-36">
+                  <SelectTrigger className="h-8 w-32 sm:w-36">
                     <SelectValue>
                       <Badge
                         variant={
@@ -331,11 +368,12 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
                 variant="outline"
                 size="sm"
                 className="h-8 px-3 disabled:opacity-30"
-                disabled={self || pending}
+                disabled={readOnly || self || pending}
                 title={
-                  self
+                  readOnlyReason ??
+                  (self
                     ? "自分のパスワードは 設定 > パスワード変更 から"
-                    : "パスワードを再発行（ログインできない時の復旧）"
+                    : "パスワードを再発行（ログインできない時の復旧）")
                 }
                 onClick={() => {
                   setResetError(null);
@@ -350,9 +388,9 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 px-3 border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-30"
-                disabled={self || pending}
-                title={self ? "自分自身は削除できません" : "このユーザーを削除"}
+                className="h-8 px-3 ml-auto sm:ml-0 border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-30"
+                disabled={readOnly || self || pending}
+                title={readOnlyReason ?? (self ? "自分自身は削除できません" : "このユーザーを削除")}
                 onClick={() => {
                   setDeleteError(null);
                   setDeleteResult(null);
@@ -362,6 +400,7 @@ export function UsersAdmin({ initial, currentUserId }: { initial: User[]; curren
                 <Trash2 className="w-4 h-4 mr-1" />
                 削除
               </Button>
+              </div>
             </div>
           );
         })}

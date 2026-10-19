@@ -19,6 +19,7 @@ import Google from "next-auth/providers/google";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { createInvitedUser } from "@/lib/invite-membership";
 
 // NextAuth は Edge 互換が必要だが、 Prisma + pg は Node 限定 → middleware では NextAuth を使わず
 // 既存の jwtVerify 路線を維持。NextAuth はサインイン/コールバックとセッション読み出しのみで使う。
@@ -96,36 +97,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // TENANT_STRICT=1 の本番では全画面がテナントコンテキスト無しで落ちる。
         if (!invite.tenantId) return false;
 
-        // User / UserTenant / Invite.used は必ずまとめて確定させる
-        const created = await prisma.$transaction(async (tx) => {
-          const u = await tx.user.create({
-            data: {
-              email,
-              name: invite.name ?? user.name ?? email.split("@")[0],
-              image: user.image ?? null,
-              emailVerified: new Date(),
-              role: invite.role,
-              permission: invite.permission,
-              // パスワード未設定（Googleログインのみ）
-              passwordHash: null,
-            },
-          });
-          // 実効権限の正本は user_tenants（招待を出した会社に所属させる）
-          await tx.userTenant.create({
-            data: {
-              userId: u.id,
-              tenantId: invite.tenantId,
-              permission: invite.permission,
-              role: invite.role,
-              isDefault: true,
-              crossTenantRead: false,
-            },
-          });
-          await tx.invite.update({
-            where: { id: invite.id },
-            data: { used: true, usedAt: new Date() },
-          });
-          return u;
+        // 権限・役職は招待の値、所属は招待の会社（invite.tenantId）。招待は使用済みにする。
+        const created = await createInvitedUser(prisma, invite, {
+          email,
+          name: invite.name ?? user.name ?? email.split("@")[0],
+          image: user.image ?? null,
+          emailVerified: new Date(),
+          // パスワード未設定（Googleログインのみ）
+          passwordHash: null,
         });
         // サインイン後の jwt callback で User.id を解決できるように、
         // user オブジェクトを書き換え

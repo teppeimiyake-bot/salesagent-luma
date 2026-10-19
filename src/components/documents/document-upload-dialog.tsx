@@ -22,6 +22,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Upload } from "lucide-react";
+import { DOCUMENT_UPLOAD_MAX_LABEL, documentUploadSizeError } from "@/lib/document-upload";
 
 const ALL_CATEGORIES: Record<string, string> = {
   proposal: "提案書",
@@ -50,6 +51,7 @@ export function DocumentUploadDialog({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCategory(defaultCategory);
   }, [defaultCategory]);
 
@@ -58,6 +60,11 @@ export function DocumentUploadDialog({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!file) return;
+    const sizeError = documentUploadSizeError(file);
+    if (sizeError) {
+      setError(sizeError);
+      return;
+    }
     setLoading(true);
     setError(null);
     const fd = new FormData();
@@ -131,10 +138,16 @@ export function DocumentUploadDialog({
             <Label className="text-xs">ファイル</Label>
             <input
               type="file"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const picked = e.target.files?.[0] ?? null;
+                setFile(picked);
+                // 上限を超えるファイルは、選んだ時点で案内する（送信時にも確かめる）
+                setError(documentUploadSizeError(picked));
+              }}
               required
               className="block w-full text-sm file:mr-4 file:rounded-md file:border-0 file:bg-emerald-600 file:px-3 file:py-1.5 file:text-white hover:file:bg-emerald-700"
             />
+            <p className="text-[12px] text-zinc-400">1ファイル{DOCUMENT_UPLOAD_MAX_LABEL}まで。大きい場合は圧縮するか、ファイルを分けてください。</p>
           </div>
           {error && (
             <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded">{error}</p>

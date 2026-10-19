@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
-import { PM_STAFF_ROLES } from "../route";
+import { PM_STAFF_ROLES } from "@/lib/pm-staff-roles";
 
 const updateSchema = z.object({
   role: z.enum(PM_STAFF_ROLES).optional(),

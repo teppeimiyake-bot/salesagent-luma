@@ -62,7 +62,7 @@ export function NextActionInput({
       }}
       className={
         className ??
-        "w-full resize-y rounded border border-zinc-200 bg-white px-2 py-1 text-sm leading-snug focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:cursor-wait disabled:bg-zinc-50"
+        "w-full resize-y rounded border border-zinc-200 bg-white px-2 py-1 text-sm leading-snug focus:outline-none focus:ring-1 focus:ring-orange-400 disabled:cursor-wait disabled:bg-zinc-50"
       }
       title="ネクストアクションを編集（フォーカスを外すと保存）"
     />

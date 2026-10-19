@@ -34,7 +34,7 @@ type SearchResult = {
   }>;
 };
 
-export function GlobalSearch() {
+export function GlobalSearch({ compactOnMobile = false }: { compactOnMobile?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -65,6 +65,7 @@ export function GlobalSearch() {
 
   useEffect(() => {
     if (!q.trim()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setData(null);
       return;
     }
@@ -81,19 +82,20 @@ export function GlobalSearch() {
   return (
     <div ref={containerRef} className="relative">
       <button
+        aria-label="企業・商談を検索"
         onClick={() => {
           setOpen(true);
           setTimeout(() => inputRef.current?.focus(), 50);
         }}
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-sm text-zinc-600 w-72"
+        className={`inline-flex items-center gap-2 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-sm text-zinc-600 ${compactOnMobile ? "w-8 justify-center px-0 xl:w-72 xl:justify-start xl:px-3" : "w-8 justify-center px-0 md:w-72 md:justify-start md:px-3"}`}
       >
         <Search className="h-4 w-4" />
-        <span className="flex-1 text-left">企業・商談を検索…</span>
-        <kbd className="px-1.5 py-0.5 text-[10px] bg-white border border-zinc-300 rounded">⌘K</kbd>
+        <span className={`flex-1 text-left ${compactOnMobile ? "hidden xl:inline" : "hidden md:inline"}`}>企業・商談を検索…</span>
+        <kbd className={`px-1.5 py-0.5 text-[10px] bg-white border border-zinc-300 rounded ${compactOnMobile ? "hidden xl:inline" : "hidden md:inline"}`}>⌘K</kbd>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[28rem] bg-white border border-zinc-200 rounded-xl shadow-2xl z-50 overflow-hidden">
+        <div className={`${compactOnMobile ? "fixed left-3 right-3 top-16 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[28rem] sm:max-w-[calc(100vw-1.5rem)]" : "fixed left-3 right-3 top-16 md:absolute md:left-auto md:right-0 md:top-full md:w-[28rem]"} mt-2 bg-white border border-zinc-200 rounded-xl shadow-2xl z-50 overflow-hidden`}>
           <div className="flex items-center gap-2 border-b border-zinc-100 px-3 py-2">
             <Search className="h-4 w-4 text-zinc-400" />
             <input
@@ -101,7 +103,7 @@ export function GlobalSearch() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="企業名・商談・プロダクト・代表者…"
-              className="flex-1 bg-transparent outline-none text-sm"
+              className="min-w-0 flex-1 bg-transparent outline-none text-sm"
             />
             {loading && <Loader2 className="h-4 w-4 text-zinc-400 animate-spin" />}
           </div>

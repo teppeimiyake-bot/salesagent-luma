@@ -143,7 +143,7 @@ export function DealProductsPanel({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <div className="rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white p-1.5 shadow-sm">
+          <div className="rounded-lg bg-zinc-100 p-1.5 text-zinc-500">
             <Layers className="h-4 w-4" />
           </div>
           プロダクト構成
@@ -171,7 +171,7 @@ export function DealProductsPanel({
         {items.length > 0 && (
           <div className="px-5 py-3 border-b border-zinc-200 bg-gradient-to-r from-orange-50/50 to-amber-50/30 flex flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex items-baseline gap-2">
-              <span className="text-xs text-zinc-500 font-medium">提案金額合計</span>
+              <span className="text-[13px] text-zinc-500 font-medium">提案金額合計</span>
               <span className="font-bold text-xl tabular-nums text-orange-700">
                 {formatJPY(aggregates.totalAmount)}
               </span>
@@ -184,15 +184,21 @@ export function DealProductsPanel({
             {canEdit && "「プロダクトを追加」ボタンから登録してください。"}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm table-fixed min-w-[820px]">
+          // 列幅の合計（180+150+110+150+50=640px）を min-w にする。rem は html の 15px 基準
+          // （globals.css）。ウィンドウ約1460px以上なら左カラムに横スクロールなしで収まり、
+          // それより狭いPC幅（1280〜1457px）とスマホ幅は横スクロールになるが、削除列は
+          // sticky right-0 で右端に固定して常に見せる。
+          // 下限：提案金額列＝入力欄 w-32(120px)+px-2 左右 15px、削除列＝ボタン h-7 w-7(26.25px)+15px。
+          // 固定した削除列（50px）とフォーカス枠の分（0.5rem）だけ、スクロール時に右端の余白を取る。
+          <div data-product-table-scroll className="overflow-x-auto [scroll-padding-inline-end:calc(50px+0.5rem)]">
+            <table className="w-full text-sm table-fixed min-w-[640px]">
               <thead>
-                <tr className="text-[11px] text-zinc-500 border-b border-zinc-200">
-                  <th className="text-left font-medium py-2 px-4 w-[200px]">プロダクト</th>
-                  <th className="text-left font-medium py-2 px-2 w-[160px]">プラン</th>
+                <tr className="text-[12.5px] text-zinc-500 border-b border-zinc-200">
+                  <th className="text-left font-medium py-2 px-4 w-[180px]">プロダクト</th>
+                  <th className="text-left font-medium py-2 px-2 w-[150px]">プラン</th>
                   <th className="text-left font-medium py-2 px-2 w-[110px]">ヨミ</th>
-                  <th className="text-right font-medium py-2 px-2 w-[140px]">提案金額</th>
-                  {canEdit && <th className="w-[40px]" />}
+                  <th className="text-right font-medium py-2 px-2 w-[150px]">提案金額</th>
+                  {canEdit && <th className="sticky right-0 z-10 bg-white w-[50px]" />}
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -246,7 +252,7 @@ function ProductRow({
     isVideoProduct(row.productName, products, row.productId) || row.planProposals.length > 0;
   return (
     <>
-    <tr className="hover:bg-zinc-50/50">
+    <tr className="group/row hover:bg-zinc-50/50">
       <td className="py-2 px-4 align-top" title={row.productName}>
         <div className="flex items-center gap-2 min-w-0">
           <Package className="h-3.5 w-3.5 text-orange-500 shrink-0" />
@@ -260,7 +266,10 @@ function ProductRow({
                   if (p) onPatch({ productId: p.id, productName: p.name });
                 }}
               >
-                <SelectTrigger className="h-8 text-sm font-semibold border-0 shadow-none px-1 hover:bg-zinc-100 w-full max-w-full">
+                {/* Radix の SelectValue は flex アイテムの span（min-width:auto）で縮まず、内側の truncate が
+                    効かないまま隣の列にはみ出す。SelectValue は className を受け取らないので、トリガー側から
+                    [&>span]:min-w-0 を当てる（ChevronDown は svg なので対象外）。 */}
+                <SelectTrigger className="h-8 text-sm font-semibold border-0 shadow-none px-1 hover:bg-zinc-100 w-full max-w-full [&>span]:min-w-0">
                   <SelectValue>
                     <span className="block truncate text-left">{row.productName}</span>
                   </SelectValue>
@@ -303,7 +312,7 @@ function ProductRow({
                 onPatch(payload);
               }}
             >
-              <SelectTrigger className="h-8 text-xs border-0 shadow-none px-1 hover:bg-zinc-100 w-full max-w-full">
+              <SelectTrigger className="h-8 text-[13px] border-0 shadow-none px-1 hover:bg-zinc-100 w-full max-w-full [&>span]:min-w-0">
                 <SelectValue placeholder="-">
                   {row.planName ? (
                     <span className="block truncate text-left">{row.planName}</span>
@@ -321,7 +330,7 @@ function ProductRow({
                     <span className="inline-flex items-center gap-2">
                       <span>{p.name}</span>
                       {p.basePrice != null && (
-                        <span className="text-[10px] tabular-nums text-zinc-500">
+                        <span className="text-[12px] tabular-nums text-zinc-500">
                           {formatJPY(p.basePrice)}
                         </span>
                       )}
@@ -331,7 +340,7 @@ function ProductRow({
               </SelectContent>
             </Select>
           ) : (
-            <span className="text-xs text-zinc-700 block truncate">{row.planName ?? "-"}</span>
+            <span className="text-[13px] text-zinc-700 block truncate">{row.planName ?? "-"}</span>
           )}
         </div>
       </td>
@@ -356,13 +365,13 @@ function ProductRow({
               <SelectValue placeholder="-">
                 {row.yomiStatus ? (
                   <span
-                    className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold border ${yomiC.bg} ${yomiC.text} ${yomiC.border}`}
+                    className={`inline-block px-2 py-0.5 rounded-full text-[12.5px] font-semibold border ${yomiC.bg} ${yomiC.text} ${yomiC.border}`}
                     title={row.yomiStatus}
                   >
                     {stripYomiPrefix(row.yomiStatus)}
                   </span>
                 ) : (
-                  <span className="text-zinc-400 text-xs">-</span>
+                  <span className="text-zinc-400 text-[13px]">-</span>
                 )}
               </SelectValue>
             </SelectTrigger>
@@ -375,7 +384,7 @@ function ProductRow({
                 return (
                   <SelectItem key={y} value={y}>
                     <span
-                      className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${c.bg} ${c.text} ${c.border}`}
+                      className={`inline-block px-2 py-0.5 rounded-full text-[13px] font-semibold border ${c.bg} ${c.text} ${c.border}`}
                     >
                       {y}
                     </span>
@@ -386,13 +395,13 @@ function ProductRow({
           </Select>
         ) : row.yomiStatus ? (
           <span
-            className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold border ${yomiC.bg} ${yomiC.text} ${yomiC.border}`}
+            className={`inline-block px-2 py-0.5 rounded-full text-[12.5px] font-semibold border ${yomiC.bg} ${yomiC.text} ${yomiC.border}`}
             title={row.yomiStatus}
           >
             {stripYomiPrefix(row.yomiStatus)}
           </span>
         ) : (
-          <span className="text-zinc-400 text-xs">-</span>
+          <span className="text-zinc-400 text-[13px]">-</span>
         )}
       </td>
       <td className="py-2 px-2 text-right">
@@ -411,7 +420,9 @@ function ProductRow({
       {/* プロダクト内の担当者は廃止（商談の主担当に一本化）。
           DB上の ownerUserId は履歴として残置するが UI からは入力・表示しない。 */}
       {canEdit && (
-        <td className="py-2 px-2 text-right">
+        // 右端に固定。下を流れるセルが透けないよう不透明にし、hover 時は行の
+        // hover:bg-zinc-50/50 を白地に重ねた色と同じにする。
+        <td className="sticky right-0 z-10 bg-white group-hover/row:bg-[color-mix(in_srgb,var(--color-zinc-50)_50%,white)] py-2 px-2 text-right">
           <Button
             type="button"
             size="icon"
@@ -429,7 +440,7 @@ function ProductRow({
       <tr className="bg-orange-50/30">
         <td colSpan={colCount} className="px-4 pb-3 pt-1">
           <div className="flex items-start gap-2">
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 shrink-0 mt-1">
+            <span className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-orange-700 shrink-0 mt-1">
               <Film className="h-3 w-3" />
               企画提案
             </span>
@@ -486,14 +497,14 @@ function PlanProposalPicker({
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {selected.length === 0 && !canEdit && (
-        <span className="text-[11px] text-zinc-400 italic">未設定</span>
+        <span className="text-[12.5px] text-zinc-400 italic">未設定</span>
       )}
       {selected.map((name) => {
         const c = colorOf(name);
         return (
           <span
             key={name}
-            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${c.bg} ${c.text} ${c.border}`}
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[13px] font-medium ${c.bg} ${c.text} ${c.border}`}
           >
             {name}
             {canEdit && (
@@ -516,7 +527,7 @@ function PlanProposalPicker({
             type="button"
             onClick={() => setOpen((o) => !o)}
             disabled={disabled}
-            className="inline-flex items-center gap-1 rounded-md border border-dashed border-orange-300 bg-white px-2 py-0.5 text-xs text-orange-700 hover:bg-orange-50"
+            className="inline-flex items-center gap-1 rounded-md border border-dashed border-orange-300 bg-white px-2 py-0.5 text-[13px] text-orange-700 hover:bg-orange-50"
           >
             <Plus className="h-3 w-3" />
             {selected.length === 0 ? "企画提案を選択" : "追加"}
@@ -562,7 +573,7 @@ function PlanProposalPicker({
                           >
                             {checked && <Check className="h-3.5 w-3.5" />}
                           </span>
-                          <span className={`rounded px-2 py-0.5 text-xs ${c.bg} ${c.text}`}>{m.name}</span>
+                          <span className={`rounded px-2 py-0.5 text-[13px] ${c.bg} ${c.text}`}>{m.name}</span>
                         </button>
                       );
                     })}
@@ -710,7 +721,7 @@ function AddProductDialog({
         </DialogHeader>
         <form onSubmit={submit} className="space-y-3">
           <div className="space-y-1">
-            <Label className="text-xs">カテゴリ</Label>
+            <Label className="text-[13px]">カテゴリ</Label>
             <Select
               value={productId}
               onValueChange={(v) => {
@@ -736,7 +747,7 @@ function AddProductDialog({
                 ))}
                 {isAdmin && (
                   <SelectItem value="__new__">
-                    <span className="text-emerald-600 font-semibold inline-flex items-center gap-1">
+                    <span className="text-orange-600 font-semibold inline-flex items-center gap-1">
                       <Plus className="h-3 w-3" /> 新規カテゴリ追加（管理者のみ）
                     </span>
                   </SelectItem>
@@ -744,7 +755,7 @@ function AddProductDialog({
               </SelectContent>
             </Select>
             {showNewCategory && isAdmin && (
-              <div className="mt-2 p-2 rounded-md border border-emerald-200 bg-emerald-50/50 space-y-1">
+              <div className="mt-2 p-2 rounded-md border border-orange-200 bg-orange-50/50 space-y-1">
                 <div className="flex gap-1.5">
                   <Input
                     autoFocus
@@ -778,9 +789,9 @@ function AddProductDialog({
                   </Button>
                 </div>
                 {createError && (
-                  <p className="text-[11px] text-red-600">{createError}</p>
+                  <p className="text-[12.5px] text-red-600">{createError}</p>
                 )}
-                <p className="text-[10px] text-zinc-500">
+                <p className="text-[12px] text-zinc-500">
                   作成後、このダイアログで選択できます。プランは管理画面から追加してください。
                 </p>
               </div>
@@ -788,7 +799,7 @@ function AddProductDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs">提案プラン</Label>
+              <Label className="text-[13px]">提案プラン</Label>
               <Select value={planName} onValueChange={selectPlan} disabled={!product}>
                 <SelectTrigger>
                   <SelectValue placeholder="プランを選択" />
@@ -799,7 +810,7 @@ function AddProductDialog({
                       <span className="inline-flex items-center gap-2">
                         <span>{p.name}</span>
                         {p.basePrice != null && (
-                          <span className="text-[10px] tabular-nums text-zinc-500">
+                          <span className="text-[12px] tabular-nums text-zinc-500">
                             {formatJPY(p.basePrice)}
                           </span>
                         )}
@@ -810,7 +821,7 @@ function AddProductDialog({
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">ヨミ</Label>
+              <Label className="text-[13px]">ヨミ</Label>
               <Select value={yomiStatus} onValueChange={setYomiStatus}>
                 <SelectTrigger>
                   <SelectValue />
@@ -827,9 +838,9 @@ function AddProductDialog({
           </div>
           {isVideo && (
             <div className="space-y-1 rounded-md border border-orange-200 bg-orange-50/30 p-3">
-              <Label className="text-xs inline-flex items-center gap-1 text-orange-700">
+              <Label className="text-[13px] inline-flex items-center gap-1 text-orange-700">
                 <Film className="h-3 w-3" /> 企画提案（映像）
-                <span className="text-[10px] text-zinc-400 font-normal">複数選択・空でもOK</span>
+                <span className="text-[12px] text-zinc-400 font-normal">複数選択・空でもOK</span>
               </Label>
               <PlanProposalPicker
                 selected={planProposals}
@@ -842,12 +853,12 @@ function AddProductDialog({
           )}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs inline-flex items-center gap-1">
+              <Label className="text-[13px] inline-flex items-center gap-1">
                 提案金額（円）
                 {planName &&
                   product?.plans.find((p) => p.name === planName)?.basePrice != null &&
                   !amountTouched && (
-                    <span className="text-[10px] text-emerald-600 font-normal">
+                    <span className="text-[12px] text-orange-600 font-normal">
                       ベース価格自動入力
                     </span>
                   )}
@@ -879,6 +890,9 @@ function AddProductDialog({
 /**
  * 金額入力（controlled・null許容）
  */
+// 削除列の幅（50px）＋フォーカス枠の余裕（0.5rem＝7.5px）。
+const STICKY_DELETE_COLUMN_CLEARANCE_PX = 57.5;
+
 function AmountInput({
   value,
   disabled,
@@ -901,7 +915,15 @@ function AmountInput({
       value={text}
       disabled={disabled}
       onChange={(e) => setText(e.target.value)}
-      onFocus={() => setFocused(true)}
+      onFocus={(e) => {
+        setFocused(true);
+        // 右端に固定した削除列の下に隠れているときだけ、表の横スクロールで見える位置へ動かす（縦のページ位置は動かさない）。
+        const input = e.currentTarget;
+        const box = input.closest<HTMLElement>("[data-product-table-scroll]");
+        if (!box) return;
+        const hidden = input.getBoundingClientRect().right - (box.getBoundingClientRect().right - STICKY_DELETE_COLUMN_CLEARANCE_PX);
+        if (hidden > 0) box.scrollLeft += hidden;
+      }}
       onBlur={(e) => {
         setFocused(false);
         const raw = e.target.value.trim();

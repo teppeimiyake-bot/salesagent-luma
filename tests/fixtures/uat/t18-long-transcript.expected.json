@@ -1,0 +1,60 @@
+{
+  "fixture": "t18-long-transcript",
+  "synthetic": true,
+  "scope": "単一会議の長文テキスト分析。ASR/長時間音声は対象外。",
+  "characters": 6973,
+  "utf8Bytes": 20567,
+  "sourceSha256": "832c51ef6535027e3d0d58e037bcd39052650aa864a4540167a9fd8c39d446db",
+  "autoAssertions": {
+    "budget": {
+      "currentJpy": 1500000,
+      "supersededJpy": 950000,
+      "status": "estimated",
+      "approval": "pending"
+    },
+    "timeline": {
+      "desiredMonth": "2027-09",
+      "conditionalOnAdoption": true,
+      "formalDate": "unconfirmed",
+      "status": "estimated"
+    },
+    "authority": {
+      "status": "unknown"
+    },
+    "need": {
+      "meaning": "説明会後に一次面接へ進む学生が少なく、仕事内容の説明が伝わりにくいことが課題です。",
+      "allowedStatuses": [
+        "estimated",
+        "confirmed"
+      ]
+    },
+    "quoteRules": "各原文引用は対応する同一meetingの逐語部分で、主張と留保を裏づけること。",
+    "sourceQuotes": {
+      "budget": "現在の予算目安は150万円です。正式な社内承認はまだ取れていません。",
+      "budgetCorrection": "先ほどの95万円という目安は訂正します。最新の検討上の目安は150万円です。正式な社内承認はまだ取れていません。",
+      "need": "説明会後に一次面接へ進む学生が少なく、仕事内容の説明が伝わりにくいことが課題です。",
+      "authority": "誰が最終決裁者か、正式な承認経路は未確認です。",
+      "timeline": "導入するなら2027年9月を希望します。正式な導入時期は未確定です。",
+      "counts": "直近の説明会は参加者が四十人で、その後に一次面接を申し込んだのは十一人でした。",
+      "noAgreement": "本日は発注やサービス導入には合意していません。次回面談の日程も、資料の提出期限も未合意です。"
+    }
+  },
+  "humanSemanticReview": [
+    "議事録、BANT、総合所感と公開推奨全フィールド（理由/効果/リスク含む）を原文と照合する。各要約で全詳細を逐語反復することは要求しない。",
+    "95万円は訂正前。最新150万円は目安・正式未承認で、確保済み予算、発注額や提供価格ではない。旧額の経緯としての言及は可。",
+    "2027年9月は導入する場合の希望で正式未確定。2026年10月15日は次回面談の未確定候補で、導入/撮影/提出期限にはしない。",
+    "最終決裁者・承認経路は未確認。採用担当者を決裁者へ格上げしない。",
+    "説明会40人・一次面接申込11人は直近1回の数字。他回や業界平均/施策効果へ一般化しない。原因や辞退理由は未集計。",
+    "顧客の具体Needは説明会から一次面接への移行と仕事内容の伝わり方。営業のSNS仮説や知人の別会社の増加例は自社事実ではない。",
+    "採用動画/SNSは会話中の検討案。導入合意、プラン本数や運用期間、成果保証、価格適合を勝手に確定しない。",
+    "確認作業を次の提案として挙げることと、担当/期限/面談日が合意済みだと書くことを区別する。",
+    "原文と保存結果・GETを照合し、既存の手入力を保つ。raw provider traceと最終公開出力を分けて判定する。",
+    "Preserve explicit not-yet-obtained approval versus unknown approval status, and unavailable workplace footage versus unknown existence of a different video.",
+    "Discussed FAQ/story-order/video/SNS methods remain seller options with their conditions; not accepted adoption or invented catalog proposals.",
+    "Only email is stated to lack detailed work descriptions; do not generalize to the recruitment site.",
+    "Internal discussion intent does not establish a promised callback or opposition to sales outreach.",
+    "Two coexisting issues do not prove a causal link; preserve incomplete cause/withdrawal analysis.",
+    "Public strategy fields contain readable prose; no JSON serialization fragments, missing list numbering after repair, or imperative action text substituted as every reason/risk/outcome."
+  ],
+  "completionCriteria": "重大誤り0件。機械check単独で意味合格やT18全体合格にしない。"
+}

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { FileText, Upload, Download, Trash2, FolderOpen, ExternalLink, Link2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { DOCUMENT_UPLOAD_MAX_LABEL, documentUploadSizeError } from "@/lib/document-upload";
 
 type Doc = {
   id: string;
@@ -33,7 +34,7 @@ type Doc = {
 // 見積書は廃止（社長指示 2026-08-02）。見積は「見積書 自動作成」に一本化する。
 // 過去に category='quote' で登録された書類は「その他」に寄せて表示だけ残す。
 const DEAL_DOC_CATEGORIES: { value: string; label: string; color: string }[] = [
-  { value: "proposal", label: "提案書", color: "bg-emerald-100 text-emerald-700" },
+  { value: "proposal", label: "提案書", color: "bg-orange-100 text-orange-700" },
   { value: "other", label: "その他", color: "bg-zinc-100 text-zinc-600" },
 ];
 const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
@@ -49,7 +50,16 @@ function stripExt(filename: string): string {
   return i > 0 ? filename.slice(0, i) : filename;
 }
 
-export function DealDocuments({ dealId, companyName }: { dealId: string; companyName?: string }) {
+export function DealDocuments({
+  dealId,
+  companyName,
+  canEdit = true,
+}: {
+  dealId: string;
+  companyName?: string;
+  /** 操作中の会社で利用者以上か。閲覧のみなら「追加」と削除を出さない（API も 403 で止める）。 */
+  canEdit?: boolean;
+}) {
   const router = useRouter();
   const [docs, setDocs] = useState<Doc[]>([]);
   const [open, setOpen] = useState(false);
@@ -89,6 +99,8 @@ export function DealDocuments({ dealId, companyName }: { dealId: string; company
 
   function onPickFile(f: File | null) {
     setFile(f);
+    // 上限を超えるファイルは、選んだ時点で案内する（送信時にも確かめる）
+    setError(documentUploadSizeError(f));
     if (mode === "file" && !nameTouched && f) {
       setName(stripExt(f.name));
     }
@@ -100,6 +112,7 @@ export function DealDocuments({ dealId, companyName }: { dealId: string; company
     setDocs(j.documents ?? []);
   }
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [dealId]);
 
@@ -143,6 +156,12 @@ export function DealDocuments({ dealId, companyName }: { dealId: string; company
       }
       // mode === "file"
       if (!file || !name) {
+        setLoading(false);
+        return;
+      }
+      const sizeError = documentUploadSizeError(file);
+      if (sizeError) {
+        setError(sizeError);
         setLoading(false);
         return;
       }
@@ -192,34 +211,36 @@ export function DealDocuments({ dealId, companyName }: { dealId: string; company
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center justify-between text-base">
           <span className="flex items-center gap-2">
-            <div className="rounded-lg bg-emerald-500 text-white p-1.5">
+            <div className="rounded-lg bg-zinc-100 p-1.5 text-zinc-500">
               <FolderOpen className="h-4 w-4" />
             </div>
             この商談の提案書
             <Badge variant="secondary">{docs.length}</Badge>
           </span>
+          {canEdit && (
           <Button size="sm" variant="primary" onClick={() => { setOpen(!open); if (!open) { resetForm(); setName(""); } }}>
             <Upload className="h-3.5 w-3.5" />
             追加
           </Button>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {open && (
-          <form onSubmit={upload} className="space-y-3 mb-4 p-4 rounded-lg border border-emerald-200 bg-emerald-50/30">
+        {canEdit && open && (
+          <form onSubmit={upload} className="space-y-3 mb-4 p-4 rounded-lg border border-orange-200 bg-orange-50/30">
             {/* ファイル / 外部URL 切替 */}
             <div className="inline-flex items-center gap-1 rounded-lg bg-white border border-zinc-200 p-1">
               <button
                 type="button"
                 onClick={() => switchMode("file")}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold ${mode === "file" ? "bg-emerald-600 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[13px] font-semibold ${mode === "file" ? "bg-orange-600 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}
               >
                 <Upload className="h-3 w-3" /> ファイルをアップロード
               </button>
               <button
                 type="button"
                 onClick={() => switchMode("url")}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold ${mode === "url" ? "bg-emerald-600 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[13px] font-semibold ${mode === "url" ? "bg-orange-600 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}
               >
                 <Link2 className="h-3 w-3" /> 外部リンクを登録
               </button>
@@ -261,7 +282,7 @@ export function DealDocuments({ dealId, companyName }: { dealId: string; company
                     placeholder="例: ◯◯様向け提案書 v2"
                     required
                   />
-                  <p className="text-[10px] text-zinc-400">ファイルを選ぶと、拡張子を除いたファイル名が自動入力されます（編集可）。</p>
+                  <p className="text-[12px] text-zinc-400">ファイルを選ぶと、拡張子を除いたファイル名が自動入力されます（編集可）。</p>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-sm">ファイル</Label>
@@ -269,8 +290,9 @@ export function DealDocuments({ dealId, companyName }: { dealId: string; company
                     type="file"
                     onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
                     required
-                    className="block w-full text-sm file:mr-4 file:rounded-md file:border-0 file:bg-emerald-600 file:px-3 file:py-1.5 file:text-white hover:file:bg-emerald-700"
+                    className="block w-full text-sm file:mr-4 file:rounded-md file:border-0 file:bg-orange-600 file:px-3 file:py-1.5 file:text-white hover:file:bg-orange-700"
                   />
+                  <p className="text-[12px] text-zinc-400">1ファイル{DOCUMENT_UPLOAD_MAX_LABEL}まで。大きい場合は圧縮するか、外部URLで登録してください。</p>
                 </div>
               </>
             ) : (
@@ -282,13 +304,13 @@ export function DealDocuments({ dealId, companyName }: { dealId: string; company
                   placeholder="https://www.canva.com/design/..."
                   required
                 />
-                <p className="text-[10px] text-zinc-400">
+                <p className="text-[12px] text-zinc-400">
                   企画書の名前は「<span className="font-medium">{urlAutoName}</span>」で自動登録されます。
                 </p>
               </div>
             )}
             {error && (
-              <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded leading-relaxed whitespace-pre-wrap">
+              <p className="text-[13px] text-red-600 bg-red-50 px-3 py-2 rounded leading-relaxed whitespace-pre-wrap">
                 {error}
               </p>
             )}
@@ -316,30 +338,30 @@ export function DealDocuments({ dealId, companyName }: { dealId: string; company
             {orderedCats.map((cat) => (
               <div key={cat}>
                 <div className="flex items-center gap-2 mb-1.5 px-0.5">
-                  <span className={`text-[11px] font-semibold rounded px-1.5 py-0.5 ${CATEGORY_COLOR[cat]}`}>
+                  <span className={`text-[12.5px] font-semibold rounded px-1.5 py-0.5 ${CATEGORY_COLOR[cat]}`}>
                     {CATEGORY_LABEL[cat]}
                   </span>
-                  <Badge variant="outline" className="text-[10px]">{grouped[cat].length}</Badge>
+                  <Badge variant="outline" className="text-[12px]">{grouped[cat].length}</Badge>
                 </div>
                 <ul className="divide-y divide-zinc-100">
                   {grouped[cat].map((d) => {
                     const isUrl = d.sourceType === "url";
                     return (
                     <li key={d.id} className="py-3 flex items-center gap-3">
-                      <div className={`rounded-md p-2 ${isUrl ? "bg-sky-50" : "bg-emerald-50"}`}>
-                        {isUrl ? <Link2 className="h-4 w-4 text-sky-600" /> : <FileText className="h-4 w-4 text-emerald-600" />}
+                      <div className={`rounded-md p-2 ${isUrl ? "bg-amber-50" : "bg-orange-50"}`}>
+                        {isUrl ? <Link2 className="h-4 w-4 text-amber-600" /> : <FileText className="h-4 w-4 text-orange-600" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">
                           {d.name}
                           {d.version && (
-                            <span className="ml-1.5 text-[10px] text-zinc-400 font-normal">{d.version}</span>
+                            <span className="ml-1.5 text-[12px] text-zinc-400 font-normal">{d.version}</span>
                           )}
                           {isUrl && (
-                            <span className="ml-1.5 text-[10px] text-sky-600 font-normal">外部リンク</span>
+                            <span className="ml-1.5 text-[12px] text-amber-600 font-normal">外部リンク</span>
                           )}
                         </p>
-                        <p className="text-[11px] text-zinc-400 truncate">
+                        <p className="text-[12.5px] text-zinc-400 truncate">
                           {formatDate(d.createdAt)}
                           {isUrl ? ` ／ ${d.fileUrl}` : d.fileSize ? ` ／ ${(d.fileSize / 1024).toFixed(0)} KB` : ""}
                         </p>
@@ -349,7 +371,7 @@ export function DealDocuments({ dealId, companyName }: { dealId: string; company
                           href={d.fileUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm text-sky-600 hover:underline inline-flex items-center gap-1 shrink-0"
+                          className="text-sm text-amber-600 hover:underline inline-flex items-center gap-1 shrink-0"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
                           開く
@@ -358,20 +380,22 @@ export function DealDocuments({ dealId, companyName }: { dealId: string; company
                         d.fileUrl && d.fileUrl !== "(リンク未登録)" && !d.fileUrl.includes(" ") && (
                           <a
                             href={`/api/documents/${d.id}/download`}
-                            className="text-sm text-emerald-600 hover:underline inline-flex items-center gap-1 shrink-0"
+                            className="text-sm text-orange-600 hover:underline inline-flex items-center gap-1 shrink-0"
                           >
                             <Download className="h-3.5 w-3.5" />
                             DL
                           </a>
                         )
                       )}
-                      <button
-                        onClick={() => remove(d.id)}
-                        disabled={pending}
-                        className="text-zinc-300 hover:text-red-500 shrink-0"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => remove(d.id)}
+                          disabled={pending}
+                          className="text-zinc-300 hover:text-red-500 shrink-0"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </li>
                     );
                   })}

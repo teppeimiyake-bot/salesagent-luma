@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
-
-export const PM_STAFF_ROLES = ["pm", "director", "camera", "editor"] as const;
-export type PmStaffRole = (typeof PM_STAFF_ROLES)[number];
+import { PM_STAFF_ROLES } from "@/lib/pm-staff-roles";
+import { writeForbidden } from "@/lib/write-guard";
 
 /**
  * GET /api/pm-staff
@@ -32,7 +31,7 @@ export async function POST(req: Request) {
   const perm = await getCurrentPermission();
   // 追加は user 権限以上（PM現場で人員を足せるように admin 限定にしない）。
   if (!hasPermission(perm, "user")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return await writeForbidden();
   }
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body);

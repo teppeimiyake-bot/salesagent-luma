@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { callClaude } from "@/lib/ai/anthropic";
 import { JP_TEXT_STYLE_RULE } from "@/lib/ai/text-style";
+import { requireWriter } from "@/lib/write-guard";
 
 export const maxDuration = 60;
 
@@ -22,6 +23,9 @@ function extractText(html: string): string {
 }
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  // 書き込み・AI 呼び出し・外部取得は、操作中の会社で利用者以上（閲覧のみ・全社統合ビューは 403）
+  const denied = await requireWriter();
+  if (denied) return denied;
   const { id } = await params;
   const company = await prisma.company.findUnique({ where: { id } });
   if (!company) return NextResponse.json({ error: "Not found" }, { status: 404 });

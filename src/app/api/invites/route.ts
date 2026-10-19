@@ -2,24 +2,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
-import { getRequestTenant } from "@/lib/tenant-context";
 import { normalizeEmail } from "@/lib/email";
+import { requireUserAdmin, requireUserAdminRead } from "@/lib/tenant-users";
 
-async function requireAdmin() {
-  const session = await getSession();
-  if (!session) return null;
-  const me = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { id: true, permission: true },
-  });
-  if (!hasPermission(me?.permission, "admin")) return null;
-  return me;
-}
-
+// 招待の発行・取消は、操作中の会社の管理者のみ（全社共通の User.permission ではなく、その会社での権限で決める）。
+// 全社統合ビューでは発行・取消させない。一覧の閲覧は、全社統合ビューならどれかの会社の管理者なら読める。
 export async function GET() {
-  const me = await requireAdmin();
-  if (!me) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const me = await requireUserAdminRead();
+  if ("error" in me) return NextResponse.json({ error: me.error }, { status: me.status });
   const invites = await prisma.invite.findMany({
     orderBy: { createdAt: "desc" },
   });
@@ -38,8 +28,8 @@ const createSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const me = await requireAdmin();
-  if (!me) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const me = await requireUserAdmin();
+  if ("error" in me) return NextResponse.json({ error: me.error }, { status: me.status });
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
@@ -47,17 +37,6 @@ export async function POST(req: Request) {
   }
   const { email, name, role, permission } = parsed.data;
   const hours = parsed.data.expiresInHours ?? 168;
-
-  // 招待は「どの会社に招くか」が決まっていないと発行できない。
-  // 全社統合ビュー（__all__）のままだと Prisma Extension が書き込みを例外で弾き、
-  // 画面には理由の分からない 500 が出るだけなので、ここで明示的に止める。
-  const ctx = await getRequestTenant();
-  if (!ctx || !ctx.tenantId) {
-    return NextResponse.json(
-      { error: "招待先の会社が特定できません。サイドバーで Luma / リージー を選んでから発行してください。" },
-      { status: 400 },
-    );
-  }
 
   // 既存ユーザーチェック
   const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -79,7 +58,7 @@ export async function POST(req: Request) {
       role,
       permission,
       token,
-      invitedById: me.id,
+      invitedById: me.userId,
       expiresAt: new Date(Date.now() + hours * 60 * 60 * 1000),
     },
   });
@@ -87,8 +66,8 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const me = await requireAdmin();
-  if (!me) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const me = await requireUserAdmin();
+  if ("error" in me) return NextResponse.json({ error: me.error }, { status: me.status });
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });

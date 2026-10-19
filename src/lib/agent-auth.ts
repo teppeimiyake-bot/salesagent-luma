@@ -1,5 +1,13 @@
 import { timingSafeEqual } from "crypto";
 
+function safeEqualString(providedValue: string | null | undefined, expectedValue: string): boolean {
+  if (!providedValue) return false;
+  const provided = Buffer.from(providedValue);
+  const expected = Buffer.from(expectedValue);
+  if (provided.length !== expected.length) return false;
+  return timingSafeEqual(provided, expected);
+}
+
 /**
  * 外部エージェント（Cloud Run）からの `/api/agents/*` 呼び出しをトークン認証する。
  *
@@ -15,10 +23,18 @@ export function isValidAgentToken(req: Request): boolean {
 
   const header = req.headers.get("authorization") ?? "";
   const m = header.match(/^Bearer\s+(.+)$/i);
-  if (!m) return false;
+  return safeEqualString(m?.[1], expected);
+}
 
-  const provided = Buffer.from(m[1]);
-  const secret = Buffer.from(expected);
-  if (provided.length !== secret.length) return false;
-  return timingSafeEqual(provided, secret);
+export function isValidCronSecret(req: Request): boolean {
+  const expected = process.env.CRON_SECRET;
+  if (!expected) return false;
+
+  const authorization = req.headers.get("authorization") ?? "";
+  const bearer = authorization.match(/^Bearer\s+(.+)$/i)?.[1];
+  return (
+    safeEqualString(bearer, expected) ||
+    safeEqualString(req.headers.get("x-cron-secret"), expected) ||
+    safeEqualString(req.headers.get("x-vercel-cron"), expected)
+  );
 }

@@ -67,7 +67,10 @@ type Deal = {
 
 export function CompanyTabs({
   company,
+  canEdit = true,
 }: {
+  /** 操作中の会社で利用者以上か。閲覧のみなら「新規商談」を出さない。 */
+  canEdit?: boolean;
   company: {
     id: string;
     name: string;
@@ -114,7 +117,7 @@ export function CompanyTabs({
       {/* 商談 */}
       <TabsContent value="deals" className="space-y-3 mt-4">
         <div className="flex justify-end">
-          <NewDealDialog defaultCompanyId={company.id} />
+          {canEdit && <NewDealDialog defaultCompanyId={company.id} />}
         </div>
         {company.deals.map((d) => {
           const totalAmt = totalProposedAmount(d.products);
@@ -203,7 +206,7 @@ export function CompanyTabs({
       <TabsContent value="proposals" className="space-y-3 mt-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-zinc-600">提案中のプロダクト一覧（提案金額・ヨミ表示）</p>
-          <NewDealDialog defaultCompanyId={company.id} />
+          {canEdit && <NewDealDialog defaultCompanyId={company.id} />}
         </div>
         {(() => {
           const activeProducts = activeDeals.flatMap((d) =>
@@ -270,6 +273,7 @@ export function CompanyTabs({
           companyId={company.id}
           contacts={company.contacts}
           onChange={() => router.refresh()}
+          canEdit={canEdit}
         />
       </TabsContent>
 
@@ -282,6 +286,8 @@ export function CompanyTabs({
                 <Globe className="h-4 w-4 text-emerald-600" />
                 Webサイト調査
               </span>
+              {/* 閲覧のみでは、HP の取得と AI 要約（AI 呼び出し・外部取得）を出さない（API も 403 で止める） */}
+              {canEdit && (
               <Button
                 variant="primary"
                 size="sm"
@@ -291,6 +297,7 @@ export function CompanyTabs({
                 <Sparkles className="h-3.5 w-3.5" />
                 {fetching ? "AI要約中..." : "AI再要約"}
               </Button>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -322,10 +329,13 @@ function ContactsList({
   companyId,
   contacts,
   onChange,
+  canEdit,
 }: {
   companyId: string;
   contacts: Contact[];
   onChange: () => void;
+  /** 閲覧のみなら、連絡先の追加・編集・削除を出さない */
+  canEdit: boolean;
 }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
@@ -364,7 +374,7 @@ function ContactsList({
   return (
     <>
       <div className="flex justify-end">
-        {!adding && (
+        {canEdit && !adding && (
           <Button size="sm" variant="primary" onClick={() => setAdding(true)}>
             <Plus className="h-4 w-4" />
             連絡先を追加
@@ -425,7 +435,7 @@ function ContactsList({
         </Card>
       )}
       {contacts.map((c) => (
-        <ContactCard key={c.id} contact={c} onChange={onChange} onRemove={() => remove(c.id)} />
+        <ContactCard key={c.id} contact={c} canEdit={canEdit} onChange={onChange} onRemove={() => remove(c.id)} />
       ))}
     </>
   );
@@ -433,10 +443,12 @@ function ContactsList({
 
 function ContactCard({
   contact,
+  canEdit,
   onChange,
   onRemove,
 }: {
   contact: Contact;
+  canEdit: boolean;
   onChange: () => void;
   onRemove: () => void;
 }) {
@@ -590,6 +602,7 @@ function ContactCard({
             </div>
             {contact.note && <p className="text-sm text-zinc-500 mt-3">{contact.note}</p>}
           </div>
+          {canEdit && (
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={startEdit}
@@ -606,6 +619,7 @@ function ContactCard({
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
+          )}
         </div>
       </CardContent>
     </Card>

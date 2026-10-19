@@ -6,6 +6,8 @@ import { getCurrentPermission, hasPermission } from "@/lib/auth";
 import { stripYomiPrefix, isWonYomi } from "@/lib/yomi-status";
 import { syncWonProductToPayments } from "@/lib/payment-sync";
 import { getRequestTenant, runWithTenant } from "@/lib/tenant-context";
+import { toJstDateStr } from "@/lib/meeting-datetime";
+import { writeForbidden } from "@/lib/write-guard";
 
 /**
  * yomiStatus（接頭辞付き含む）から確度% を引く。不明なら null。
@@ -37,7 +39,7 @@ const createSchema = z.object({
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const perm = await getCurrentPermission();
   if (!hasPermission(perm, "user")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return await writeForbidden();
   }
   const { id: dealId } = await params;
   const body = await req.json().catch(() => null);
@@ -98,7 +100,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (parent && !parent.contractDate) {
       await prisma.deal.update({
         where: { id: dealId },
-        data: { contractDate: new Date() },
+        // 画面の「本日でセット」と同じく、日本時間の今日の日付（UTC 0:00）で保存する。KPIの月別集計と表示の日付をそろえる。
+        data: { contractDate: new Date(toJstDateStr(new Date())) },
       });
     }
   }

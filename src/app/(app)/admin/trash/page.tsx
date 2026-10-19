@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrashList } from "@/components/admin/trash-list";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 import { Trash2, Info } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -12,10 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminTrashPage() {
   const session = await getSession();
   const me = session
-    ? await prisma.user.findUnique({
-        where: { id: session.userId },
-        select: { permission: true },
-      })
+    ? { permission: await getCurrentPermission() }
     : null;
   if (!hasPermission(me?.permission, "admin")) redirect("/dashboard");
 

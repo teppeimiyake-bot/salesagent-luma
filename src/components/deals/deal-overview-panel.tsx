@@ -83,7 +83,7 @@ export function DealOverviewPanel({
   return (
     <div className="space-y-3">
       {/* 次の一手（商談本体のNext Action）大表示 */}
-      <Card className="border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50/40 shadow-sm">
+      <Card className="border-orange-200 bg-orange-50/30">
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <div className="rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white p-1.5 shadow-sm">
@@ -110,10 +110,10 @@ export function DealOverviewPanel({
                 className="w-full resize-y rounded-md border border-amber-200 bg-white px-2.5 py-2 text-base font-semibold leading-relaxed text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:cursor-wait disabled:bg-zinc-50"
               />
               <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-500 shrink-0">期日</span>
+                <span className="text-[13px] text-zinc-500 shrink-0">期日</span>
                 <NextActionDateInput dealId={dealId} value={deal.nextActionAt} />
               </div>
-              <p className="text-[10px] text-zinc-400">
+              <p className="text-[12px] text-zinc-400">
                 入力欄からフォーカスを外すと保存されます（Ctrl/⌘+Enter でも保存）。
               </p>
             </div>
@@ -130,7 +130,7 @@ export function DealOverviewPanel({
           {/* 最新MTGから上がってきたAIのNext Action候補 */}
           {latestNext.length > 0 && (
             <div className="pt-3 border-t border-amber-200">
-              <p className="text-xs text-amber-800 font-semibold mb-2 flex items-center gap-1">
+              <p className="text-[13px] text-amber-800 font-semibold mb-2 flex items-center gap-1">
                 <Sparkles className="h-3 w-3" /> AIが推奨する次の一手（{labelById.get(latest!.id)}）
               </p>
               <ul className="space-y-1.5">
@@ -148,7 +148,7 @@ export function DealOverviewPanel({
                               ? "warning"
                               : "secondary"
                         }
-                        className="text-[10px]"
+                        className="text-[12px]"
                       >
                         優先 {a.priority}
                       </Badge>
@@ -162,18 +162,18 @@ export function DealOverviewPanel({
 
           {/* 勝ち筋 / リスク（要約） */}
           {asText(latestTop?.winning_scenario) && (
-            <div className="rounded-md bg-emerald-50 border border-emerald-200 p-2.5">
-              <p className="text-xs text-emerald-800 font-semibold mb-1 flex items-center gap-1">
+            <div className="rounded-md bg-orange-50 border border-orange-200 p-2.5">
+              <p className="text-[13px] text-orange-800 font-semibold mb-1 flex items-center gap-1">
                 <Trophy className="h-3 w-3" /> 勝ち筋
               </p>
-              <p className="text-sm text-emerald-900 leading-snug whitespace-pre-wrap">
+              <p className="text-sm text-orange-900 leading-snug whitespace-pre-wrap">
                 {asText(latestTop?.winning_scenario)}
               </p>
             </div>
           )}
           {latestTopRisks.length > 0 && (
             <div className="rounded-md bg-red-50 border border-red-200 p-2.5">
-              <p className="text-xs text-red-800 font-semibold mb-1 flex items-center gap-1">
+              <p className="text-[13px] text-red-800 font-semibold mb-1 flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" /> 失注リスク
               </p>
               <ul className="space-y-0.5">
@@ -193,7 +193,7 @@ export function DealOverviewPanel({
       <Card className="shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
-            <div className="rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white p-1.5 shadow-sm">
+            <div className="rounded-lg bg-zinc-100 p-1.5 text-zinc-500">
               <History className="h-4 w-4" />
             </div>
             これまでの商談の流れ
@@ -225,7 +225,7 @@ export function DealOverviewPanel({
                         {labelById.get(m.id)}
                       </span>
                       {isLatest && <Badge variant="info">最新</Badge>}
-                      <span className="text-[11px] text-zinc-500">
+                      <span className="text-[12.5px] text-zinc-500">
                         {formatDate(m.meetingDate)}
                       </span>
                     </div>
@@ -234,7 +234,7 @@ export function DealOverviewPanel({
                         {m.summary}
                       </p>
                     ) : (
-                      <p className="text-xs text-zinc-400 italic mt-1">
+                      <p className="text-[13px] text-zinc-400 italic mt-1">
                         AI分析未実施 / 議事録要約なし
                       </p>
                     )}
@@ -242,29 +242,29 @@ export function DealOverviewPanel({
                     {(m.bantBudget || m.bantAuthority || m.bantNeed || m.bantTimeline) && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {m.bantBudget && (
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-[12px]">
                             B:あり
                           </Badge>
                         )}
                         {m.bantAuthority && (
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-[12px]">
                             A:あり
                           </Badge>
                         )}
                         {m.bantNeed && (
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-[12px]">
                             N:あり
                           </Badge>
                         )}
                         {m.bantTimeline && (
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-[12px]">
                             T:あり
                           </Badge>
                         )}
                       </div>
                     )}
                     {idx < sortedDesc.length - 1 && (
-                      <div className="text-[10px] text-zinc-400 mt-2 inline-flex items-center gap-1">
+                      <div className="text-[12px] text-zinc-400 mt-2 inline-flex items-center gap-1">
                         <ChevronRight className="h-3 w-3" /> 次回へ
                       </div>
                     )}

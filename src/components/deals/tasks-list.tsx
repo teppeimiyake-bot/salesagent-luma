@@ -18,9 +18,14 @@ type Task = {
   dueDate: Date | string | null;
 };
 
-export function TasksList({ tasks }: { tasks: Task[] }) {
+export function TasksList({ tasks, canEdit = true }: { tasks: Task[]; canEdit?: boolean }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [busy, startTransition] = useTransition();
+  // 閲覧のみ（操作中の会社での権限）では、完了・戻す・削除などの操作をすべて無効にする（API も 403 で止める）
+  const pending = busy || !canEdit;
+  const start: typeof startTransition = (fn) => {
+    if (canEdit) startTransition(fn);
+  };
 
   function complete(id: string) {
     start(async () => {
@@ -65,27 +70,27 @@ export function TasksList({ tasks }: { tasks: Task[] }) {
                 <button
                   onClick={() => complete(t.id)}
                   disabled={pending || t.status === "DONE"}
-                  className={`mt-0.5 ${t.status === "DONE" ? "text-emerald-500" : "text-zinc-300 hover:text-emerald-500"}`}
+                  className={`mt-0.5 ${t.status === "DONE" ? "text-orange-500" : "text-zinc-300 hover:text-orange-500"}`}
                 >
                   <CheckCircle2 className="h-5 w-5" />
                 </button>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {t.isAiGenerated && (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600">
+                      <span className="inline-flex items-center gap-1 text-[12px] text-orange-600">
                         <Sparkles className="h-3 w-3" /> AI生成
                       </span>
                     )}
                     {t.priority === "high" && <Badge variant="danger">最優先</Badge>}
                     {t.priority === "medium" && <Badge variant="warning">優先</Badge>}
                     {t.dueDate && (
-                      <span className="text-[10px] text-zinc-400">期限 {formatDate(t.dueDate)}</span>
+                      <span className="text-[12px] text-zinc-400">期限 {formatDate(t.dueDate)}</span>
                     )}
                   </div>
                   <p className={`text-sm mt-1 ${t.status === "DONE" ? "line-through" : ""}`}>
                     {t.title}
                   </p>
-                  {t.reason && <p className="text-xs text-zinc-500 mt-0.5">理由: {t.reason}</p>}
+                  {t.reason && <p className="text-[13px] text-zinc-500 mt-0.5">理由: {t.reason}</p>}
                 </div>
                 <button
                   onClick={() => remove(t.id)}

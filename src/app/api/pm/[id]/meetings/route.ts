@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
+import { writeForbidden } from "@/lib/write-guard";
 
 const createSchema = z.object({
   title: z.string().nullable().optional(),
@@ -17,7 +18,7 @@ const createSchema = z.object({
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const perm = await getCurrentPermission();
   if (!hasPermission(perm, "user")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return await writeForbidden();
   }
   const { id } = await params;
   const body = await req.json().catch(() => null);

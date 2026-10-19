@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
+import { writeForbidden } from "@/lib/write-guard";
 
 const upsertSchema = z.object({
   platform: z.enum(["YOUTUBE", "INSTAGRAM", "TIKTOK"]),
@@ -25,7 +26,7 @@ function norm(s: string | null | undefined): string | null | undefined {
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const perm = await getCurrentPermission();
   if (!hasPermission(perm, "user")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return await writeForbidden();
   }
   const { id } = await params;
   const body = await req.json().catch(() => null);

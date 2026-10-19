@@ -18,6 +18,7 @@
  */
 
 import { prisma } from "@/lib/db";
+import { jstYmd } from "@/lib/calendar-date";
 
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const NOTION_VERSION = "2025-09-03";
@@ -72,7 +73,8 @@ export async function syncDealAppointmentDateToNotion(
     if (Number.isNaN(d.getTime())) {
       return { ok: false, reason: `invalid-date: ${String(date)}` };
     }
-    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    // 日本時間の暦日で送る（サーバーの時刻帯に依存しない。日本時間 0:00 で保存された商談日も前日にならない）。
+    const ymd = jstYmd(d);
     datePayload = { date: { start: ymd } };
   }
 

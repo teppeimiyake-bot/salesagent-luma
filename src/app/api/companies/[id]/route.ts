@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
+import { writeForbidden } from "@/lib/write-guard";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -46,7 +47,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   // viewer は編集不可（UI 側 canEdit と同じ admin/user のみ許可）
   const perm = await getCurrentPermission();
   if (!hasPermission(perm, "user")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return await writeForbidden();
   }
   const body = await req.json().catch(() => null);
   const parsed = updateSchema.safeParse(body);
@@ -78,7 +79,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
   // ソフト削除：Company＋紐づくDealをまとめて
   if (!hasPermission(perm, "user")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return await writeForbidden();
   }
   const now = new Date();
   await prisma.$transaction([

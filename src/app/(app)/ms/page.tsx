@@ -1,7 +1,7 @@
 import { Header } from "@/components/layout/header";
 import { MsBoard } from "@/components/ms/ms-board";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 import { getSalesUsers } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -14,10 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function MsPage() {
   const session = await getSession();
   const me = session
-    ? await prisma.user.findUnique({
-        where: { id: session.userId },
-        select: { permission: true },
-      })
+    ? { permission: await getCurrentPermission() }
     : null;
   const canEdit = hasPermission(me?.permission, "user");
 

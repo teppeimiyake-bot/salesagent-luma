@@ -62,19 +62,22 @@ export function KpiCards({
       color: "text-pink-600 bg-pink-50",
     },
   ];
+  // 列数は固定せず、カードの幅（12rem 以上）から決める。xl で6列に固定すると、右に AI チャットが出る 1280〜1535px では
+  // カードが 95〜113px しかなく、金額が桁の途中で3〜4行に折れていた（UI確認 2026-10-01）。スマホ幅は2列。
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3">
       {items.map((it) => {
         const Icon = it.icon;
         return (
           <Card key={it.label}>
             <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
+              <div className="flex items-start justify-between gap-2">
+                {/* 8桁の金額（¥44,830,000）が1行に収まるよう、スマホ幅だけ一段小さくする。それでも収まらない幅では切らずに折り返す。 */}
+                <div className="min-w-0">
                   <p className="text-xs text-zinc-500">{it.label}</p>
-                  <p className="text-xl font-semibold mt-1 tracking-tight">{it.value}</p>
+                  <p className="text-base sm:text-xl font-semibold mt-1 tracking-tight tabular-nums [overflow-wrap:anywhere]">{it.value}</p>
                 </div>
-                <div className={`rounded-md p-1.5 ${it.color}`}>
+                <div className={`shrink-0 rounded-md p-1.5 ${it.color}`}>
                   <Icon className="h-4 w-4" />
                 </div>
               </div>

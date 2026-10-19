@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -18,10 +18,7 @@ const createSchema = z.object({
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const me = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { permission: true },
-  });
+  const me = { permission: await getCurrentPermission() };
   if (!hasPermission(me?.permission, "admin")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

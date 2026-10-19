@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { excludeDoneAndNGDealsWhere } from "@/lib/deal-status-server";
+import { requireWriter } from "@/lib/write-guard";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -47,6 +48,9 @@ const createSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  // 書き込み・AI 呼び出し・外部取得は、操作中の会社で利用者以上（閲覧のみ・全社統合ビューは 403）
+  const denied = await requireWriter();
+  if (denied) return denied;
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {

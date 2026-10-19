@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 import { fetchStored } from "@/lib/storage";
 
 export const maxDuration = 60;
@@ -25,10 +25,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   // 契約書は admin のみ閲覧可（アップロード/削除と同じ制限に揃える）
   if (doc.category === "contract") {
-    const me = await prisma.user.findUnique({
-      where: { id: session.userId },
-      select: { permission: true },
-    });
+    const me = { permission: await getCurrentPermission() };
     if (!hasPermission(me?.permission, "admin")) {
       return NextResponse.json({ error: "Forbidden: contracts are admin-only" }, { status: 403 });
     }
@@ -58,7 +55,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const inline = new URL(req.url).searchParams.get("inline") === "1";
   const contentType = doc.mimeType || fetched.contentType || "application/octet-stream";
   // ファイル名：日本語等が入りうるので RFC 5987 形式で
-  const baseName = (doc.name || "file").replace(/[\r\n"\\]/g, "_");
+  const displayName = (doc.name || "file").replace(/[\r\n"\\]/g, "_");
+  const isPdf = contentType.split(";", 1)[0].trim().toLowerCase() === "application/pdf";
+  const baseName = isPdf && !/\.pdf$/i.test(displayName) ? `${displayName}.pdf` : displayName;
   const filenameStar = `UTF-8''${encodeURIComponent(baseName)}`;
   const disposition = `${inline ? "inline" : "attachment"}; filename="${asciiFallback(baseName)}"; filename*=${filenameStar}`;
 

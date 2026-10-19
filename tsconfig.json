@@ -30,5 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "agent-proxy"]
+  "exclude": ["node_modules", "agent-proxy", "scripts/verify-bant-development-db.mts"]
 }

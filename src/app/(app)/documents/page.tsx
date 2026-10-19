@@ -13,7 +13,7 @@ import {
   type IndividualContract,
 } from "@/components/documents/individual-contract-search";
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { getSession, getCurrentPermission } from "@/lib/auth";
 import { buildIndustryOptions } from "@/lib/industry";
 import { getFullyWonDealIds } from "@/lib/deal-status-server";
 
@@ -40,10 +40,7 @@ export default async function DocumentsPage({
   const sp = await searchParams;
   const session = await getSession();
   const me = session
-    ? await prisma.user.findUnique({
-        where: { id: session.userId },
-        select: { permission: true },
-      })
+    ? { permission: await getCurrentPermission() }
     : null;
   const permission = me?.permission ?? "viewer";
 
@@ -195,7 +192,7 @@ export default async function DocumentsPage({
         subtitle={`全社共通 ${docs.length} 件 ／ 個別提案書 ${proposals.length} 件 ／ 個別契約書 ${dealContracts.length} 件`}
       />
       <div className="flex-1 overflow-y-auto p-6 bg-zinc-50 space-y-5">
-        {tab !== "plan" && tab !== "deal-contract" && <KnowledgeSearch />}
+        {tab !== "plan" && tab !== "deal-contract" && <KnowledgeSearch canSearch={permission !== "viewer"} />}
         <DocumentsTabs tab={tab} counts={counts} permission={permission} />
 
         {/* 選択中タブのドキュメント一覧 */}

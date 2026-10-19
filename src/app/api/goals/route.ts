@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   // KPI目標の作成・更新は admin のみ
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const me = await prisma.user.findUnique({ where: { id: session.userId }, select: { permission: true } });
+  const me = { permission: await getCurrentPermission() };
   if (!hasPermission(me?.permission, "admin")) {
     return NextResponse.json({ error: "Forbidden: admin only" }, { status: 403 });
   }
@@ -62,7 +62,7 @@ export async function DELETE(req: Request) {
   // 削除も admin のみ
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const me = await prisma.user.findUnique({ where: { id: session.userId }, select: { permission: true } });
+  const me = { permission: await getCurrentPermission() };
   if (!hasPermission(me?.permission, "admin")) {
     return NextResponse.json({ error: "Forbidden: admin only" }, { status: 403 });
   }

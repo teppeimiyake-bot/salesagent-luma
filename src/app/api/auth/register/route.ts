@@ -3,6 +3,9 @@ import { z } from "zod";
 import { prismaUnscoped } from "@/lib/db";
 import { createSessionToken, hashPassword, setSessionCookie } from "@/lib/auth";
 import { normalizeEmail } from "@/lib/email";
+import { currentTenantId } from "@/lib/tenant-context";
+import { createInvitedUser, ensureTenantMembership } from "@/lib/invite-membership";
+import { isSelfRegistrationAllowed, SELF_REGISTRATION_DISABLED_MESSAGE } from "@/lib/self-registration";
 
 const schema = z.object({
   // 保存する値は必ず正規形にする（ログイン時の照合と同じ形に揃える）
@@ -13,13 +16,12 @@ const schema = z.object({
   inviteToken: z.string().optional(),
 });
 
-// 招待なしの直接登録を許可するか。既定は不許可。
+// 招待なしの直接登録を許可するか。既定は不許可（src/lib/self-registration.ts）。
 // マルチテナント化後、招待なしで作られたユーザーは user_tenants を持たないため
 // ログインできても全画面がテナントコンテキスト無しで落ちる。加えて /register は
 // middleware で公開パスなので、開けたままだと実顧客データを持つ本番に
 // 誰でもアカウントを作れてしまう。運用上どうしても必要な場合のみ
-// Vercel に ALLOW_OPEN_REGISTRATION=1 を設定する。
-const ALLOW_OPEN_REGISTRATION = process.env.ALLOW_OPEN_REGISTRATION === "1";
+// Vercel に ALLOW_SELF_REGISTRATION=1 を設定する（TENANT_STRICT=1 では設定しても受け付けない）。
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -38,6 +40,8 @@ export async function POST(req: Request) {
   // テナントは招待レコードが持つ tenant_id から復元する。
   // ============================================================
   if (inviteToken) {
+    // 登録はログイン前（会社が決まっていない）。テナント境界つきのクライアントでは既定の会社（Luma）の招待しか
+    // 見えないため、招待は境界なしで引き、招待の会社（invite.tenantId）に所属させる。
     const invite = await prismaUnscoped.invite.findUnique({ where: { token: inviteToken } });
     if (!invite) {
       return NextResponse.json({ error: "Invalid invite" }, { status: 404 });
@@ -77,35 +81,11 @@ export async function POST(req: Request) {
 
     // ユーザー作成 / 所属(user_tenants)作成 / 招待の使用済み化 は
     // ひとつでも欠けると「ログインできるが会社に所属していない」壊れた状態になるため
-    // 必ず同一トランザクションで行う。
-    const user = await prismaUnscoped.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: {
-          email: inviteEmail,
-          passwordHash,
-          name: parsed.data.name ?? invite.name ?? inviteEmail.split("@")[0],
-          role: invite.role,
-          permission: invite.permission,
-        },
-      });
-      // マルチテナント化以降、実効権限の正本は user_tenants。
-      // ここを作らないと resolveTenantContext() が null を返し、
-      // TENANT_STRICT=1 の本番では全ページ・全APIが例外で落ちる。
-      await tx.userTenant.create({
-        data: {
-          userId: created.id,
-          tenantId: invite.tenantId,
-          permission: invite.permission,
-          role: invite.role,
-          isDefault: true,
-          crossTenantRead: false,
-        },
-      });
-      await tx.invite.update({
-        where: { id: invite.id },
-        data: { used: true, usedAt: new Date() },
-      });
-      return created;
+    // 必ず同一トランザクションで行う（createInvitedUser）。
+    const user = await createInvitedUser(prismaUnscoped, { ...invite, tenantId: invite.tenantId }, {
+      email: inviteEmail,
+      passwordHash,
+      name: parsed.data.name ?? invite.name ?? inviteEmail.split("@")[0],
     });
 
     const sessionToken = await createSessionToken({ userId: user.id, email: user.email });
@@ -123,16 +103,12 @@ export async function POST(req: Request) {
   // メンバー追加は 管理 > メンバー の「招待URLを発行」か、admin による直接追加
   // （POST /api/users）を使うこと。
   // ============================================================
-  if (!ALLOW_OPEN_REGISTRATION) {
-    return NextResponse.json(
-      {
-        error:
-          "招待URLからのみ登録できます。管理者に招待URLの発行を依頼してください。",
-      },
-      { status: 403 },
-    );
+  // 招待なしの登録は、既定では受け付けない（誰でも既定の会社の利用者として所属できてしまうため）。
+  // ALLOW_SELF_REGISTRATION=1 のときだけ受け付け、ログイン時の会社の決まり方に合わせて既定の会社（Luma）に
+  // 所属させる。TENANT_STRICT=1 では会社が決まらず使えないので、許可していても受け付けない（src/lib/self-registration.ts）。
+  if (!isSelfRegistrationAllowed()) {
+    return NextResponse.json({ error: SELF_REGISTRATION_DISABLED_MESSAGE }, { status: 403 });
   }
-
   const email = parsed.data.email;
   if (!email) {
     return NextResponse.json({ error: "Email required" }, { status: 400 });
@@ -142,8 +118,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Email already registered" }, { status: 409 });
   }
   const passwordHash = await hashPassword(password);
-  const user = await prismaUnscoped.user.create({
-    data: { email, passwordHash, name: parsed.data.name ?? email.split("@")[0] },
+  const user = await prismaUnscoped.$transaction(async (tx) => {
+    const created = await tx.user.create({
+      data: { email, passwordHash, name: parsed.data.name ?? email.split("@")[0] },
+    });
+    await ensureTenantMembership(tx, { userId: created.id, tenantId: currentTenantId(), permission: created.permission, role: created.role });
+    return created;
   });
   const token = await createSessionToken({ userId: user.id, email: user.email });
   await setSessionCookie(token);

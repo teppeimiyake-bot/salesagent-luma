@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { FileSignature, Upload, Download, Trash2, ExternalLink, Link2, FileText } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { DOCUMENT_UPLOAD_MAX_LABEL, documentUploadSizeError } from "@/lib/document-upload";
 
 type Doc = {
   id: string;
@@ -30,6 +31,19 @@ function stripExt(filename: string): string {
 }
 
 /**
+ * T14: 契約書 自動生成（contract-generator.tsx）が契約書を作ったことを、この一覧へ知らせるイベント。
+ * 一覧はクライアント側で取得しているので router.refresh() では取り直されない。
+ * detail.dealId が一致する一覧だけが取り直す（dealId が無ければすべて取り直す）。
+ */
+export const DEAL_CONTRACTS_CHANGED_EVENT = "luma:deal-contracts-changed";
+export type DealContractsChangedDetail = { dealId?: string };
+
+export function notifyDealContractsChanged(detail: DealContractsChangedDetail = {}) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent<DealContractsChangedDetail>(DEAL_CONTRACTS_CHANGED_EVENT, { detail }));
+}
+
+/**
  * 商談ごとの「個別契約書」セクション。
  *
  * deal-documents.tsx（提案書・見積書）と同じ仕組み・UIパターンを踏襲しつつ、
@@ -40,7 +54,16 @@ function stripExt(filename: string): string {
  *   - 種別セレクトは無し（contract 固定）
  *   - ファイルを選ぶとファイル名（拡張子除去）がドキュメント名へ自動入力される
  */
-export function DealContracts({ dealId, companyName }: { dealId: string; companyName?: string }) {
+export function DealContracts({
+  dealId,
+  companyName,
+  canEdit = true,
+}: {
+  dealId: string;
+  companyName?: string;
+  /** 操作中の会社で利用者以上か。閲覧のみなら「追加」と削除を出さない（API も 403 で止める）。 */
+  canEdit?: boolean;
+}) {
   const router = useRouter();
   const [docs, setDocs] = useState<Doc[]>([]);
   const [open, setOpen] = useState(false);
@@ -79,6 +102,8 @@ export function DealContracts({ dealId, companyName }: { dealId: string; company
   // ファイル選択時：拡張子を除いたファイル名をドキュメント名へ自動入力
   function onPickFile(f: File | null) {
     setFile(f);
+    // 上限を超えるファイルは、選んだ時点で案内する（送信時にも確かめる）
+    setError(documentUploadSizeError(f));
     if (mode === "file" && !nameTouched && f) {
       setName(stripExt(f.name));
     }
@@ -91,7 +116,17 @@ export function DealContracts({ dealId, companyName }: { dealId: string; company
     setDocs(j.documents ?? []);
   }
   useEffect(() => {
+    // 初期表示・商談切替時にAPIの契約書一覧へ同期する。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
+    // T14: 契約書の自動生成後に一覧を取り直す（生成メッセージの「下の「個別契約書」に表示されます」と合わせる）
+    const onChanged = (e: Event) => {
+      const target = (e as CustomEvent<DealContractsChangedDetail>).detail?.dealId;
+      if (!target || target === dealId) load();
+    };
+    window.addEventListener(DEAL_CONTRACTS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(DEAL_CONTRACTS_CHANGED_EVENT, onChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   async function upload(e: React.FormEvent) {
@@ -137,6 +172,12 @@ export function DealContracts({ dealId, companyName }: { dealId: string; company
         setLoading(false);
         return;
       }
+      const sizeError = documentUploadSizeError(file);
+      if (sizeError) {
+        setError(sizeError);
+        setLoading(false);
+        return;
+      }
       const fd = new FormData();
       fd.append("name", name);
       fd.append("category", "contract");
@@ -175,34 +216,36 @@ export function DealContracts({ dealId, companyName }: { dealId: string; company
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center justify-between text-base">
           <span className="flex items-center gap-2">
-            <div className="rounded-lg bg-red-500 text-white p-1.5">
+            <div className="rounded-lg bg-zinc-100 p-1.5 text-zinc-500">
               <FileSignature className="h-4 w-4" />
             </div>
             この商談の個別契約書
             <Badge variant="secondary">{docs.length}</Badge>
           </span>
+          {canEdit && (
           <Button size="sm" variant="primary" onClick={() => { setOpen(!open); if (!open) { resetForm(); setName(""); } }}>
             <Upload className="h-3.5 w-3.5" />
             追加
           </Button>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {open && (
+        {canEdit && open && (
           <form onSubmit={upload} className="space-y-3 mb-4 p-4 rounded-lg border border-red-200 bg-red-50/30">
             {/* ファイル / 外部URL 切替 */}
             <div className="inline-flex items-center gap-1 rounded-lg bg-white border border-zinc-200 p-1">
               <button
                 type="button"
                 onClick={() => switchMode("file")}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold ${mode === "file" ? "bg-red-600 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[13px] font-semibold ${mode === "file" ? "bg-red-600 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}
               >
                 <Upload className="h-3 w-3" /> ファイルをアップロード
               </button>
               <button
                 type="button"
                 onClick={() => switchMode("url")}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold ${mode === "url" ? "bg-red-600 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[13px] font-semibold ${mode === "url" ? "bg-red-600 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}
               >
                 <Link2 className="h-3 w-3" /> 外部リンクを登録
               </button>
@@ -225,7 +268,7 @@ export function DealContracts({ dealId, companyName }: { dealId: string; company
                     placeholder="例: ◯◯様 業務委託契約書"
                     required
                   />
-                  <p className="text-[10px] text-zinc-400">ファイルを選ぶと、拡張子を除いたファイル名が自動入力されます（編集可）。</p>
+                  <p className="text-[12px] text-zinc-400">ファイルを選ぶと、拡張子を除いたファイル名が自動入力されます（編集可）。</p>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-sm">ファイル</Label>
@@ -235,6 +278,7 @@ export function DealContracts({ dealId, companyName }: { dealId: string; company
                     required
                     className="block w-full text-sm file:mr-4 file:rounded-md file:border-0 file:bg-red-600 file:px-3 file:py-1.5 file:text-white hover:file:bg-red-700"
                   />
+                  <p className="text-[12px] text-zinc-400">1ファイル{DOCUMENT_UPLOAD_MAX_LABEL}まで。大きい場合は圧縮するか、外部URLで登録してください。</p>
                 </div>
               </>
             ) : (
@@ -246,13 +290,13 @@ export function DealContracts({ dealId, companyName }: { dealId: string; company
                   placeholder="https://..."
                   required
                 />
-                <p className="text-[10px] text-zinc-400">
+                <p className="text-[12px] text-zinc-400">
                   契約書の名前は「<span className="font-medium">{urlAutoName}</span>」で自動登録されます。
                 </p>
               </div>
             )}
             {error && (
-              <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded leading-relaxed whitespace-pre-wrap">
+              <p className="text-[13px] text-red-600 bg-red-50 px-3 py-2 rounded leading-relaxed whitespace-pre-wrap">
                 {error}
               </p>
             )}
@@ -281,23 +325,23 @@ export function DealContracts({ dealId, companyName }: { dealId: string; company
               const isUrl = d.sourceType === "url";
               return (
                 <li key={d.id} className="py-3 flex items-center gap-3">
-                  <div className={`rounded-md p-2 ${isUrl ? "bg-sky-50" : "bg-red-50"}`}>
-                    {isUrl ? <Link2 className="h-4 w-4 text-sky-600" /> : <FileText className="h-4 w-4 text-red-600" />}
+                  <div className={`rounded-md p-2 ${isUrl ? "bg-amber-50" : "bg-red-50"}`}>
+                    {isUrl ? <Link2 className="h-4 w-4 text-amber-600" /> : <FileText className="h-4 w-4 text-red-600" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">
                       {d.name}
                       {d.version && (
-                        <span className="ml-1.5 text-[10px] text-zinc-400 font-normal">{d.version}</span>
+                        <span className="ml-1.5 text-[12px] text-zinc-400 font-normal">{d.version}</span>
                       )}
                       {d.status === "draft" && (
-                        <span className="ml-1.5 text-[10px] text-amber-700 bg-amber-50 px-1 py-0.5 rounded font-normal">ドラフト（自動生成）</span>
+                        <span className="ml-1.5 text-[12px] text-amber-700 bg-amber-50 px-1 py-0.5 rounded font-normal">ドラフト（自動生成）</span>
                       )}
                       {isUrl && (
-                        <span className="ml-1.5 text-[10px] text-sky-600 font-normal">外部リンク</span>
+                        <span className="ml-1.5 text-[12px] text-amber-600 font-normal">外部リンク</span>
                       )}
                     </p>
-                    <p className="text-[11px] text-zinc-400 truncate">
+                    <p className="text-[12.5px] text-zinc-400 truncate">
                       {formatDate(d.createdAt)}
                       {isUrl ? ` ／ ${d.fileUrl}` : d.fileSize ? ` ／ ${(d.fileSize / 1024).toFixed(0)} KB` : ""}
                     </p>
@@ -307,7 +351,7 @@ export function DealContracts({ dealId, companyName }: { dealId: string; company
                       href={d.fileUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm text-sky-600 hover:underline inline-flex items-center gap-1 shrink-0"
+                      className="text-sm text-amber-600 hover:underline inline-flex items-center gap-1 shrink-0"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                       開く
@@ -323,13 +367,15 @@ export function DealContracts({ dealId, companyName }: { dealId: string; company
                       </a>
                     )
                   )}
-                  <button
-                    onClick={() => remove(d.id)}
-                    disabled={pending}
-                    className="text-zinc-300 hover:text-red-500 shrink-0"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => remove(d.id)}
+                      disabled={pending}
+                      className="text-zinc-300 hover:text-red-500 shrink-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </li>
               );
             })}

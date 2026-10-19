@@ -3,15 +3,14 @@ import { Header } from "@/components/layout/header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AgentCandidatesAdmin } from "@/components/admin/agent-candidates-admin";
-import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminAgentCandidatesPage() {
   const session = await getSession();
   const me = session
-    ? await prisma.user.findUnique({ where: { id: session.userId } })
+    ? { permission: await getCurrentPermission() }
     : null;
   if (!hasPermission(me?.permission, "admin")) redirect("/dashboard");
 

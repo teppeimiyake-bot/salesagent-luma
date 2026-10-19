@@ -41,10 +41,22 @@ function RegisterInner() {
   const [invite, setInvite] = useState<Invite | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
+  // 招待URLなしで開いたとき：招待なしの登録を受け付けるか（null は確認中。既定は受け付けない）
+  const [selfRegistration, setSelfRegistration] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (inviteToken) return;
+    fetch("/api/auth/providers-info")
+      .then((r) => r.json())
+      .then((j) => setSelfRegistration(!!j.selfRegistration))
+      .catch(() => setSelfRegistration(false));
+  }, [inviteToken]);
+  const selfRegistrationClosed = !inviteToken && selfRegistration === false;
 
   useEffect(() => {
     if (!inviteToken) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setInviteLoading(true);
     // サーバーが 500 を返すと本文が JSON ではないため、r.json() がそのまま throw する。
     // 以前はこれを拾っておらず「読み込み中のまま何も出ない」白画面になっていた。
@@ -107,7 +119,7 @@ function RegisterInner() {
             新規登録
           </CardTitle>
           <CardDescription>
-            {inviteToken
+            {inviteToken || selfRegistrationClosed
               ? "管理者から発行された招待URLでアカウントを作成します"
               : "株式会社Luma Sales Agent を使い始める"}
           </CardDescription>
@@ -168,6 +180,24 @@ function RegisterInner() {
               </div>
             </div>
           )}
+          {selfRegistrationClosed && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+              <p className="font-semibold">招待URLから登録してください</p>
+              <p className="text-xs">
+                アカウントは、管理者が発行する招待URLから作成します。管理者に招待URLの発行を依頼してください。
+              </p>
+              <p className="text-xs">
+                すでにアカウントを持っている場合は{" "}
+                <Link href="/login" className="text-emerald-600 hover:underline">
+                  ログイン
+                </Link>
+              </p>
+            </div>
+          )}
+          {!inviteToken && selfRegistration === null && (
+            <p className="text-sm text-zinc-500 text-center py-3">確認中...</p>
+          )}
+          {(inviteToken || selfRegistration === true) && (
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">お名前</Label>
@@ -212,6 +242,7 @@ function RegisterInner() {
               </Link>
             </p>
           </form>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -1,0 +1,19 @@
+{
+  "steps": [
+    {
+      "name": "gcr.io/cloud-builders/docker",
+      "args": [
+        "build", "--tag",
+        "asia-northeast1-docker.pkg.dev/lumaagentlist/luma-platform-dev/app:${_IMAGE_TAG}", "."
+      ]
+    }
+  ],
+  "images": [
+    "asia-northeast1-docker.pkg.dev/lumaagentlist/luma-platform-dev/app:${_IMAGE_TAG}"
+  ],
+  "substitutions": { "_IMAGE_TAG": "development" },
+  "timeout": "1200s",
+  "serviceAccount": "projects/lumaagentlist/serviceAccounts/luma-platform-dev-build@lumaagentlist.iam.gserviceaccount.com",
+  "logsBucket": "gs://lumaagentlist-luma-dev-build/logs",
+  "options": { "logging": "GCS_ONLY", "diskSizeGb": "100", "machineType": "E2_STANDARD_2" }
+}

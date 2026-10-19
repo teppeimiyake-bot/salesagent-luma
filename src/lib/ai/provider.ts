@@ -1,3 +1,5 @@
+import { vertexConfigured } from "./vertex-policy";
+
 /**
  * AIプロバイダ抽象レイヤ
  *
@@ -10,7 +12,7 @@
  * マージコストを抑える）。本ファイルは内部の振り分け先を決めるだけ。
  */
 
-export type AiProvider = "gemini" | "anthropic";
+export type AiProvider = "gemini" | "anthropic" | "vertex";
 
 /**
  * 現在のテキスト生成プロバイダを返す。
@@ -18,16 +20,33 @@ export type AiProvider = "gemini" | "anthropic";
  */
 export function getTextProvider(): AiProvider {
   const v = (process.env.AI_PROVIDER ?? "").toLowerCase();
+  if (v === "vertex") return "vertex";
   if (v === "anthropic") return "anthropic";
+  if (v && v !== "gemini") throw new Error("Invalid AI provider configuration");
+  return "gemini";
+}
+
+/**
+ * High-quality text tasks can opt into a separate provider without changing the
+ * global AI_PROVIDER used by transcription and the existing analysis pipeline.
+ */
+export function getHeavyTextProvider(): AiProvider {
+  const v = (process.env.AI_PROVIDER_HEAVY ?? process.env.AI_PROVIDER ?? "").toLowerCase();
+  if (v === "vertex") return "vertex";
+  if (v === "anthropic") return "anthropic";
+  if (v && v !== "gemini") throw new Error("Invalid AI provider configuration");
   return "gemini";
 }
 
 /**
  * Geminiの主要モデル名を環境変数から解決。
- * - GEMINI_MODEL_DEFAULT: 通常タスク（チャット・7段推論）。デフォルト gemini-2.5-flash
- * - GEMINI_MODEL_HEAVY:   高品質タスク（STEP3/STEP7 など、明示指定時のみ）。デフォルト gemini-2.5-pro
- * - GEMINI_MODEL_TRANSCRIBE: 音声→テキスト。デフォルト gemini-2.5-flash
+ * - GEMINI_MODEL_DEFAULT: 通常タスク（チャット・7段推論）。デフォルト gemini-3.6-flash
+ * - GEMINI_MODEL_HEAVY:   高品質タスク（STEP3/STEP7 など、明示指定時のみ）。デフォルト gemini-3.6-flash
+ * - GEMINI_MODEL_TRANSCRIBE: 音声→テキスト。デフォルト gemini-3.6-flash
  * - GEMINI_MODEL_EMBED:   埋め込み。デフォルト text-embedding-004
+ *
+ * 2026-08 以降、新規 Gemini キーでは gemini-2.5-flash が 404 になる。
+ * 上書きは環境変数で行う（値はコードに書かない）。
  */
 export function getGeminiModels() {
   // Vertex では VERTEX_MODEL_* が優先。未設定なら GEMINI_MODEL_* を継承する。
@@ -37,9 +56,9 @@ export function getGeminiModels() {
     (vertex ? process.env[vertexKey] : undefined) ?? process.env[sharedKey] ?? fallback;
 
   return {
-    default: pick("VERTEX_MODEL_DEFAULT", "GEMINI_MODEL_DEFAULT", "gemini-2.5-flash"),
-    heavy: pick("VERTEX_MODEL_HEAVY", "GEMINI_MODEL_HEAVY", "gemini-2.5-pro"),
-    transcribe: pick("VERTEX_MODEL_TRANSCRIBE", "GEMINI_MODEL_TRANSCRIBE", "gemini-2.5-flash"),
+    default: pick("VERTEX_MODEL_DEFAULT", "GEMINI_MODEL_DEFAULT", "gemini-3.6-flash"),
+    heavy: pick("VERTEX_MODEL_HEAVY", "GEMINI_MODEL_HEAVY", "gemini-3.6-flash"),
+    transcribe: pick("VERTEX_MODEL_TRANSCRIBE", "GEMINI_MODEL_TRANSCRIBE", "gemini-3.6-flash"),
     embed: pick("VERTEX_MODEL_EMBED", "GEMINI_MODEL_EMBED", "text-embedding-004"),
   };
 }
@@ -135,6 +154,7 @@ export function hasOpenAiKey(): boolean {
  */
 export function hasAiTextKey(): boolean {
   const provider = getTextProvider();
+  if (provider === "vertex") return vertexConfigured();
   if (provider === "anthropic") return hasAnthropicKey();
   return hasGeminiKey();
 }

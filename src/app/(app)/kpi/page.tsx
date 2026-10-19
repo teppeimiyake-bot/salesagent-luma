@@ -17,7 +17,7 @@ import {
 import { MetricRollupView } from "@/components/kpi/metric-rollup-view";
 import { getFullyLostDealIds } from "@/lib/deal-status-server";
 import { isExcludedFromNextAction } from "@/lib/deal-status";
-import { getSession } from "@/lib/auth";
+import { getSession, getCurrentPermission } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getFiscalYear, fyDisplayLabel } from "@/lib/config";
 import { listMyTenants, getRequestTenant, runAsUserTenant } from "@/lib/tenant-context";
@@ -36,10 +36,7 @@ export default async function KpiPage({
 }) {
   const session = await getSession();
   const me = session
-    ? await prisma.user.findUnique({
-        where: { id: session.userId },
-        select: { permission: true },
-      })
+    ? { permission: await getCurrentPermission() }
     : null;
   const isAdmin = me?.permission === "admin";
   // 受注企業カード上のプロダクト編集（追加/変更/金額修正）は user/admin のみ

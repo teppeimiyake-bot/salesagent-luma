@@ -128,6 +128,7 @@ function AmountInput({
   const [text, setText] = useState(value == null ? "" : String(value));
   const [focused, setFocused] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!focused) setText(value == null ? "" : String(value));
   }, [value, focused]);
   return (
@@ -156,9 +157,14 @@ function AmountInput({
   );
 }
 
-export function TasksAllList({ tasks }: { tasks: Task[] }) {
+export function TasksAllList({ tasks, canEdit = true }: { tasks: Task[]; canEdit?: boolean }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [busy, startTransition] = useTransition();
+  // 閲覧のみ（操作中の会社での権限）では、完了・戻す・削除などの操作をすべて無効にする（API も 403 で止める）
+  const pending = busy || !canEdit;
+  const start: typeof startTransition = (fn) => {
+    if (canEdit) startTransition(fn);
+  };
 
   function changeYomi(dealProductId: string, newYomi: string | null) {
     start(async () => {

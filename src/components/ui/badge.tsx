@@ -21,9 +21,12 @@ const badgeVariants = cva(
 );
 
 export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  extends React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {}
 
+// 本文の <p> の中に置かれることが多いので <span>（行内要素）で描く。<div> だと HTML の規則で
+// ブラウザが <p> を途中で閉じてしまい、サーバーの HTML と食い違って React #418（hydration 不一致）になる。
+// 見た目は inline-flex のクラスで決まるので <div> のときと変わらない。
 export function Badge({ className, variant, ...props }: BadgeProps) {
-  return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
+  return <span className={cn(badgeVariants({ variant }), className)} {...props} />;
 }

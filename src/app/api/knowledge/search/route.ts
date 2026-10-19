@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { callClaude } from "@/lib/ai/anthropic";
 import { hasAiTextKey } from "@/lib/ai/provider";
 import { JP_JSON_TEXT_STYLE_RULE } from "@/lib/ai/text-style";
+import { requireWriter } from "@/lib/write-guard";
 
 const schema = z.object({
   query: z.string().min(1),
@@ -15,6 +16,9 @@ const schema = z.object({
  * 2) なければ、キーワード（query/tags/name/description）部分一致
  */
 export async function POST(req: Request) {
+  // 書き込み・AI 呼び出し・外部取得は、操作中の会社で利用者以上（閲覧のみ・全社統合ビューは 403）
+  const denied = await requireWriter();
+  if (denied) return denied;
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });

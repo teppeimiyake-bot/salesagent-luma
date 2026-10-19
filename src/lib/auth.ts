@@ -82,13 +82,26 @@ export function hasPermission(actual: string | null | undefined, required: Permi
 }
 
 /**
- * 現在のセッションユーザーの permission を取得（API Routeから使う共通ヘルパー）
- * セッション無し or ユーザー未取得時は null
+ * 現在のセッションユーザーの、操作中の会社での権限（UserTenant.permission）を取得する（画面・API Route の共通ヘルパー）。
+ * 全社共通の User.permission ではない（会社ごとに 管理者・利用者・閲覧のみ が違う）。
+ *   - runAsUserTenant 等で、同じユーザーの会社のコンテキストが張られていればそれを使う（バッチ用の system は使わない）
+ *   - なければリクエスト（Cookie とセッション）から操作中の会社を決める
+ *   - 全社統合ビューは閲覧のみ（書き込みは止める）
+ *   - 会社が決まらない（所属が無い）とき: 移行期は全社共通の User.permission、TENANT_STRICT=1 では null
+ * セッション無し or ユーザー未取得時は null。
  */
 export async function getCurrentPermission(): Promise<Permission | null> {
-  const { prisma } = await import("@/lib/db");
   const session = await getSession();
   if (!session) return null;
+  const { currentTenant, getRequestTenant } = await import("@/lib/tenant-context");
+  const bound = currentTenant();
+  const ctx = bound && bound.userId === session.userId ? bound : await getRequestTenant();
+  if (ctx && ctx.userId === session.userId) {
+    if (ctx.crossTenant) return "viewer";
+    return (ctx.permission ?? "viewer") as Permission;
+  }
+  if (process.env.TENANT_STRICT === "1") return null;
+  const { prisma } = await import("@/lib/db");
   const me = await prisma.user.findUnique({
     where: { id: session.userId },
     select: { permission: true },

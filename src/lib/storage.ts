@@ -99,7 +99,10 @@ export async function putFile(opts: PutOptions): Promise<PutResult> {
   const { dir, filename, buffer, contentType } = opts;
 
   const token = blobToken();
-  if (token) {
+  // ローカル開発は ./uploads を優先。
+  // .env に BLOB トークンがあっても、画面録画など大容量ファイルで Blob 書き込みが落ちやすい。
+  const useBlob = !!token && (!!process.env.VERCEL || process.env.FORCE_BLOB_STORAGE === "1");
+  if (useBlob && token) {
     // Vercel Blob（プライベートストア）
     const { put } = await import("@vercel/blob");
     const key = `${dir}/${filename}`;
@@ -141,6 +144,22 @@ export async function putFile(opts: PutOptions): Promise<PutResult> {
   return { url: `/uploads/${dir}/${filename}`, storage: "local" };
 }
 
+/**
+ * ローカル配信キー（"/uploads/..."）を実ファイルのパスへ変換する。"..." などは取り除く。
+ * Cloud Run では /app/uploads が GCS FUSE のため、大きな録画を全体バッファせずに
+ * ffmpeg へ直接渡せる。Blob キーなどローカルでないものは null。
+ */
+export function localStoragePath(key: string | null | undefined): string | null {
+  if (!isLocalKey(key)) return null;
+  const safe = key!
+    .replace(/^\/uploads\//, "")
+    .split("/")
+    .map((p) => p.replace(/\.\.+/g, ""))
+    .filter(Boolean)
+    .join("/");
+  return safe ? path.join(process.cwd(), "uploads", safe) : null;
+}
+
 /** 取得結果（プロキシでストリーム返却するための素材）。 */
 export interface FetchedFile {
   buffer: Buffer;
@@ -164,12 +183,8 @@ export async function fetchStored(key: string | null | undefined): Promise<Fetch
   // ローカル配信パス
   if (isLocalKey(key)) {
     try {
-      const safe = key
-        .replace(/^\/uploads\//, "")
-        .split("/")
-        .map((p) => p.replace(/\.\.+/g, ""))
-        .join("/");
-      const filepath = path.join(process.cwd(), "uploads", safe);
+      const filepath = localStoragePath(key);
+      if (!filepath) return null;
       const buffer = await fs.readFile(filepath);
       return { buffer, contentType: null, source: "local" };
     } catch {

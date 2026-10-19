@@ -5,22 +5,24 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UsersAdmin } from "@/components/admin/users-admin";
 import { InvitesAdmin } from "@/components/admin/invites-admin";
-import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
+import { listCurrentTenantUsers, userAdminAccess } from "@/lib/tenant-users";
 import { Users, Mail } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminUsersPage() {
   const session = await getSession();
-  const me = session
-    ? await prisma.user.findUnique({ where: { id: session.userId } })
-    : null;
-  if (!hasPermission(me?.permission, "admin")) redirect("/dashboard");
+  // 入れるのは、操作中の会社の管理者（UserTenant.permission）だけ。全社統合ビューでは、どれかの会社の管理者なら
+  // 閲覧だけできる（追加・変更・削除・招待の発行は API が 403 で止めるので、画面でも操作を無効にして理由を出す）。
+  const access = await userAdminAccess();
+  if (!session || !access.allowed) redirect("/dashboard");
+  const readOnlyReason = access.readOnlyReason;
 
-  const users = await prisma.user.findMany({
-    orderBy: { createdAt: "asc" },
-    select: {
+  // 操作中の会社に所属するユーザーだけ（全社統合ビューでは有効な会社のどれかに所属するユーザー）を、
+  // その会社での権限・役職で出す。変更・削除の API も操作中の会社のユーザーに限る（src/lib/tenant-users.ts）。
+  const users = await listCurrentTenantUsers(
+    {
       id: true,
       name: true,
       nameKana: true,
@@ -29,7 +31,9 @@ export default async function AdminUsersPage() {
       permission: true,
       avatarColor: true,
     },
-  });
+    {},
+    { tenantRoles: true },
+  );
 
   return (
     <>
@@ -59,10 +63,10 @@ export default async function AdminUsersPage() {
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="users" className="mt-4">
-                <UsersAdmin initial={users} currentUserId={session!.userId} />
+                <UsersAdmin initial={users} currentUserId={session!.userId} readOnlyReason={readOnlyReason} />
               </TabsContent>
               <TabsContent value="invites" className="mt-4">
-                <InvitesAdmin />
+                <InvitesAdmin readOnlyReason={readOnlyReason} />
               </TabsContent>
             </Tabs>
           </CardContent>

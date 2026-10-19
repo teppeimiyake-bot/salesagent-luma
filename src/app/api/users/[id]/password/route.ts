@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission, hashPassword } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth";
+import { isTenantMember, requireUserAdmin } from "@/lib/tenant-users";
 
 // ============================================================
 // POST /api/users/[id]/password  — 管理者によるパスワード再発行
@@ -16,9 +17,9 @@ import { getSession, hasPermission, hashPassword } from "@/lib/auth";
 //   管理者が画面から実行できる正規の復旧経路をプロダクト側に用意する。
 //
 // 安全側の作り:
-//   - admin のみ実行可能
+//   - 操作中の会社の admin のみ実行可能（全社共通の User.permission ではなく、その会社での権限）
 //   - 自分自身には使わせない（自分のパスワード変更は /api/auth/password）
-//   - 相手が自分と同じ会社(tenant)に所属している場合のみ許可。
+//   - 相手が操作中の会社(tenant)に所属している場合のみ許可。
 //     User はテナント横断の共有マスタなので、ここを見ないと
 //     Luma の管理者がリージー専属メンバーのパスワードを発行できてしまう。
 //   - 生成した平文はこのレスポンスで1回だけ返し、保存もログ出力もしない
@@ -35,19 +36,13 @@ function generatePassword(len = 16): string {
 }
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const me = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { id: true, permission: true },
-  });
-  if (!hasPermission(me?.permission, "admin")) {
-    return NextResponse.json({ error: "Forbidden: admin only" }, { status: 403 });
-  }
+  // 管理者かどうかは操作中の会社での権限で決め、操作中の会社に所属するユーザーだけを対象にする
+  // （ユーザーの変更・削除と同じ判定。全社統合ビューでは実行させない）。
+  const scope = await requireUserAdmin();
+  if ("error" in scope) return NextResponse.json({ error: scope.error }, { status: scope.status });
 
   const { id } = await params;
-  if (id === session.userId) {
+  if (id === scope.userId) {
     return NextResponse.json(
       { error: "自分自身のパスワードは「設定 > パスワード変更」から変更してください" },
       { status: 400 },
@@ -60,18 +55,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   });
   if (!target) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-  // 同じ会社に所属しているか（UserTenant はテナント境界の対象外なので素で引ける）
-  const myTenantIds = (
-    await prisma.userTenant.findMany({
-      where: { userId: session.userId },
-      select: { tenantId: true },
-    })
-  ).map((t) => t.tenantId);
-  const shared = await prisma.userTenant.findFirst({
-    where: { userId: id, tenantId: { in: myTenantIds } },
-    select: { id: true },
-  });
-  if (!shared) {
+  // 操作中の会社に所属しているか（UserTenant はテナント境界の対象外なので素で引ける）
+  if (!(await isTenantMember(id, scope.tenantId))) {
     return NextResponse.json(
       { error: "このユーザーはあなたと同じ会社に所属していないため操作できません" },
       { status: 403 },

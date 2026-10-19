@@ -60,7 +60,13 @@ function permissionLabel(p: string): string {
   return "閲覧のみ";
 }
 
-export function InvitesAdmin() {
+export function InvitesAdmin({
+  readOnlyReason = null,
+}: {
+  /** 全社統合ビューなど、招待の発行・再発行・取消ができないときの理由。あれば操作を無効にして理由を出す。 */
+  readOnlyReason?: string | null;
+} = {}) {
+  const readOnly = !!readOnlyReason;
   const router = useRouter();
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +93,7 @@ export function InvitesAdmin() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchInvites();
   }, []);
 
@@ -112,6 +119,7 @@ export function InvitesAdmin() {
   }
 
   function remove(i: Invite) {
+    if (readOnly) return;
     if (!confirm(`招待「${i.email}」を取消しますか？\n（このURLは無効になります）`)) return;
     start(async () => {
       const r = await fetch(`/api/invites?id=${i.id}`, { method: "DELETE" });
@@ -123,6 +131,7 @@ export function InvitesAdmin() {
   }
 
   async function reissue(i: Invite) {
+    if (readOnly) return;
     // 同じ email/role/permission で再発行（古いものは API側で used=true に倒される）
     setCreating(true);
     setCreateError(null);
@@ -189,6 +198,11 @@ export function InvitesAdmin() {
 
   return (
     <div className="space-y-5">
+      {readOnlyReason && (
+        <div className="text-sm rounded border border-amber-200 bg-amber-50 text-amber-800 px-3 py-2">
+          {readOnlyReason}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-zinc-700">
@@ -206,7 +220,7 @@ export function InvitesAdmin() {
           }}
         >
           <DialogTrigger asChild>
-            <Button variant="primary" size="sm">
+            <Button variant="primary" size="sm" disabled={readOnly} title={readOnlyReason ?? undefined}>
               <Plus className="h-3.5 w-3.5" />
               招待URLを発行
             </Button>
@@ -398,7 +412,7 @@ export function InvitesAdmin() {
                           variant="ghost"
                           size="sm"
                           onClick={() => reissue(i)}
-                          disabled={creating}
+                          disabled={readOnly || creating}
                           title="同じ条件で再発行（期限を更新）"
                         >
                           <RefreshCcw className="h-3.5 w-3.5" />
@@ -409,7 +423,7 @@ export function InvitesAdmin() {
                           size="sm"
                           className="border-rose-200 text-rose-600 hover:bg-rose-50"
                           onClick={() => remove(i)}
-                          disabled={pending}
+                          disabled={readOnly || pending}
                           title="招待を取消"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -451,7 +465,7 @@ export function InvitesAdmin() {
                         size="sm"
                         onClick={() => remove(i)}
                         className="text-zinc-400 hover:text-rose-600"
-                        disabled={pending}
+                        disabled={readOnly || pending}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>

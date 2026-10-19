@@ -24,7 +24,8 @@ const SUGGESTIONS = [
   "営業AIの導入効果",
 ];
 
-export function KnowledgeSearch() {
+export function KnowledgeSearch({ canSearch = true }: { canSearch?: boolean } = {}) {
+  // 閲覧のみ（操作中の会社での権限）では AI 検索をしない（AI を呼ぶため。API も 403 で止める）
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Result[]>([]);
   const [loading, setLoading] = useState(false);
@@ -32,7 +33,7 @@ export function KnowledgeSearch() {
 
   async function search(q?: string) {
     const text = (q ?? query).trim();
-    if (!text) return;
+    if (!text || !canSearch) return;
     setLoading(true);
     setQuery(text);
     const r = await fetch("/api/knowledge/search", {
@@ -69,12 +70,15 @@ export function KnowledgeSearch() {
               className="pl-9"
             />
           </div>
-          <Button variant="primary" onClick={() => search()} disabled={loading || !query.trim()}>
+          <Button variant="primary" onClick={() => search()} disabled={loading || !canSearch || !query.trim()}>
             <Sparkles className="h-4 w-4" />
             {loading ? "検索中..." : "AI検索"}
           </Button>
         </div>
 
+        {!canSearch && (
+          <p className="text-xs text-zinc-500">閲覧のみの権限では、ナレッジのAI検索はできません。</p>
+        )}
         {results.length === 0 && !loading && (
           <div>
             <p className="text-xs text-zinc-500 mb-2">検索例:</p>
@@ -83,6 +87,7 @@ export function KnowledgeSearch() {
                 <button
                   key={s}
                   onClick={() => search(s)}
+                  disabled={!canSearch}
                   className="text-xs text-amber-700 bg-white border border-amber-200 rounded-md px-3 py-1.5 hover:bg-amber-50"
                 >
                   {s}

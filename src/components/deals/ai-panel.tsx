@@ -35,8 +35,11 @@ function asText(v: unknown): string {
 export function AiPanel({
   dealId,
   meeting,
+  canEdit = true,
 }: {
   dealId: string;
+  /** 操作中の会社で利用者以上か。閲覧のみなら「ToDoに追加」を出さない。 */
+  canEdit?: boolean;
   meeting: {
     id: string;
     summary: string | null;
@@ -56,7 +59,7 @@ export function AiPanel({
     return (
       <Card className="border-dashed">
         <CardContent className="p-6 text-center">
-          <Sparkles className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+          <Sparkles className="h-8 w-8 text-orange-500 mx-auto mb-2" />
           <p className="text-sm text-zinc-600">
             録画／議事録を取り込み、「AI分析」を実行すると、ここに勝ち筋とNext Actionが表示されます。
           </p>
@@ -112,10 +115,10 @@ export function AiPanel({
   return (
     <div className="space-y-4">
       {/* AI要約 */}
-      <Card className="border-orange-200 bg-gradient-to-br from-orange-50/40 to-white">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <div className="rounded-md bg-orange-500 text-white p-1">
+            <div className="rounded-md bg-zinc-100 p-1 text-zinc-500">
               <Sparkles className="h-3.5 w-3.5" />
             </div>
             AIサマリ
@@ -169,16 +172,16 @@ export function AiPanel({
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div>
-              <p className="text-xs text-zinc-500 mb-0.5">顧客の本音</p>
+              <p className="text-[13px] text-zinc-500 mb-0.5">顧客の本音</p>
               <p className="text-zinc-800 whitespace-pre-wrap">{asText(top.real_intent)}</p>
             </div>
             <div>
-              <p className="text-xs text-zinc-500 mb-0.5">意思決定構造</p>
+              <p className="text-[13px] text-zinc-500 mb-0.5">意思決定構造</p>
               <p className="text-zinc-800 whitespace-pre-wrap">{asText(top.decision_structure)}</p>
             </div>
             {topRisks.length > 0 && (
               <div>
-                <p className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
+                <p className="text-[13px] text-zinc-500 mb-1 flex items-center gap-1">
                   <Shield className="h-3 w-3" /> 失注リスク
                 </p>
                 <ul className="space-y-1">
@@ -191,11 +194,11 @@ export function AiPanel({
                 </ul>
               </div>
             )}
-            <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3">
-              <p className="text-xs text-emerald-700 font-medium mb-1 flex items-center gap-1">
+            <div className="rounded-md bg-orange-50 border border-orange-200 p-3">
+              <p className="text-[13px] text-orange-700 font-medium mb-1 flex items-center gap-1">
                 <Trophy className="h-3 w-3" /> 勝ち筋
               </p>
-              <p className="text-sm text-emerald-900 whitespace-pre-wrap">{asText(top.winning_scenario)}</p>
+              <p className="text-sm text-orange-900 whitespace-pre-wrap">{asText(top.winning_scenario)}</p>
             </div>
           </CardContent>
         </Card>
@@ -209,15 +212,15 @@ export function AiPanel({
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div>
-              <p className="text-xs text-zinc-500">戦略</p>
+              <p className="text-[13px] text-zinc-500">戦略</p>
               <p className="whitespace-pre-wrap">{asText(strategy.strategy)}</p>
             </div>
             <div>
-              <p className="text-xs text-zinc-500">差別化</p>
+              <p className="text-[13px] text-zinc-500">差別化</p>
               <p className="whitespace-pre-wrap">{asText(strategy.differentiation)}</p>
             </div>
             <div>
-              <p className="text-xs text-zinc-500">クロージング</p>
+              <p className="text-[13px] text-zinc-500">クロージング</p>
               <p className="whitespace-pre-wrap">{asText(strategy.closing_plan)}</p>
             </div>
           </CardContent>
@@ -226,13 +229,13 @@ export function AiPanel({
 
       {/* Next Actions */}
       {nextActions.length > 0 && (
-        <Card className="border-orange-200">
+        <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Sparkles className="h-4 w-4 text-orange-600" />
               Next Action
               {scores && (
-                <span className="ml-auto text-xs text-zinc-500 font-normal">
+                <span className="ml-auto text-[13px] text-zinc-500 font-normal">
                   品質: A{scores.actionability}/S{scores.specificity}/I{scores.impact}
                 </span>
               )}
@@ -262,16 +265,16 @@ export function AiPanel({
                     <Badge variant="outline">インパクト {a.impact}</Badge>
                   </div>
                   <p className="font-medium text-sm whitespace-pre-wrap">{asText(a.action)}</p>
-                  <p className="text-xs text-zinc-500 mt-2 whitespace-pre-wrap">理由: {asText(a.reason)}</p>
-                  <p className="text-xs text-zinc-500 mt-1 whitespace-pre-wrap">
+                  <p className="text-[13px] text-zinc-500 mt-2 whitespace-pre-wrap">理由: {asText(a.reason)}</p>
+                  <p className="text-[13px] text-zinc-500 mt-1 whitespace-pre-wrap">
                     期待成果: {asText(a.expected_outcome)}
                   </p>
                   <div className="mt-3">
                     {added ? (
-                      <span className="text-xs text-orange-600 inline-flex items-center gap-1">
+                      <span className="text-[13px] text-orange-600 inline-flex items-center gap-1">
                         <CheckCircle2 className="h-3.5 w-3.5" /> ToDoに追加済
                       </span>
-                    ) : (
+                    ) : canEdit ? (
                       <Button
                         size="sm"
                         variant="primary"
@@ -280,7 +283,7 @@ export function AiPanel({
                       >
                         <Plus className="h-3.5 w-3.5" /> ToDoに追加
                       </Button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               );

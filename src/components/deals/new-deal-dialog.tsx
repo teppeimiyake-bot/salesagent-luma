@@ -46,6 +46,7 @@ import {
 } from "@/lib/pipeline-stage";
 import { cn } from "@/lib/utils";
 import { leadSourceColor } from "@/lib/lead-source";
+import { toJstDateStr } from "@/lib/meeting-datetime";
 import { IndustryPicker } from "@/components/companies/industry-picker";
 
 type Company = {
@@ -139,9 +140,8 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
   const [newCompanyHp, setNewCompanyHp] = useState("");
   const [newCompanyIndustry, setNewCompanyIndustry] = useState("");
 
-  const [appointmentDate, setAppointmentDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
+  // 既定は JST の今日（保存は T00:00:00+09:00 のため、UTC の日付だと JST 0:00〜8:59 に前日になる）
+  const [appointmentDate, setAppointmentDate] = useState(() => toJstDateStr(new Date()));
   const [ownerUserId, setOwnerUserId] = useState("");
   const [pipelineStage, setPipelineStage] = useState<string>(DEFAULT_STAGE);
   const [leadSourceId, setLeadSourceId] = useState("");
@@ -332,7 +332,7 @@ export function NewDealDialog({ defaultCompanyId }: { defaultCompanyId?: string 
     setNewCompanyName("");
     setNewCompanyHp("");
     setNewCompanyIndustry("");
-    setAppointmentDate(new Date().toISOString().slice(0, 10));
+    setAppointmentDate(toJstDateStr(new Date()));
     setOwnerUserId("");
     setPipelineStage(DEFAULT_STAGE);
     setLeadSourceId("");

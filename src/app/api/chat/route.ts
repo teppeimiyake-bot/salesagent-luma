@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { callClaude } from "@/lib/ai/anthropic";
 import { JP_TEXT_STYLE_RULE } from "@/lib/ai/text-style";
+import { requireWriter } from "@/lib/write-guard";
 
 const sendSchema = z.object({
   scope: z.string().default("global"),
@@ -24,6 +25,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  // 書き込み・AI 呼び出し・外部取得は、操作中の会社で利用者以上（閲覧のみ・全社統合ビューは 403）
+  const denied = await requireWriter();
+  if (denied) return denied;
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json().catch(() => null);

@@ -15,7 +15,7 @@ import {
 } from "@/components/deals/yomi-filter-config";
 import { prisma } from "@/lib/db";
 import { getSalesUsers } from "@/lib/queries";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 import {
   totalProposedAmount,
   dealYomiRank,
@@ -23,6 +23,9 @@ import {
 } from "@/lib/deal-aggregations";
 import { isWonYomi } from "@/lib/yomi-status";
 import { categoryFromDealProduct } from "@/lib/product-categories";
+import { isMeetAutoRecordEnabled } from "@/lib/feature-flags";
+import { dealIdsNeedingMeetAttention } from "@/lib/meetings/meet-ingest";
+import { isOwnMeet } from "@/lib/meetings/meeting-owner";
 
 export const dynamic = "force-dynamic";
 
@@ -40,10 +43,7 @@ export default async function DealsPage({
 }) {
   const session = await getSession();
   const me = session
-    ? await prisma.user.findUnique({
-        where: { id: session.userId },
-        select: { permission: true },
-      })
+    ? { permission: await getCurrentPermission() }
     : null;
   const canEdit = hasPermission(me?.permission, "user");
   const sp = await searchParams;
@@ -217,6 +217,14 @@ export default async function DealsPage({
 
   const products = productGroups.map((p) => ({ name: p.productName, count: p._count._all }));
 
+  // T16：自動取得を打ち切った（要対応の）自社Meetの商談に、一覧でも小さな「要対応」を出す。
+  // 商談ページの Meetセッション欄と同じ判定。表示する行の自社Meetの商談だけを対象にし、
+  // 商談履歴は必要な列だけをまとめて読む（dealIdsNeedingMeetAttention）。フラグOFFなら何も読まない。
+  const meetAttentionIds = isMeetAutoRecordEnabled()
+    ? await dealIdsNeedingMeetAttention(visibleDeals.filter((d) => isOwnMeet(d.meetingOwnerType)))
+    : new Set<string>();
+  const tableDeals = visibleDeals.map((d) => ({ ...d, meetAttention: meetAttentionIds.has(d.id) }));
+
   // 商談詳細→「商談一覧」戻りリンク用に、現在のフィルタ/並びをクエリ文字列で持ち回す。
   // `?yomi=` が省略されていてもデフォルト4種を意図したフィルタ状態として明示的にエンコードする。
   // 受け側 deals/[id]/page.tsx で `from` をそのまま `/deals?<from>` に展開する。
@@ -237,11 +245,12 @@ export default async function DealsPage({
   return (
     <>
       <Header
+        compactOnMobile
         title="商談一覧"
         subtitle={`${visibleDeals.length} 件 / 全 ${deals.length} 件（企業単位）`}
-        right={<NewDealDialog />}
+        right={canEdit ? <NewDealDialog /> : null}
       />
-      <div className="px-8 py-3 border-b border-zinc-200 bg-white space-y-3">
+      <div className="px-3 py-3 sm:px-8 border-b border-zinc-200 bg-white space-y-3">
         <PhaseTabs selected={phaseParam} preCount={preDeals.length} wonCount={wonDeals.length} />
         {phaseParam === "won" && (
           <WonCategoryTabs selected={catParam} counts={wonCatCounts} />
@@ -251,9 +260,10 @@ export default async function DealsPage({
         <YomiFilter selected={yomiSelected} />
         <SortFilter selected={sortParam} />
       </div>
-      <div className="flex-1 overflow-y-auto p-6 bg-zinc-50">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6 bg-zinc-50">
         <DealsTable
-          deals={visibleDeals}
+          stackOnTablet
+          deals={tableDeals}
           title={tableTitle}
           showAllLink={false}
           canDelete={canEdit}

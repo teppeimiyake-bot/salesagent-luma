@@ -1,101 +1,45 @@
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { runPipeline } from "@/lib/ai/pipeline";
+import { runMeetingAnalysis } from "@/lib/meetings/analysis";
+import { writeForbidden } from "@/lib/write-guard";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
+// 分析本体は src/lib/meetings/analysis.ts に切り出し済み（T16でMeet自動取り込みからも呼ぶため）。
+// このルートは戻り値をHTTPに写すだけで、ステータスコード・JSONの形は従来どおり。
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = { permission: await getCurrentPermission() };
+  if (!hasPermission(user?.permission, "user")) return await writeForbidden();
   const { id } = await params;
-  const meeting = await prisma.meeting.findUnique({
-    where: { id },
-    include: { deal: { include: { company: true } } },
-  });
-  if (!meeting) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const sourceText = meeting.transcript || meeting.minutes;
-  if (!sourceText) {
+  const outcome = await runMeetingAnalysis(id);
+
+  if (outcome.ok) {
+    return NextResponse.json({ ok: true, result: outcome.result, meetingId: outcome.meetingId });
+  }
+
+  if (outcome.kind === "not_found") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (outcome.kind === "in_flight") {
+    return NextResponse.json(
+      {
+        error: "文字起こしまたはAI分析が処理中です。完了をお待ちください。",
+        processingStatus: outcome.processingStatus,
+      },
+      { status: 409 },
+    );
+  }
+  if (outcome.kind === "empty") {
     return NextResponse.json({ error: "Transcript and minutes are both empty" }, { status: 400 });
   }
-
-  // 過去のユーザー編集を学習機構へ供給
-  const recentEdits = await prisma.aiLog.findMany({
-    where: { dealId: meeting.dealId, step: { in: ["task_user_edit", "bant_user_edit"] } },
-    orderBy: { createdAt: "desc" },
-    take: 5,
-  });
-  const pastEdits = recentEdits.map((e) => ({
-    aiOutput: JSON.stringify(e.input),
-    userEdit: JSON.stringify(e.userEdit ?? e.output),
-  }));
-
-  const ctx = {
-    companyName: meeting.deal.company.name,
-    dealTitle: meeting.deal.title,
-    industry: meeting.deal.company.industry,
-    pastEdits,
-  };
-
-  const result = await runPipeline(sourceText, ctx);
-
-  // 議事録（要約）に分析結果を反映
-  const summary = `${result.topSales.real_intent}\n\n勝ち筋: ${result.topSales.winning_scenario}`;
-  // minutes が空なら、AI がドラフトとして埋める
-  const minutesDraft = meeting.minutes
-    ? meeting.minutes
-    : [
-        "■ 商談要約（AI生成ドラフト）",
-        "",
-        "◆ サマリ",
-        summary,
-        "",
-        "◆ 課題",
-        ...result.analysis.issues.map((i) => `・${i}`),
-        "",
-        "◆ BANT",
-        `・予算（B）：${result.analysis.bant.budget}`,
-        `・決裁（A）：${result.analysis.bant.authority}`,
-        `・課題（N）：${result.analysis.bant.need}`,
-        `・時期（T）：${result.analysis.bant.timeline}`,
-      ].join("\n");
-  await prisma.meeting.update({
-    where: { id },
-    data: {
-      minutes: minutesDraft,
-      summary,
-      issues: result.analysis.issues,
-      bantBudget: result.analysis.bant.budget,
-      bantAuthority: result.analysis.bant.authority,
-      bantNeed: result.analysis.bant.need,
-      bantTimeline: result.analysis.bant.timeline,
-      structured: result.structured as object,
-      analysis: result.analysis as object,
-      topSales: result.topSales as object,
-      strategy: result.strategy as object,
-      nextActions: result.nextActions as object,
-      scores: result.scores as object,
-      // backend / fallbackSteps は Vertex 移行の A/B 証跡。
-      // meta は Json 列なので、スキーマ変更なしで持てる。
-      meta: {
-        improved: result.improved,
-        fallback: result.fallback,
-        fallbackSteps: result.fallbackSteps,
-        backend: result.backend,
-      },
-    },
-  });
-
-  // 各ステップを ai_logs に保存
-  for (const t of result.trace) {
-    await prisma.aiLog.create({
-      data: {
-        dealId: meeting.dealId,
-        step: t.step,
-        input: t.input as object,
-        output: t.output as object,
-      },
-    });
+  if (outcome.kind === "accepted") {
+    // T04/T22: 長い記録は原文抜粋の抽出ジョブとして受け付ける。商談履歴の継続処理が区間ごとに進める。
+    return NextResponse.json(
+      { accepted: true, mode: "long_analysis", processingStatus: "analyzing", chunks: outcome.chunks },
+      { status: 202 },
+    );
   }
-
-  // AI の Next Action は候補として Meeting.nextActions に保持するだけにする。
-  // 営業担当者が入力した Deal.nextAction は、議事録の保存・再分析では上書きしない。
-  return NextResponse.json({ ok: true, result, meetingId: id });
+  return NextResponse.json({ error: outcome.message }, { status: 500 });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { TaskStatus } from "@prisma/client";
+import { requireWriter } from "@/lib/write-guard";
 
 const updateSchema = z.object({
   title: z.string().min(1).optional(),
@@ -15,6 +16,9 @@ const updateSchema = z.object({
 });
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // 書き込み・AI 呼び出し・外部取得は、操作中の会社で利用者以上（閲覧のみ・全社統合ビューは 403）
+  const denied = await requireWriter();
+  if (denied) return denied;
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const parsed = updateSchema.safeParse(body);
@@ -54,6 +58,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  // 書き込み・AI 呼び出し・外部取得は、操作中の会社で利用者以上（閲覧のみ・全社統合ビューは 403）
+  const denied = await requireWriter();
+  if (denied) return denied;
   const { id } = await params;
   await prisma.task.delete({ where: { id } });
   return NextResponse.json({ ok: true });

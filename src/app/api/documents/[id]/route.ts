@@ -1,18 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 import { deleteFile } from "@/lib/storage";
+import { writeForbidden } from "@/lib/write-guard";
 
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const me = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { permission: true },
-  });
-  if (me?.permission === "viewer") {
-    return NextResponse.json({ error: "Forbidden: viewer cannot delete" }, { status: 403 });
+  const me = { permission: await getCurrentPermission() };
+  if (!hasPermission(me.permission, "user")) {
+    return await writeForbidden();
   }
   const doc = await prisma.document.findUnique({ where: { id } });
   if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });

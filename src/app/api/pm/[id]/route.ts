@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentPermission, hasPermission } from "@/lib/auth";
 import { PRODUCTION_STATUSES } from "@/lib/production";
+import { writeForbidden } from "@/lib/write-guard";
 
 const updateSchema = z.object({
   projectName: z.string().min(1).optional(),
@@ -115,7 +116,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const perm = await getCurrentPermission();
   if (!hasPermission(perm, "user")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return await writeForbidden();
   }
   const { id } = await params;
   const body = await req.json().catch(() => null);

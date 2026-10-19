@@ -25,9 +25,14 @@ type TodoTask = {
   };
 };
 
-export function AiTodoList({ tasks }: { tasks: TodoTask[] }) {
+export function AiTodoList({ tasks, canEdit = true }: { tasks: TodoTask[]; canEdit?: boolean }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [busy, startTransition] = useTransition();
+  // 閲覧のみ（操作中の会社での権限）では、完了・戻す・削除などの操作をすべて無効にする（API も 403 で止める）
+  const pending = busy || !canEdit;
+  const start: typeof startTransition = (fn) => {
+    if (canEdit) startTransition(fn);
+  };
 
   async function complete(id: string) {
     start(async () => {

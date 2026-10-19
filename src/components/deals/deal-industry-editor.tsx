@@ -73,7 +73,7 @@ export function DealIndustryEditor({
           setOpen(true);
         }}
         title="業種を編集"
-        className="group inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+        className="group inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[13px] font-medium text-zinc-700 transition-colors hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"
       >
         <Tag className="h-3 w-3 opacity-60" />
         {displayLabel || "業種未設定"}

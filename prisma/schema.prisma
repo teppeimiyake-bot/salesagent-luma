@@ -1,6 +1,6 @@
 // 営業AIエージェントSaaS DB schema
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "client"
 }
 
@@ -20,21 +20,21 @@ datasource db {
 // 全クエリに自動で tenant_id 条件を注入する（書き漏れによる越境を防ぐ）。
 // ============================================================
 model Tenant {
-  id        String   @id @default(uuid())
+  id                   String   @id @default(uuid())
   // 内部コード（"luma" | "reagey"）。URL・環境変数・シード等から参照する不変キー
-  code      String   @unique
+  code                 String   @unique
   // 正式名称（株式会社Luma / 株式会社リージー）
-  name      String
+  name                 String
   // 画面表示用の短縮名（Luma / リージー）
-  shortName String   @map("short_name")
+  shortName            String   @map("short_name")
   // 会計年度の開始月（1〜12）。Luma=6（5月決算）／リージー=1（12月決算）
-  fiscalYearStartMonth Int @default(1) @map("fiscal_year_start_month")
+  fiscalYearStartMonth Int      @default(1) @map("fiscal_year_start_month")
   // テナントごとのテーマ色（HEX）。誤テナント操作を防ぐため画面全体の基調色に使う
-  themeColor String? @map("theme_color")
-  logoUrl    String? @map("logo_url")
-  active     Boolean @default(true)
-  sortOrder  Int     @default(0) @map("sort_order")
-  createdAt  DateTime @default(now()) @map("created_at")
+  themeColor           String?  @map("theme_color")
+  logoUrl              String?  @map("logo_url")
+  active               Boolean  @default(true)
+  sortOrder            Int      @default(0) @map("sort_order")
+  createdAt            DateTime @default(now()) @map("created_at")
 
   userTenants UserTenant[]
 
@@ -48,18 +48,18 @@ model Tenant {
 // permission / role は User ではなくこちらを正本とする（User側は互換のため残置）。
 // ============================================================
 model UserTenant {
-  id         String   @id @default(uuid())
-  userId     String   @map("user_id")
-  tenantId   String   @map("tenant_id")
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  tenantId        String   @map("tenant_id")
   // このテナントにおける権限（admin / user / viewer）
-  permission String   @default("user")
+  permission      String   @default("user")
   // このテナントにおける役職（sales / manager）
-  role       String?  @default("sales")
+  role            String?  @default("sales")
   // ログイン直後に選択される初期テナント（ユーザーごとに1件だけ true）
-  isDefault  Boolean  @default(false) @map("is_default")
+  isDefault       Boolean  @default(false) @map("is_default")
   // 全社統合ビュー（Luma＋リージー合算）の閲覧可否。原則 admin のみ true
-  crossTenantRead Boolean @default(false) @map("cross_tenant_read")
-  createdAt  DateTime @default(now()) @map("created_at")
+  crossTenantRead Boolean  @default(false) @map("cross_tenant_read")
+  createdAt       DateTime @default(now()) @map("created_at")
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -77,32 +77,32 @@ model UserTenant {
 // 移行期の互換のために残置しているが、新規ロジックでは参照しない。
 // ============================================================
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
+  id            String    @id @default(uuid())
+  email         String    @unique
   // パスワード認証は任意化（Googleログインのみのユーザは null）
-  passwordHash String?  @map("password_hash")
-  name         String
+  passwordHash  String?   @map("password_hash")
+  name          String
   // 氏名のフリガナ（カタカナ）。担当者をカタカナ読みでも検索できるようにするための任意フィールド。
   // 例: name="三宅哲平" / nameKana="ミヤケテッペイ"。未設定でも検索は name 部分一致で機能する。
-  nameKana     String?  @map("name_kana")
+  nameKana      String?   @map("name_kana")
   // NextAuth が使用するプロフィール画像URL（Googleアバターなど）
-  image        String?
+  image         String?
   emailVerified DateTime? @map("email_verified")
-  role         String?  @default("sales")  // sales / manager（チーム上の役職）
-  permission   String   @default("user")   // admin / user / viewer（システム上の権限）
-  avatarColor  String?  @map("avatar_color")
-  avatarUrl    String?  @map("avatar_url")
-  createdAt    DateTime @default(now()) @map("created_at")
+  role          String?   @default("sales") // sales / manager（チーム上の役職）
+  permission    String    @default("user") // admin / user / viewer（システム上の権限）
+  avatarColor   String?   @map("avatar_color")
+  avatarUrl     String?   @map("avatar_url")
+  createdAt     DateTime  @default(now()) @map("created_at")
 
-  ownedDeals       Deal[]            @relation("DealOwner")
-  ownedDealProducts DealProduct[]    @relation("DealProductOwner")
-  uploadedDocs     Document[]
-  chatMessages     ChatMessage[]
-  goals            Goal[]
-  accounts         Account[]
-  sessions         Session[]
-  createdQuotes    Quote[]
-  userTenants      UserTenant[]
+  ownedDeals        Deal[]        @relation("DealOwner")
+  ownedDealProducts DealProduct[] @relation("DealProductOwner")
+  uploadedDocs      Document[]
+  chatMessages      ChatMessage[]
+  goals             Goal[]
+  accounts          Account[]
+  sessions          Session[]
+  createdQuotes     Quote[]
+  userTenants       UserTenant[]
 
   @@map("users")
 }
@@ -124,7 +124,7 @@ model Account {
   id_token          String? @db.Text
   session_state     String?
 
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@index([userId])
@@ -140,7 +140,7 @@ model Session {
   userId       String   @map("user_id")
   expires      DateTime
 
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("sessions")
@@ -170,9 +170,9 @@ model Product {
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
+  tenantId    String   @default("") @map("tenant_id")
   name        String
-  category    String?  // 旧フィールド（互換のため残置・UI不参照）
+  category    String? // 旧フィールド（互換のため残置・UI不参照）
   description String?  @db.Text
   active      Boolean  @default(true)
   createdAt   DateTime @default(now()) @map("created_at")
@@ -189,21 +189,21 @@ model Product {
 // プラン名・ベース価格・並び順を持つ
 // ============================================================
 model ProductPlan {
-  id          String  @id @default(uuid())
+  id          String   @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  productId   String  @map("product_id")
+  tenantId    String   @default("") @map("tenant_id")
+  productId   String   @map("product_id")
   name        String
-  basePrice   Int?    @map("base_price")
+  basePrice   Int?     @map("base_price")
   description String?
-  sortOrder   Int     @default(0) @map("sort_order")
-  active      Boolean @default(true)
+  sortOrder   Int      @default(0) @map("sort_order")
+  active      Boolean  @default(true)
   createdAt   DateTime @default(now()) @map("created_at")
 
-  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([productId, name])
   @@index([productId])
@@ -215,33 +215,33 @@ model ProductPlan {
 // 顧客企業
 // ============================================================
 model Company {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   name             String
   industry         String?
-  websiteUrl       String?  @map("website_url")
-  websiteSummary   String?  @db.Text @map("website_summary")
+  websiteUrl       String?   @map("website_url")
+  websiteSummary   String?   @map("website_summary") @db.Text
   websiteFetchedAt DateTime? @map("website_fetched_at")
-  note             String?  @db.Text
+  note             String?   @db.Text
   // 企業基本情報
   address          String?
-  ceoName          String?  @map("ceo_name")
-  establishedYear  Int?     @map("established_year")
-  employeeCount    Int?     @map("employee_count")
+  ceoName          String?   @map("ceo_name")
+  establishedYear  Int?      @map("established_year")
+  employeeCount    Int?      @map("employee_count")
   capital          String?
-  phoneNumber      String?  @map("phone_number")
-  logoColor        String?  @map("logo_color")
-  logoUrl          String?  @map("logo_url") // 企業ロゴ画像URL
+  phoneNumber      String?   @map("phone_number")
+  logoColor        String?   @map("logo_color")
+  logoUrl          String?   @map("logo_url") // 企業ロゴ画像URL
   // ソフト削除：null = 通常 / Date = ゴミ箱送り（マージによるアーカイブも同じ deletedAt を使う）
   deletedAt        DateTime? @map("deleted_at")
   // 企業マージで統合された場合、統合先（surviving）企業の id。null = 通常
-  mergedIntoId     String?  @map("merged_into_id")
-  createdAt        DateTime @default(now()) @map("created_at")
+  mergedIntoId     String?   @map("merged_into_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   // 営業リストエージェント連携（Phase 3）— agent 由来の追加情報
-  contactFormUrl   String?  @map("contact_form_url")            // 問い合わせフォームURL
-  doNotContact     Boolean  @default(false) @map("do_not_contact") // 送付禁止 / 明示NG
-  source           String?                                       // 取得元媒体（mynavi 等）
-  sourceKey        String?  @unique @map("source_key")           // agent由来会社の冪等キー
+  contactFormUrl String? @map("contact_form_url") // 問い合わせフォームURL
+  doNotContact   Boolean @default(false) @map("do_not_contact") // 送付禁止 / 明示NG
+  source         String? // 取得元媒体（mynavi 等）
+  sourceKey      String? @unique @map("source_key") // agent由来会社の冪等キー
 
   // ── マルチテナント ──────────────────────────────────────
   // Company は「テナント所有」ではなく Luma / リージー 共有の企業マスタ。
@@ -251,10 +251,10 @@ model Company {
   // （テナント越しの閲覧制御は「自テナントの商談を持つ企業 ∪ 自テナント起票の企業」で行う）
   createdByTenantId String? @map("created_by_tenant_id")
 
-  contacts Contact[]
-  deals    Deal[]
-  invoiceRecords    InvoiceRecord[]
-  recurringBillings RecurringBilling[]
+  contacts           Contact[]
+  deals              Deal[]
+  invoiceRecords     InvoiceRecord[]
+  recurringBillings  RecurringBilling[]
   productionProjects ProductionProject[]
 
   // 自己参照：統合先企業（surviving）／このcompanyに統合されてきた企業群（mergedChildren）
@@ -294,11 +294,11 @@ model CompanyMerge {
 // companyIdA < companyIdB にソートして保存し一意制約で重複防止
 // ============================================================
 model CompanyMergeDismissed {
-  id           String   @id @default(uuid())
-  companyIdA   String   @map("company_id_a")
-  companyIdB   String   @map("company_id_b")
-  dismissedById String? @map("dismissed_by_id")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  companyIdA    String   @map("company_id_a")
+  companyIdB    String   @map("company_id_b")
+  dismissedById String?  @map("dismissed_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   @@unique([companyIdA, companyIdB])
   @@index([companyIdA])
@@ -310,16 +310,16 @@ model CompanyMergeDismissed {
 // 顧客側担当者（連絡先）
 // ============================================================
 model Contact {
-  id        String   @id @default(uuid())
-  companyId String   @map("company_id")
-  name      String
-  role      String?  // 役職
-  email     String?
-  phone     String?
-  isPrimary Boolean  @default(false) @map("is_primary")
-  isDecisionMaker Boolean @default(false) @map("is_decision_maker")
-  note      String?  @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  name            String
+  role            String? // 役職
+  email           String?
+  phone           String?
+  isPrimary       Boolean  @default(false) @map("is_primary")
+  isDecisionMaker Boolean  @default(false) @map("is_decision_maker")
+  note            String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -338,8 +338,8 @@ model AgentRun {
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  source     String   // 取得元媒体（mynavi / rikunabi / ...）
+  tenantId   String   @default("") @map("tenant_id")
+  source     String // 取得元媒体（mynavi / rikunabi / ...）
   agentRunId String?  @map("agent_run_id") // Cloud Run 側の run_HHMMSS
   createdAt  DateTime @default(now()) @map("created_at")
 
@@ -351,41 +351,41 @@ model AgentRun {
 }
 
 model AgentCandidate {
-  id               String    @id @default(uuid())
+  id                String    @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  runId            String    @map("run_id")
-  sourceKey        String    @map("source_key") // 冪等キー（媒体+媒体内ID等）
-  companyName      String    @map("company_name")
-  dedupeKey        String    @map("dedupe_key") // normalizeName(companyName)
-  websiteUrl       String?   @map("website_url")
-  contactFormUrl   String?   @map("contact_form_url")
-  phone            String?
-  email            String?
-  industry         String?
-  address          String?
+  tenantId          String    @default("") @map("tenant_id")
+  runId             String    @map("run_id")
+  sourceKey         String    @map("source_key") // 冪等キー（媒体+媒体内ID等）
+  companyName       String    @map("company_name")
+  dedupeKey         String    @map("dedupe_key") // normalizeName(companyName)
+  websiteUrl        String?   @map("website_url")
+  contactFormUrl    String?   @map("contact_form_url")
+  phone             String?
+  email             String?
+  industry          String?
+  address           String?
   // 事前突合（intake 時に既存 Company へ当たれば記録）
-  matchedCompanyId String?   @map("matched_company_id")
-  matchStatus      String?   @map("match_status") // new / exact / domain / norm
+  matchedCompanyId  String?   @map("matched_company_id")
+  matchStatus       String?   @map("match_status") // new / exact / domain / norm
   // レビュー状態：pending / approved / rejected / ingested
-  reviewStatus     String    @default("pending") @map("review_status")
-  reviewedById     String?   @map("reviewed_by_id")
-  reviewedAt       DateTime? @map("reviewed_at")
-  ingestedCompanyId String?  @map("ingested_company_id")
-  ingestedAt       DateTime? @map("ingested_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
+  reviewStatus      String    @default("pending") @map("review_status")
+  reviewedById      String?   @map("reviewed_by_id")
+  reviewedAt        DateTime? @map("reviewed_at")
+  ingestedCompanyId String?   @map("ingested_company_id")
+  ingestedAt        DateTime? @map("ingested_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
 
   run      AgentRun                @relation(fields: [runId], references: [id], onDelete: Cascade)
   evidence AgentEvidence[]
   messages AgentGeneratedMessage[]
 
+  @@unique([tenantId, sourceKey])
   @@index([runId])
   @@index([reviewStatus])
   @@index([dedupeKey])
-  @@unique([tenantId, sourceKey])
   @@map("agent_candidates")
 }
 
@@ -395,7 +395,7 @@ model AgentEvidence {
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
+  tenantId     String   @default("") @map("tenant_id")
   candidateId  String   @map("candidate_id")
   evidenceJson Json     @map("evidence_json") // 根拠URL/テキスト
   createdAt    DateTime @default(now()) @map("created_at")
@@ -413,7 +413,7 @@ model AgentGeneratedMessage {
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
+  tenantId    String   @default("") @map("tenant_id")
   candidateId String   @map("candidate_id")
   subject     String?
   body        String?  @db.Text
@@ -430,51 +430,79 @@ model AgentGeneratedMessage {
 // 商談（= 企業単位 / 1企業=1Deal、内部に複数プロダクト DealProduct を持つ）
 // ============================================================
 model Deal {
-  id             String      @id @default(uuid())
+  id                 String     @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  companyId      String      @map("company_id")
-  ownerUserId    String?     @map("owner_user_id")  // Deal全体の主担当（DealProduct単位の担当者は別）
-  title          String      // 商談タイトル（自由記述）
-  status         DealStatus  @default(LEAD)
+  tenantId           String     @default("") @map("tenant_id")
+  companyId          String     @map("company_id")
+  ownerUserId        String?    @map("owner_user_id") // Deal全体の主担当（DealProduct単位の担当者は別）
+  title              String // 商談タイトル（自由記述）
+  status             DealStatus @default(LEAD)
   // 商談プロセスステージ（リージー独自運用：商談前/商談後/契約フェーズの細粒度ラベル）
-  pipelineStage  String?     @map("pipeline_stage")
-  nextAction     String?     @map("next_action")
-  nextActionAt   DateTime?   @map("next_action_at")
+  pipelineStage      String?    @map("pipeline_stage")
+  nextAction         String?    @map("next_action")
+  nextActionAt       DateTime?  @map("next_action_at")
   // アポ獲得日：商談タイトル「アポ獲得日 + 顧客名 + 担当者名」の自動生成にも使う。
-  appointmentDate DateTime?  @map("appointment_date")
+  appointmentDate    DateTime?  @map("appointment_date")
   // 商談予定日：アポ獲得後、実際に商談（打ち合わせ）を行う予定日。
   // appointmentDate（=アポ獲得日）とは別軸。ms管理タブのインライン編集対象。
-  meetingScheduledAt DateTime? @map("meeting_scheduled_at")
-  expectedCloseDate DateTime? @map("expected_close_date")
+  meetingScheduledAt DateTime?  @map("meeting_scheduled_at")
+  // 商談日時（T01）：開始・終了の「時刻まで」を持つ。Meet自動発行(T02)・録音準備(T03)の起点。
+  // meetingScheduledAt は ms管理が date-only 運用のため型を変えず、こちらを並存させる
+  // （商談日時を保存したときは日付部分を meetingScheduledAt にも同期する）。
+  meetingStartAt     DateTime?  @map("meeting_start_at") @db.Timestamptz(6)
+  meetingEndAt       DateTime?  @map("meeting_end_at") @db.Timestamptz(6)
+  // Google Meet自動発行（T02）：Calendar APIで作成したMeet URLとイベントID。
+  meetUrl            String?    @map("meet_url") @db.Text
+  meetEventId        String?    @map("meet_event_id")
+  // T21: 会議の主催元。URLだけでは自社発行か先方発行か判定しない。
+  meetingOwnerType   String     @default("unknown") @map("meeting_owner_type")
+  // Meet自動記録（T16）：Meet REST v2 のスペース／成果物取得の進行状態。
+  // 正規のMeetスペース名（"spaces/xxx"）。meetUrl の会議コードから解決して保持する。
+  meetSpaceName            String?   @map("meet_space_name")
+  // 自動録画・自動文字起こしの設定状態：null（未設定）| "configuring" | "configured" | "failed"
+  meetArtifactConfigStatus String?   @map("meet_artifact_config_status")
+  // 設定に失敗した理由（担当者に「再試行」を促すため画面に出す）
+  meetArtifactConfigError  String?   @map("meet_artifact_config_error") @db.Text
+  // Meet側の設定成功を読み戻しで確認できた時刻（Calendar発行だけでは埋めない）
+  meetArtifactConfiguredAt DateTime? @map("meet_artifact_configured_at")
+  // 成果物（会議記録・文字起こし）の取得状態：null | "waiting" | "fetching" | "fetched" | "failed"
+  meetArtifactStatus       String?   @map("meet_artifact_status")
+  // 成果物取得に失敗した理由
+  meetArtifactError        String?   @map("meet_artifact_error") @db.Text
+  // 最後に成果物の有無を確認した時刻（cronの空振りも含む）
+  meetArtifactCheckedAt    DateTime? @map("meet_artifact_checked_at")
+  // 成果物取得の試行回数。上限を超えたらcronの対象から外して無限リトライを防ぐ。
+  meetArtifactAttempts     Int       @default(0) @map("meet_artifact_attempts")
+  expectedCloseDate  DateTime?  @map("expected_close_date")
   // 契約日：DealProductが受注ステータスになった時のクロージング日。
   // KPI実績集計はこの contractDate ベース（×何月度に契約したか）。
-  contractDate   DateTime?   @map("contract_date")
+  contractDate       DateTime?  @map("contract_date")
   // リード獲得経由（LeadSource マスタへの参照）
-  leadSourceId   String?     @map("lead_source_id")
+  leadSourceId       String?    @map("lead_source_id")
   // リード獲得時のメモ（どう取得したか/きっかけ/紹介者など）
-  leadSourceMemo String?     @db.Text @map("lead_source_memo")
+  leadSourceMemo     String?    @map("lead_source_memo") @db.Text
   // 案件全体のBANT集約
-  bant           Json?
-  bantUpdatedAt  DateTime?   @map("bant_updated_at")
+  bant               Json?
+  bantUpdatedAt      DateTime?  @map("bant_updated_at")
   // ソフト削除
-  deletedAt      DateTime?   @map("deleted_at")
-  createdAt      DateTime    @default(now()) @map("created_at")
-  updatedAt      DateTime    @updatedAt @map("updated_at")
+  deletedAt          DateTime?  @map("deleted_at")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
 
-  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  owner      User?             @relation("DealOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  leadSource LeadSource?       @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
-  products   DealProduct[]
-  meetings   Meeting[]
-  tasks      Task[]
-  aiLogs     AiLog[]
-  roleplays  RoleplaySession[]
-  documents  Document[]
-  quotes     Quote[]
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  owner              User?               @relation("DealOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  leadSource         LeadSource?         @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
+  products           DealProduct[]
+  meetings           Meeting[]
+  tasks              Task[]
+  aiLogs             AiLog[]
+  preparationBriefs  PreparationBrief[]
+  roleplays          RoleplaySession[]
+  documents          Document[]
+  quotes             Quote[]
   invoiceRecords     InvoiceRecord[]
   recurringBillings  RecurringBilling[]
   productionProjects ProductionProject[]
@@ -486,7 +514,9 @@ model Deal {
   @@index([contractDate])
   @@index([leadSourceId])
   @@index([appointmentDate])
+  @@index([meetingStartAt])
   @@index([tenantId])
+  @@index([meetArtifactStatus])
   @@map("deals")
 }
 
@@ -501,17 +531,17 @@ model PipelineStage {
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
   tenantId  String   @default("") @map("tenant_id")
-  value     String   // DBに保管される内部キー（ラベル兼用）
-  label     String   // UI表示
-  group     String   // before / after / contract
-  badgeBg   String   @map("badge_bg")   // Tailwind class（例 bg-emerald-100）
+  value     String // DBに保管される内部キー（ラベル兼用）
+  label     String // UI表示
+  group     String // before / after / contract
+  badgeBg   String   @map("badge_bg") // Tailwind class（例 bg-emerald-100）
   badgeText String   @map("badge_text") // Tailwind class（例 text-emerald-800）
   active    Boolean  @default(true)
   sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at")
 
-  @@index([group, sortOrder])
   @@unique([tenantId, value])
+  @@index([group, sortOrder])
   @@map("pipeline_stages")
 }
 
@@ -526,15 +556,15 @@ model PlanProposal {
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
+  tenantId     String   @default("") @map("tenant_id")
   name         String
   color        String   @default("default") // Notion multi_select 色名（blue / brown / orange ...）
   displayOrder Int      @default(0) @map("display_order")
   active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @map("created_at")
 
-  @@index([displayOrder])
   @@unique([tenantId, name])
+  @@index([displayOrder])
   @@map("plan_proposals")
 }
 
@@ -548,7 +578,7 @@ model LeadSource {
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
   tenantId  String   @default("") @map("tenant_id")
-  name      String   
+  name      String
   active    Boolean  @default(true)
   sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at")
@@ -576,7 +606,7 @@ model Industry {
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
   tenantId  String   @default("") @map("tenant_id")
-  name      String   
+  name      String
   active    Boolean  @default(true)
   sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at")
@@ -589,29 +619,29 @@ model Industry {
 // DealProduct（1Dealに複数のプロダクト提案を内包）
 // ============================================================
 model DealProduct {
-  id           String   @id @default(uuid())
+  id            String   @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  dealId       String   @map("deal_id")
-  productId    String?  @map("product_id")  // Productマスタへの参照（nullable）
-  productName  String   @map("product_name") // キャッシュ表示用
-  planName     String?  @map("plan_name")
+  tenantId      String   @default("") @map("tenant_id")
+  dealId        String   @map("deal_id")
+  productId     String?  @map("product_id") // Productマスタへの参照（nullable）
+  productName   String   @map("product_name") // キャッシュ表示用
+  planName      String?  @map("plan_name")
   // 映像プランで提案する企画の型（PlanProposal.name の配列。映像カテゴリ以外は空のまま）
   planProposals String[] @default([]) @map("plan_proposals")
-  probability  Int      @default(0)
-  amount       Int?     // 提案金額（円）
-  yomiStatus   String?  @map("yomi_status")  // 受注/Aヨミ/Bヨミ/Cヨミ/ネタ/NG
-  ownerUserId  String?  @map("owner_user_id")  // プロダクトごとに担当者が違う場合
-  notes        String?  @db.Text
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  probability   Int      @default(0)
+  amount        Int? // 提案金額（円）
+  yomiStatus    String?  @map("yomi_status") // 受注/Aヨミ/Bヨミ/Cヨミ/ネタ/NG
+  ownerUserId   String?  @map("owner_user_id") // プロダクトごとに担当者が違う場合
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  deal    Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
-  owner   User?    @relation("DealProductOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  deal              Deal               @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  product           Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
+  owner             User?              @relation("DealProductOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   invoiceRecords    InvoiceRecord[]
   recurringBillings RecurringBilling[]
   productionProject ProductionProject?
@@ -638,40 +668,59 @@ enum DealStatus {
 // 商談ミーティング（議事録 = 要約 + 録画文字起こし）
 // ============================================================
 model Meeting {
-  id            String   @id @default(uuid())
+  id                    String    @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  dealId        String   @map("deal_id")
-  meetingDate   DateTime @default(now()) @map("meeting_date")
+  tenantId              String    @default("") @map("tenant_id")
+  dealId                String    @map("deal_id")
+  meetingDate           DateTime  @default(now()) @map("meeting_date")
   // 商談回ラベル（「第3回 役員レビュー」など。未指定時は通し番号で自動生成）
-  title         String?
+  title                 String?
   // minutes = 商談要約（議事録の本体・人間+AI）
-  minutes       String?  @db.Text
+  minutes               String?   @db.Text
+  minutesJson           Json?     @map("minutes_json")
   // transcript = 録画から自動文字起こし（AI入力源）
-  transcript    String?  @db.Text
-  recordingUrl  String?  @map("recording_url")
-  summary       String?  @db.Text
-  issues        Json?
-  bantBudget    String?  @map("bant_budget")
-  bantAuthority String?  @map("bant_authority")
-  bantNeed      String?  @map("bant_need")
-  bantTimeline  String?  @map("bant_timeline")
-  structured    Json?
-  analysis      Json?
-  topSales      Json?    @map("top_sales")
-  strategy      Json?
-  nextActions   Json?    @map("next_actions")
-  scores        Json?
-  meta          Json?
-  createdAt     DateTime @default(now()) @map("created_at")
+  transcript            String?   @db.Text
+  recordingUrl          String?   @map("recording_url")
+  processingStatus      String    @default("completed") @map("processing_status")
+  processingError       String?   @map("processing_error") @db.Text
+  durationSec           Int?      @map("duration_sec")
+  audioSizeBytes        Int?      @map("audio_size_bytes")
+  processingStartedAt   DateTime? @map("processing_started_at")
+  processingCompletedAt DateTime? @map("processing_completed_at")
+  summary               String?   @db.Text
+  issues                Json?
+  bantBudget            String?   @map("bant_budget")
+  bantAuthority         String?   @map("bant_authority")
+  bantNeed              String?   @map("bant_need")
+  bantTimeline          String?   @map("bant_timeline")
+  structured            Json?
+  analysis              Json?
+  topSales              Json?     @map("top_sales")
+  strategy              Json?
+  nextActions           Json?     @map("next_actions")
+  scores                Json?
+  meta                  Json?
+  // 記録の出自（T16）："upload"（ブラウザ録音・従来経路）| "meet_auto"（Meet成果物）| "manual_text"
+  sourceType             String    @default("upload") @map("source_type")
+  // Meet会議記録ID（"conferenceRecords/xxx"）。同じ会議から二重に商談履歴を作らないための鍵。
+  meetConferenceRecordId String?   @map("meet_conference_record_id")
+  // Meet文字起こしリソース名（"conferenceRecords/x/transcripts/y"）
+  meetTranscriptName     String?   @map("meet_transcript_name")
+  // Google ドキュメント版の文字起こしURL（原本確認用）
+  meetTranscriptDocUrl   String?   @map("meet_transcript_doc_url") @db.Text
+  // 話者・時刻つきの発言配列：[{speaker, startAt, endAt, text}]
+  transcriptSegments     Json?     @map("transcript_segments")
+  createdAt             DateTime  @default(now()) @map("created_at")
 
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
+  @@unique([tenantId, meetConferenceRecordId])
   @@index([dealId])
   @@index([tenantId])
+  @@index([processingStatus])
   @@map("meetings")
 }
 
@@ -684,7 +733,7 @@ model Task {
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
+  tenantId        String     @default("") @map("tenant_id")
   dealId          String     @map("deal_id")
   title           String
   description     String?    @db.Text
@@ -694,7 +743,7 @@ model Task {
   dueDate         DateTime?  @map("due_date")
   isAiGenerated   Boolean    @default(false) @map("is_ai_generated")
   reason          String?    @db.Text
-  expectedOutcome String?    @db.Text @map("expected_outcome")
+  expectedOutcome String?    @map("expected_outcome") @db.Text
   createdAt       DateTime   @default(now()) @map("created_at")
   completedAt     DateTime?  @map("completed_at")
 
@@ -717,34 +766,34 @@ enum TaskStatus {
 // 全社共通ドキュメント（提案書・契約書テンプレ）
 // ============================================================
 model Document {
-  id             String   @id @default(uuid())
+  id            String   @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  name           String
-  category       String   // proposal / contract / case_study / template / quote / other
+  tenantId      String   @default("") @map("tenant_id")
+  name          String
+  category      String // proposal / contract / case_study / template / quote / other
   // file = アップロード実体（fileUrl=ストレージURL） / url = 外部リンクのみ（fileUrl=外部URL）
-  sourceType     String   @default("file") @map("source_type")
-  scope          String   @default("global") // global / deal
-  dealId         String?  @map("deal_id")
+  sourceType    String   @default("file") @map("source_type")
+  scope         String   @default("global") // global / deal
+  dealId        String?  @map("deal_id")
   // 自動生成物の状態（quote/contract）：draft = 確定前ドラフト / final = 確定済み発行物。
   // 手動アップロード（既存）は null のまま（= 状態管理対象外）。
-  status         String?
+  status        String?
   // 自動生成の出所となった DealProduct（quote/contract の差込元）。手動アップロードは null。
-  dealProductId  String?  @map("deal_product_id")
-  description    String?  @db.Text
+  dealProductId String?  @map("deal_product_id")
+  description   String?  @db.Text
   // 見積書バージョン（"v1", "v2.1" など。quote 用）
-  version        String?
-  fileUrl        String   @map("file_url")
-  fileSize       Int?     @map("file_size")
-  mimeType       String?  @map("mime_type")
-  uploadedById   String?  @map("uploaded_by_id")
+  version       String?
+  fileUrl       String   @map("file_url")
+  fileSize      Int?     @map("file_size")
+  mimeType      String?  @map("mime_type")
+  uploadedById  String?  @map("uploaded_by_id")
   // ナレッジ検索用
-  tags           String[] // 業界・課題タグ
-  embedding      Float[]  // OpenAI embeddings (text-embedding-3-small=1536d) — 任意
-  createdAt      DateTime @default(now()) @map("created_at")
+  tags          String[] // 業界・課題タグ
+  embedding     Float[] // OpenAI embeddings (text-embedding-3-small=1536d) — 任意
+  createdAt     DateTime @default(now()) @map("created_at")
 
   uploadedBy User? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   deal       Deal? @relation(fields: [dealId], references: [id], onDelete: Cascade)
@@ -764,41 +813,55 @@ model Document {
 //   発行（fileUrl=生成PDFのストレージキー、Document.dealProductId で紐付け）。
 // ============================================================
 model Quote {
-  id            String   @id @default(uuid())
+  id                String    @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  dealId        String   @map("deal_id")
+  tenantId          String    @default("") @map("tenant_id")
+  dealId            String    @map("deal_id")
   // 見積の出所 DealProduct（プラン/企画案）。任意（手組みの見積も許容）。
-  dealProductId String?  @map("deal_product_id")
+  dealProductId     String?   @map("deal_product_id")
   // 宛名（Company.name を既定でコピー、手修正可）と敬称（御中/様）
-  clientName    String   @map("client_name")
-  clientHonorific String @default("御中") @map("client_honorific")
+  clientName        String    @map("client_name")
+  clientHonorific   String    @default("御中") @map("client_honorific")
   // 委託業務名（タイトル下の件名）
-  subject       String?
+  subject           String?
   // 発行日（和暦表示はPDF側で整形）
-  issueDate     DateTime @default(now()) @map("issue_date")
+  issueDate         DateTime  @default(now()) @map("issue_date")
   // 見積有効期限などの備考
-  note          String?  @db.Text
+  note              String?   @db.Text
   // 消費税率（パーセント。既定10）
-  taxRate       Int      @default(10) @map("tax_rate")
+  taxRate           Int       @default(10) @map("tax_rate")
   // 確定状態：draft / final。final になると発行 Document を持つ。
-  status        String   @default("draft")
+  status            String    @default("draft")
   // バージョン表記（"v1" 等。Document.version と揃える）
-  version       String?
+  version           String?
   // 発行済み PDF Document への参照（final時にセット）
-  documentId    String?  @map("document_id")
-  createdById   String?  @map("created_by_id")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  documentId        String?   @map("document_id")
+  // T14: 確定時にだけ採番し、発行時点の発行者情報と計算結果を固定する。
+  quoteNumber       String?   @map("quote_number")
+  issuerSnapshot    Json?     @map("issuer_snapshot")
+  templateVersion   String?   @map("template_version")
+  finalizedAt       DateTime? @map("finalized_at")
+  supersedesQuoteId String?   @map("supersedes_quote_id")
+  idempotencyKey    String?   @map("idempotency_key")
+  subtotal          Int?      @map("subtotal")
+  taxTotal          Int?      @map("tax_total")
+  grandTotal        Int?      @map("grand_total")
+  createdById       String?   @map("created_by_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   deal        Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
   dealProduct DealProduct? @relation(fields: [dealProductId], references: [id], onDelete: SetNull)
   createdBy   User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
   lines       QuoteLine[]
+  supersedes  Quote?       @relation("QuoteRevisions", fields: [supersedesQuoteId], references: [id], onDelete: SetNull)
+  revisions   Quote[]      @relation("QuoteRevisions")
 
+  @@unique([tenantId, quoteNumber])
+  @@unique([tenantId, idempotencyKey])
   @@index([dealId])
   @@index([dealProductId])
   @@index([tenantId])
@@ -809,24 +872,84 @@ model Quote {
 // 見積明細行（品目・数量・単価）。金額 = qty × unitPrice はアプリ層で算出。
 // ============================================================
 model QuoteLine {
-  id        String   @id @default(uuid())
+  id          String  @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  quoteId   String   @map("quote_id")
-  name      String   // 品目（委託業務名・プラン名等）
-  detail    String?  // 補足
-  qty       Int      @default(1)
-  unitPrice Int      @map("unit_price") // 単価（税抜・円）
-  sortOrder Int      @default(0) @map("sort_order")
+  tenantId    String  @default("") @map("tenant_id")
+  quoteId     String  @map("quote_id")
+  name        String // 品目（委託業務名・プラン名等）
+  detail      String? // 補足
+  qty         Int     @default(1)
+  unitPrice   Int     @map("unit_price") // 単価（税抜・円）
+  unit        String  @default("式")
+  taxCategory String  @default("taxable") @map("tax_category")
+  taxRate     Int     @default(10) @map("tax_rate")
+  sortOrder   Int     @default(0) @map("sort_order")
 
   quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 
   @@index([quoteId])
   @@index([tenantId])
   @@map("quote_lines")
+}
+
+// ============================================================
+// T14: テナント別の見積書発行者設定・明細テンプレート
+// ============================================================
+model QuoteIssuerProfile {
+  id                String   @id @default(uuid())
+  tenantId          String   @unique @default("") @map("tenant_id")
+  legalName         String   @map("legal_name")
+  postalCode        String   @default("170-0013") @map("postal_code")
+  addressLine1      String   @map("address_line1")
+  addressLine2      String   @map("address_line2")
+  logoUrl           String?  @map("logo_url")
+  defaultNotes      String   @map("default_notes") @db.Text
+  travelExpenseNote String?  @map("travel_expense_note") @db.Text
+  numberPrefix      String   @default("L") @map("number_prefix")
+  nextQuoteNumber   Int      @default(1) @map("next_quote_number")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("quote_issuer_profiles")
+}
+
+model QuoteTemplate {
+  id        String              @id @default(uuid())
+  tenantId  String              @default("") @map("tenant_id")
+  name      String
+  productId String?             @map("product_id")
+  planName  String?             @map("plan_name")
+  active    Boolean             @default(true)
+  sortOrder Int                 @default(0) @map("sort_order")
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
+  lines     QuoteTemplateLine[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, active, sortOrder])
+  @@map("quote_templates")
+}
+
+model QuoteTemplateLine {
+  id          String        @id @default(uuid())
+  tenantId    String        @default("") @map("tenant_id")
+  templateId  String        @map("template_id")
+  name        String
+  detail      String?
+  qty         Int           @default(1)
+  unit        String        @default("式")
+  unitPrice   Int           @default(0) @map("unit_price")
+  taxCategory String        @default("taxable") @map("tax_category")
+  taxRate     Int           @default(10) @map("tax_rate")
+  sortOrder   Int           @default(0) @map("sort_order")
+  template    QuoteTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, sortOrder])
+  @@index([tenantId])
+  @@map("quote_template_lines")
 }
 
 // ============================================================
@@ -840,8 +963,8 @@ model ChatMessage {
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
   tenantId  String   @default("") @map("tenant_id")
   userId    String   @map("user_id")
-  scope     String   // global / deal:<id>
-  role      String   // user / assistant / system
+  scope     String // global / deal:<id>
+  role      String // user / assistant / system
   content   String   @db.Text
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -861,14 +984,14 @@ model RoleplaySession {
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
+  tenantId    String   @default("") @map("tenant_id")
   dealId      String   @map("deal_id")
   level       Int      @default(2) // 1=初級 / 2=中級 / 3=上級
   personaName String?  @map("persona_name") // 顧客アバター用
   personaRole String?  @map("persona_role")
   scenario    String   @db.Text
-  log         Json     // 会話ログ
-  feedback    Json?    // AIによる商談後フィードバック
+  log         Json // 会話ログ
+  feedback    Json? // AIによる商談後フィードバック
   createdAt   DateTime @default(now()) @map("created_at")
 
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
@@ -904,25 +1027,52 @@ model AiLog {
 }
 
 // ============================================================
+// Preparation brief (T09): persisted company/industry research.
+// tenantId is required so src/lib/db.ts can fail closed when tenant context is missing.
+// ============================================================
+model PreparationBrief {
+  id              String   @id @default(uuid())
+  tenantId        String   @default("") @map("tenant_id")
+  dealId          String   @map("deal_id")
+  status          String   @default("pending")
+  error           String?  @db.Text
+  industrySummary String?  @map("industry_summary") @db.Text
+  hiringInsights  Json?    @map("hiring_insights")
+  painHypotheses  Json?    @map("pain_hypotheses")
+  proposalStory   String?  @map("proposal_story") @db.Text
+  talkingPoints   Json?    @map("talking_points")
+  sources         Json?
+  model           String?
+  createdById     String?  @map("created_by_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([tenantId])
+  @@map("preparation_briefs")
+}
+
+// ============================================================
 // 招待トークン（admin がメール宛にURLを発行 → /register?invite=token から登録）
 // ============================================================
 model Invite {
-  id           String    @id @default(uuid())
+  id          String    @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  email        String
-  token        String    @unique
-  name         String?
-  role         String    @default("sales")  // sales / manager
-  permission   String    @default("user")   // admin / user / viewer
-  invitedById  String?   @map("invited_by_id")
-  expiresAt    DateTime  @map("expires_at")
-  used         Boolean   @default(false)
-  usedAt       DateTime? @map("used_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  tenantId    String    @default("") @map("tenant_id")
+  email       String
+  token       String    @unique
+  name        String?
+  role        String    @default("sales") // sales / manager
+  permission  String    @default("user") // admin / user / viewer
+  invitedById String?   @map("invited_by_id")
+  expiresAt   DateTime  @map("expires_at")
+  used        Boolean   @default(false)
+  usedAt      DateTime? @map("used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   @@index([email])
   @@index([token])
@@ -939,9 +1089,9 @@ model Goal {
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
+  tenantId     String   @default("") @map("tenant_id")
   ownerUserId  String?  @map("owner_user_id") // null = 組織全体
-  period       String   // 2026-Q2 / 2026-04 などフリーフォーマット
+  period       String // 2026-Q2 / 2026-04 などフリーフォーマット
   targetAmount Int      @map("target_amount")
   createdAt    DateTime @default(now()) @map("created_at")
 
@@ -960,72 +1110,72 @@ model Goal {
 // 着金金額(amountGross) = 契約金額(amountNet) × 1.1（税込）。検算に利用。
 // ============================================================
 model InvoiceRecord {
-  id            String   @id @default(uuid())
+  id            String  @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
+  tenantId      String  @default("") @map("tenant_id")
   // 顧客名（CSV原文。重複企業の表記ゆれをそのまま保持。照合用は normalizeName で別途）
-  customerName  String   @map("customer_name")
+  customerName  String  @map("customer_name")
   // 任意FK（顧客名マッチで紐付け。未マッチは null のまま）
-  companyId     String?  @map("company_id")
-  dealId        String?  @map("deal_id")
-  dealProductId String?  @map("deal_product_id")
+  companyId     String? @map("company_id")
+  dealId        String? @map("deal_id")
+  dealProductId String? @map("deal_product_id")
 
-  paymentTiming  PaymentTiming  @default(PREPAID)    @map("payment_timing")    // 前払い/納品後/分割
-  contractStatus ContractStatus @default(SIGNED)     @map("contract_status")   // 締結済み/未締結
-  invoiceStatus  InvoiceSentStatus @default(NOT_SENT) @map("invoice_status")    // 送付済み/未送付/前金分送付済み
+  paymentTiming  PaymentTiming     @default(PREPAID) @map("payment_timing") // 前払い/納品後/分割
+  contractStatus ContractStatus    @default(SIGNED) @map("contract_status") // 締結済み/未締結
+  invoiceStatus  InvoiceSentStatus @default(NOT_SENT) @map("invoice_status") // 送付済み/未送付/前金分送付済み
   paymentStatus  PaymentRecvStatus @default(UNCONFIRMED) @map("payment_status") // 確認済み/未確認/前金分確認済み
 
-  deliveryDate  DateTime? @map("delivery_date")      // 納品予定日
+  deliveryDate        DateTime? @map("delivery_date") // 納品予定日
   expectedPaymentDate DateTime? @map("expected_payment_date") // 着金見込み日
 
   // 契約金額(税抜・円)。CSVで空のものは null。
-  amountNet     Int?     @map("amount_net")
+  amountNet   Int? @map("amount_net")
   // 着金金額(税込・円)。原則 amountNet×1.1 だが、CSV原値を優先保持（端数丸めの差異を温存）。
-  amountGross   Int?     @map("amount_gross")
+  amountGross Int? @map("amount_gross")
 
-  note          String?  @db.Text
+  note      String?  @db.Text
   // 投入シードの冪等キー（CSV由来の安定識別子。重複行を区別するため customerName+amountNet 等で生成）
-  sourceKey     String?   @map("source_key")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  sourceKey String?  @map("source_key")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   company     Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
   deal        Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
   dealProduct DealProduct? @relation(fields: [dealProductId], references: [id], onDelete: SetNull)
 
+  @@unique([tenantId, sourceKey])
   @@index([companyId])
   @@index([dealId])
   @@index([dealProductId])
   @@index([invoiceStatus])
   @@index([paymentStatus])
-  @@unique([tenantId, sourceKey])
   @@map("invoice_records")
 }
 
 enum PaymentTiming {
-  PREPAID      // 前払い
-  ON_DELIVERY  // 納品後支払い
-  INSTALLMENT  // 分割支払い
+  PREPAID // 前払い
+  ON_DELIVERY // 納品後支払い
+  INSTALLMENT // 分割支払い
 }
 
 enum ContractStatus {
-  SIGNED    // 締結済み
-  UNSIGNED  // 未締結
+  SIGNED // 締結済み
+  UNSIGNED // 未締結
 }
 
 enum InvoiceSentStatus {
-  SENT            // 送付済み
-  NOT_SENT        // 未送付
-  PARTIAL_SENT    // 前金分送付済み
+  SENT // 送付済み
+  NOT_SENT // 未送付
+  PARTIAL_SENT // 前金分送付済み
 }
 
 enum PaymentRecvStatus {
-  CONFIRMED          // 確認済み
-  UNCONFIRMED        // 未確認
-  PARTIAL_CONFIRMED  // 前金分確認済み
+  CONFIRMED // 確認済み
+  UNCONFIRMED // 未確認
+  PARTIAL_CONFIRMED // 前金分確認済み
 }
 
 // ============================================================
@@ -1034,36 +1184,36 @@ enum PaymentRecvStatus {
 // 月次の請求送付/着金フラグは RecurringBillingPeriod に正規化（40列の生フラグは持たない）。
 // ============================================================
 model RecurringBilling {
-  id            String   @id @default(uuid())
+  id            String  @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  customerName  String   @map("customer_name")
-  companyId     String?  @map("company_id")
-  dealId        String?  @map("deal_id")
-  dealProductId String?  @map("deal_product_id")
+  tenantId      String  @default("") @map("tenant_id")
+  customerName  String  @map("customer_name")
+  companyId     String? @map("company_id")
+  dealId        String? @map("deal_id")
+  dealProductId String? @map("deal_product_id")
 
-  initialFee    Int?     @map("initial_fee")    // 初期費用(円)
-  monthlyFee    Int?     @map("monthly_fee")     // 月額(円)
-  startDate     DateTime? @map("start_date")     // 契約開始日
-  endDate       DateTime? @map("end_date")       // 契約終了日
+  initialFee Int?      @map("initial_fee") // 初期費用(円)
+  monthlyFee Int?      @map("monthly_fee") // 月額(円)
+  startDate  DateTime? @map("start_date") // 契約開始日
+  endDate    DateTime? @map("end_date") // 契約終了日
 
-  note          String?  @db.Text
-  sourceKey     String?   @map("source_key")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  note      String?  @db.Text
+  sourceKey String?  @map("source_key")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  company     Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  deal        Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
-  dealProduct DealProduct? @relation(fields: [dealProductId], references: [id], onDelete: SetNull)
+  company     Company?                 @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  deal        Deal?                    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  dealProduct DealProduct?             @relation(fields: [dealProductId], references: [id], onDelete: SetNull)
   periods     RecurringBillingPeriod[]
 
+  @@unique([tenantId, sourceKey])
   @@index([companyId])
   @@index([dealId])
   @@index([dealProductId])
-  @@unique([tenantId, sourceKey])
   @@map("recurring_billings")
 }
 
@@ -1072,19 +1222,19 @@ model RecurringBilling {
 // 1契約 × 対象年月(yyyymm) で一意。グリッドUIのセルに対応。
 // ============================================================
 model RecurringBillingPeriod {
-  id          String   @id @default(uuid())
+  id        String   @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
   tenantId  String   @default("") @map("tenant_id")
-  billingId   String   @map("billing_id")
+  billingId String   @map("billing_id")
   // 対象年月。YYYYMM の整数（例 202506）。並び替え・範囲検索が容易。
-  yearMonth   Int      @map("year_month")
-  sent        Boolean  @default(false)  // 請求送付済み
-  paid        Boolean  @default(false)  // 着金確認済み
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  yearMonth Int      @map("year_month")
+  sent      Boolean  @default(false) // 請求送付済み
+  paid      Boolean  @default(false) // 着金確認済み
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   billing RecurringBilling @relation(fields: [billingId], references: [id], onDelete: Cascade)
 
@@ -1100,21 +1250,21 @@ model RecurringBillingPeriod {
 // Notion PMボード「Luma PM-dev」準拠。受注した DealProduct 単位に1件。
 // ============================================================
 model ProductionProject {
-  id            String   @id @default(uuid())
+  id                      String           @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  dealId        String   @map("deal_id")
+  tenantId                String           @default("") @map("tenant_id")
+  dealId                  String           @map("deal_id")
   // 受注商材（DealProduct）に1:1で紐付け。
-  dealProductId String?  @unique @map("deal_product_id")
+  dealProductId           String?          @unique @map("deal_product_id")
   // 表示/フィルタ用の明示FK。本来は dealProduct->deal->company で辿れるが、SNS等のため明示的に持つ。
-  companyId     String?  @map("company_id")
+  companyId               String?          @map("company_id")
   // 商材カテゴリ（映像/SNS/CATV/アライアンス）。サブタブ分けに使用。
-  category      String?
-  projectName   String   @map("project_name")
-  status        ProductionStatus @default(BEFORE_SHOOT)
+  category                String?
+  projectName             String           @map("project_name")
+  status                  ProductionStatus @default(BEFORE_SHOOT)
   // PM（担当者）。User FK ではなく Notion準拠のテキスト（社外スタッフ名が入ることがある）。
   pmName        String?  @map("pm_name")
   directorName  String?  @map("director_name")  // ディレクター
@@ -1127,15 +1277,15 @@ model ProductionProject {
   delivered     Boolean  @default(false)          // 納品済み(チェック)
   note          String?  @db.Text
   // 映像：絵コンテ／香盤表のスプレッドシートURL
-  storyboardUrl       String?  @map("storyboard_url")
-  shootingScheduleUrl String?  @map("shooting_schedule_url")
+  storyboardUrl           String?          @map("storyboard_url")
+  shootingScheduleUrl     String?          @map("shooting_schedule_url")
   // SNS：総投稿本数（「24本（月4本）」等のテキスト）／提供開始・終了月／管理シートURL
-  totalPosts        String?   @map("total_posts")
-  serviceStartMonth DateTime? @map("service_start_month")
-  serviceEndMonth   DateTime? @map("service_end_month")
-  mgmtSheetUrl      String?   @map("mgmt_sheet_url")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  totalPosts              String?          @map("total_posts")
+  serviceStartMonth       DateTime?        @map("service_start_month")
+  serviceEndMonth         DateTime?        @map("service_end_month")
+  mgmtSheetUrl            String?          @map("mgmt_sheet_url")
+  createdAt               DateTime         @default(now()) @map("created_at")
+  updatedAt               DateTime         @updatedAt @map("updated_at")
 
   deal        Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
   dealProduct DealProduct? @relation(fields: [dealProductId], references: [id], onDelete: SetNull)
@@ -1170,20 +1320,20 @@ enum ProductionStatus {
 //   TODO(security): password は将来 KMS/暗号化カラムへ移行する。
 // ============================================================
 model SnsAccount {
-  id                  String       @id @default(uuid())
+  id                  String      @id @default(uuid())
   // マルチテナント: 所有会社（tenants.id）。Prismaリレーションは張らず FK は SQL 側で担保。
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
-  productionProjectId String       @map("production_project_id")
+  tenantId            String      @default("") @map("tenant_id")
+  productionProjectId String      @map("production_project_id")
   platform            SnsPlatform
-  accountId           String?      @map("account_id")
+  accountId           String?     @map("account_id")
   password            String?
-  profileUrl          String?      @map("profile_url")
-  miyakePcLogin       Boolean      @default(false) @map("miyake_pc_login")
-  createdAt           DateTime     @default(now()) @map("created_at")
-  updatedAt           DateTime     @updatedAt @map("updated_at")
+  profileUrl          String?     @map("profile_url")
+  miyakePcLogin       Boolean     @default(false) @map("miyake_pc_login")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
 
   productionProject ProductionProject @relation(fields: [productionProjectId], references: [id], onDelete: Cascade)
 
@@ -1216,7 +1366,7 @@ model MsWorker {
   tenantId  String   @default("") @map("tenant_id")
   // 表示用コード（"001" など。スプレッドシート上の連番に対応。任意）
   code      String?
-  name      String   // "フローラ三宮さん" など
+  name      String // "フローラ三宮さん" など
   isAgency  Boolean  @default(false) @map("is_agency") // 代理店経由か（社内/個人=false）
   active    Boolean  @default(true)
   sortOrder Int      @default(0) @map("sort_order")
@@ -1239,16 +1389,16 @@ model MsWeeklyEntry {
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
+  tenantId      String   @default("") @map("tenant_id")
   workerId      String   @map("worker_id")
   // 暦年・暦月（会計年度ではなく実際の年月）。集計時に lib/config の会計年度ヘルパーで束ねる。
   year          Int
-  month         Int      // 1〜12（暦月）
+  month         Int // 1〜12（暦月）
   weekOfMonth   Int      @map("week_of_month") // 月内第N週: 1〜5
   // 入力指標（手入力）
   sent          Int      @default(0) // 送信数
   appointments  Int      @default(0) // アポ数（= 返信数。アポ率/返信率の分子）
-  listOrders    Int      @default(0) @map("list_orders")    // リスト発注数
+  listOrders    Int      @default(0) @map("list_orders") // リスト発注数
   inquiryOrders Int      @default(0) @map("inquiry_orders") // 問い合わせ発注数
   notes         String?  @db.Text
   createdAt     DateTime @default(now()) @map("created_at")
@@ -1272,7 +1422,7 @@ model MsKpiGoal {
   // @default("") は「型の上では省略可・実際に省略したら FK 違反で落ちる」ための仕掛け:
   // 値は src/lib/db.ts の Prisma Extension が必ず注入する。Extension を通らない経路で
   // 作成すると "" のまま INSERT され、tenants への FK 制約で確実に失敗する（fail-closed）。
-  tenantId  String   @default("") @map("tenant_id")
+  tenantId        String   @default("") @map("tenant_id")
   // 会計年度の period ラベル（"FY2026"）。組織全体の単一目標。
   period          String
   targetReplyRate Float    @map("target_reply_rate") // 目標返信率(=目標アポ率) 例: 0.005
@@ -1307,8 +1457,9 @@ model PmStaff {
   sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
-  @@index([role])
+
   @@unique([tenantId, role, name])
+  @@index([role])
   @@map("pm_staff")
 }
 

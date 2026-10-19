@@ -84,20 +84,20 @@ export function NotionMeetingNotes({ bant }: NotionMeetingNotesProps) {
   })();
 
   return (
-    <Card className="border-violet-200 bg-gradient-to-br from-violet-50/30 via-white to-fuchsia-50/20 shadow-sm">
+    <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base flex-wrap">
-          <div className="rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white p-1.5 shadow-sm">
+          <div className="rounded-lg bg-zinc-100 p-1.5 text-zinc-500">
             <ScrollText className="h-4 w-4" />
           </div>
           初回商談ヒアリングシート
           {source === "notion" && (
-            <Badge variant="info" className="text-[10px]">
+            <Badge variant="info" className="text-[12px]">
               Notion由来
             </Badge>
           )}
           {section && (
-            <span className="text-[11px] text-zinc-500 font-normal">
+            <span className="text-[12.5px] text-zinc-500 font-normal">
               section: {section}
             </span>
           )}
@@ -106,14 +106,14 @@ export function NotionMeetingNotes({ bant }: NotionMeetingNotesProps) {
       <CardContent className="space-y-3">
         {/* 議事録本文 */}
         <div className="rounded-md border border-zinc-200 bg-white">
-          <pre className="text-xs leading-relaxed text-zinc-800 px-3 py-2.5 whitespace-pre-wrap font-sans break-words max-h-[600px] overflow-y-auto">
+          <pre className="text-[13px] leading-relaxed text-zinc-800 px-3 py-2.5 whitespace-pre-wrap font-sans break-words max-h-[600px] overflow-y-auto">
             {displayed}
             {isLong && !expanded && "..."}
           </pre>
         </div>
 
         {/* メタ情報 + 折りたたみトグル */}
-        <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-zinc-500">
+        <div className="flex items-center justify-between gap-2 flex-wrap text-[13px] text-zinc-500">
           <div className="flex items-center gap-2 flex-wrap">
             <span>{meetingNotes.length}字</span>
             {lastEditedLabel && (

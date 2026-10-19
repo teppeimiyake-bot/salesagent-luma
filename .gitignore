@@ -93,3 +93,13 @@ backfill-*.log
 extracted-values*.json
 pdf-index.json
 dev-restart.log
+
+# local Google Meet OAuth output
+.env.meet.local
+
+
+# 議事録の録音・録画（サイズが大きいためリポジトリ管理外）
+00_Docs/99_議事録/*.mp4
+00_Docs/99_議事録/*.m4a
+00_Docs/99_議事録/*.mp3
+00_Docs/99_議事録/*.wav

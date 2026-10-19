@@ -5,7 +5,17 @@
   "framework": "nextjs",
   "functions": {
     "src/app/api/**/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 300
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/preparation-briefs",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/meet-artifacts",
+      "schedule": "*/30 * * * *"
+    }
+  ]
 }

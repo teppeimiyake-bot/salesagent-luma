@@ -9,6 +9,8 @@ import { syncWonProductToPayments } from "@/lib/payment-sync";
 import { syncWonProductToPm } from "@/lib/pm-sync";
 import { isWonYomi } from "@/lib/yomi-status";
 import { getRequestTenant, runWithTenant } from "@/lib/tenant-context";
+import { toJstDateStr } from "@/lib/meeting-datetime";
+import { writeForbidden } from "@/lib/write-guard";
 
 const updateSchema = z.object({
   productId: z.string().uuid().nullable().optional(),
@@ -38,7 +40,7 @@ function probabilityFromYomi(yomi: string | null | undefined): number | null {
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const perm = await getCurrentPermission();
   if (!hasPermission(perm, "user")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return await writeForbidden();
   }
   const { id } = await params;
   const body = await req.json().catch(() => null);
@@ -104,7 +106,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (parent && !parent.contractDate) {
       await prisma.deal.update({
         where: { id: updated.dealId },
-        data: { contractDate: new Date() },
+        // 画面の「本日でセット」と同じく、日本時間の今日の日付（UTC 0:00）で保存する。KPIの月別集計と表示の日付をそろえる。
+        data: { contractDate: new Date(toJstDateStr(new Date())) },
       });
     }
   }
@@ -167,7 +170,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const perm = await getCurrentPermission();
   if (!hasPermission(perm, "user")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return await writeForbidden();
   }
   const { id } = await params;
   await prisma.dealProduct.delete({ where: { id } });

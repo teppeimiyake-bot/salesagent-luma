@@ -4,11 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth";
 import { getSalesUsers, getGoalProgress } from "@/lib/queries";
 import { formatJPY } from "@/lib/utils";
 import { OwnerBadge } from "@/components/ui/owner-badge";
 import { NewMemberDialog } from "@/components/team/new-member-dialog";
+import { userAdminAccess } from "@/lib/tenant-users";
 import { getFiscalStartMonth } from "@/lib/tenant-context";
 import { currentFiscalQuarterPeriod } from "@/lib/config";
 import Link from "next/link";
@@ -79,14 +79,11 @@ async function buildRows(
 
 export default async function TeamPage() {
   const PERIOD = currentFiscalQuarterPeriod(await getFiscalStartMonth());
-  const session = await getSession();
-  const me = session
-    ? await prisma.user.findUnique({
-        where: { id: session.userId },
-        select: { permission: true },
-      })
-    : null;
-  const isAdmin = me?.permission === "admin";
+  // メンバー追加を出すのは、操作中の会社の管理者（UserTenant.permission）だけ。全社統合ビューでは、どれかの会社の
+  // 管理者ならボタンを出すが、追加は API が 403 で止めるので、ボタンを無効にして理由を出す
+  const adminAccess = await userAdminAccess();
+  const isAdmin = adminAccess.allowed;
+  const memberAddDisabledReason = adminAccess.readOnlyReason;
 
   const users = await getSalesUsers();
   const members = users.filter((u) => u.role === "sales");
@@ -104,7 +101,7 @@ export default async function TeamPage() {
       <Header
         title="チーム"
         subtitle={`${PERIOD} 期間進捗`}
-        right={isAdmin ? <NewMemberDialog /> : null}
+        right={isAdmin ? <NewMemberDialog disabledReason={memberAddDisabledReason} /> : null}
       />
       <div className="flex-1 overflow-y-auto p-6 bg-zinc-50 space-y-5">
         {/* 組織サマリ */}

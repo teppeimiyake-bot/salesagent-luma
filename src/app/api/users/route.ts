@@ -1,16 +1,28 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma, prismaUnscoped } from "@/lib/db";
-import { getSession, hasPermission, hashPassword } from "@/lib/auth";
-import { getRequestTenant } from "@/lib/tenant-context";
+import { prisma } from "@/lib/db";
+import { getSession, hashPassword } from "@/lib/auth";
 import { normalizeEmail } from "@/lib/email";
+import { listCurrentTenantUsers, requireUserAdmin, TenantUserScopeError } from "@/lib/tenant-users";
 
+// 操作中の会社に所属するユーザーだけを返す（ほかの会社のユーザーの名前・メールは返さない）
 export async function GET() {
-  const users = await prisma.user.findMany({
-    select: { id: true, name: true, email: true, role: true, permission: true, avatarColor: true },
-    orderBy: { createdAt: "asc" },
-  });
-  return NextResponse.json({ users });
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    // 権限・役職は、この会社での値（担当者の候補から閲覧のみの人を外すのにも使う）
+    const users = await listCurrentTenantUsers(
+      { id: true, name: true, email: true, role: true, permission: true, avatarColor: true },
+      {},
+      { tenantRoles: true },
+    );
+    return NextResponse.json({ users });
+  } catch (e) {
+    if (e instanceof TenantUserScopeError) {
+      return NextResponse.json({ error: "操作中の会社を確認できませんでした。再読み込みしてください。" }, { status: 403 });
+    }
+    throw e;
+  }
 }
 
 const AVATAR_COLORS = [
@@ -28,31 +40,16 @@ const createSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  // メンバー追加は admin のみ
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const me = await prisma.user.findUnique({ where: { id: session.userId }, select: { permission: true } });
-  if (!hasPermission(me?.permission, "admin")) {
-    return NextResponse.json({ error: "Forbidden: admin only" }, { status: 403 });
-  }
+  // メンバー追加は、操作中の会社の管理者のみ。追加したユーザーは操作中の会社に所属させる
+  // （所属が無いと、会社ごとのユーザー一覧に出ない）
+  const scope = await requireUserAdmin();
+  if ("error" in scope) return NextResponse.json({ error: scope.error }, { status: scope.status });
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input", detail: parsed.error.flatten() }, { status: 400 });
   }
   const { email, name, role, permission } = parsed.data;
-
-  // 追加先の会社（サイドバーで選択中のテナント）。
-  // user_tenants を作らないと、そのユーザーはログインできても所属会社が無く
-  // TENANT_STRICT=1 の本番では全ページが例外で落ちる。
-  const ctx = await getRequestTenant();
-  if (!ctx || !ctx.tenantId) {
-    return NextResponse.json(
-      { error: "追加先の会社が特定できません。サイドバーで Luma / リージー を選んでから実行してください。" },
-      { status: 400 },
-    );
-  }
-  const tenantId = ctx.tenantId;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -63,23 +60,14 @@ export async function POST(req: Request) {
   const passwordHash = await hashPassword(password);
   const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 
-  // ユーザーと所属は同時に作る（片方だけ出来ると壊れたアカウントになる）
-  const user = await prismaUnscoped.$transaction(async (tx) => {
-    const created = await tx.user.create({
-      data: { email, name, role, permission, passwordHash, avatarColor },
-      select: { id: true, name: true, email: true, role: true, permission: true, avatarColor: true },
-    });
-    await tx.userTenant.create({
-      data: {
-        userId: created.id,
-        tenantId,
-        permission,
-        role,
-        isDefault: true,
-        crossTenantRead: false,
-      },
-    });
-    return created;
+  // ユーザーと所属は同時に作る（片方だけ出来ると壊れたアカウントになる）。
+  // user_tenants を作らないと、そのユーザーはログインできても所属会社が無く TENANT_STRICT=1 の本番では全ページが例外で落ちる。
+  const user = await prisma.user.create({
+    data: {
+      email, name, role, permission, passwordHash, avatarColor,
+      userTenants: { create: { tenantId: scope.tenantId, permission, role, isDefault: true } },
+    },
+    select: { id: true, name: true, email: true, role: true, permission: true, avatarColor: true },
   });
   return NextResponse.json({ user, initialPassword: parsed.data.password ? undefined : password });
 }

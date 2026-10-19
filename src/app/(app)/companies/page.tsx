@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Header } from "@/components/layout/header";
 import { Card, CardContent } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
-import { getSession, hasPermission } from "@/lib/auth";
+import { getSession, hasPermission, getCurrentPermission } from "@/lib/auth";
 import { totalProposedAmount, topProductLabels } from "@/lib/deal-aggregations";
 import { CompaniesList, type CompanyRow } from "@/components/companies/companies-list";
 import { getRequestTenant, listMyTenants } from "@/lib/tenant-context";
@@ -17,10 +17,7 @@ export default async function CompaniesPage({
 }) {
   const session = await getSession();
   const me = session
-    ? await prisma.user.findUnique({
-        where: { id: session.userId },
-        select: { permission: true },
-      })
+    ? { permission: await getCurrentPermission() }
     : null;
   const canEdit = hasPermission(me?.permission, "user");
 

@@ -31,11 +31,16 @@ function LoginInner() {
     errorCode ? ERROR_MESSAGES[errorCode] ?? `認証エラー: ${errorCode}` : null,
   );
   const [googleAvailable, setGoogleAvailable] = useState(false);
+  // 招待なしの登録を受け付けるか（既定は受け付けない。ALLOW_SELF_REGISTRATION=1 のときだけ）
+  const [selfRegistration, setSelfRegistration] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/providers-info")
       .then((r) => r.json())
-      .then((j) => setGoogleAvailable(!!j.google))
+      .then((j) => {
+        setGoogleAvailable(!!j.google);
+        setSelfRegistration(!!j.selfRegistration);
+      })
       .catch(() => setGoogleAvailable(false));
   }, []);
 
@@ -135,12 +140,18 @@ function LoginInner() {
           <Button type="submit" variant="primary" className="w-full" disabled={loading}>
             {loading ? "ログイン中..." : "ログイン"}
           </Button>
-          <p className="text-xs text-zinc-500 text-center">
-            アカウントが無い場合は{" "}
-            <Link href="/register" className="text-orange-600 hover:underline">
-              新規登録
-            </Link>
-          </p>
+          {selfRegistration ? (
+            <p className="text-xs text-zinc-500 text-center">
+              アカウントが無い場合は{" "}
+              <Link href="/register" className="text-orange-600 hover:underline">
+                新規登録
+              </Link>
+            </p>
+          ) : (
+            <p className="text-xs text-zinc-500 text-center">
+              アカウントは、管理者から届く招待URLで作成します。
+            </p>
+          )}
         </form>
       </CardContent>
     </Card>

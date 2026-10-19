@@ -44,6 +44,7 @@ import {
   type StageGroup,
 } from "@/lib/pipeline-stage";
 import { leadSourceColor } from "@/lib/lead-source";
+import { jstYmd } from "@/lib/calendar-date";
 import type { MsLeadSource, MsUser } from "@/components/ms/ms-board";
 
 export type MsContact = {
@@ -74,10 +75,12 @@ export type MsDeal = {
   leadSource: { id: string; name: string } | null;
 };
 
-// ISO 文字列 → "YYYY-MM-DD"（DateInput 用）
+// ISO 文字列 → 日本時間の暦日 "YYYY-MM-DD"（DateInput 用）。下の dateStrToIso が日本時間 0:00（前日の UTC 15:00）で
+// 保存するため、UTC の日付で切ると前日に表示される。KPI・商談詳細と同じく日本時間の暦日で読む（calendar-date.ts）。
 function isoToDateStr(iso: string | null): string {
   if (!iso) return "";
-  return iso.slice(0, 10);
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : jstYmd(date);
 }
 // "YYYY-MM-DD" → JST 0:00 の ISO 文字列（"" は null）
 function dateStrToIso(s: string): string | null {
