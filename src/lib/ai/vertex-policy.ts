@@ -16,7 +16,8 @@ export const VERTEX_RESERVATION_JPY = 20;
 export const VERTEX_BUDGET_JPY = 25000;
 // 2026-09-28 ユーザー承認で延長（旧期限 2026-09-26 00:00 JST）。当時のモデル gemini-2.5-flash の終了予定（2026-10-20）の前日の終わり＝2026-10-20 00:00 JST まで。
 // モデル切替後も値は据え置き（さらに延ばす場合は別途の承認で変える）。
-export const VERTEX_POLICY_EXPIRES = "2026-10-19T15:00:00.000Z";
+// 2026-10-19 ユーザー承認で、Vercel の検証環境（Preview）での UAT のため 2026-10 末まで延長＝2026-11-01 00:00 JST まで（旧期限 2026-10-20 00:00 JST）。
+export const VERTEX_POLICY_EXPIRES = "2026-10-31T15:00:00.000Z";
 // 延長は LUMA_VERTEX_POLICY_EXPIRES（ISO 8601）で行う。設定する人が期間と費用の承認を取ってから入れる。
 // 読めない値は期限切れとして扱う（fail closed）。
 export const VERTEX_POLICY_EXPIRES_ENV = "LUMA_VERTEX_POLICY_EXPIRES";

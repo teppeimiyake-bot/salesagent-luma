@@ -845,8 +845,9 @@ test("expired verification policy is blocked before any AI request", async () =>
   const policy = await load("src/lib/ai/vertex-policy.ts");
   // Extended on 2026-09-28 until 2026-10-20 00:00 JST (then the day before gemini-2.5-flash was scheduled to retire);
   // kept after the switch to gemini-3.5-flash-lite.
-  assert.ok(policy.vertexConfiguration(env, Date.parse("2026-10-19T14:59:59Z")));
-  assert.throws(() => policy.vertexConfiguration(env, Date.parse("2026-10-19T15:00:00Z")), /利用期間/);
+  // Extended again on 2026-10-19 for the Vercel verification preview: until 2026-11-01 00:00 JST (end of October).
+  assert.ok(policy.vertexConfiguration(env, Date.parse("2026-10-31T14:59:59Z")));
+  assert.throws(() => policy.vertexConfiguration(env, Date.parse("2026-10-31T15:00:00Z")), /利用期間/);
 });
 test("Vercel の検証用 Preview でも同じ Vertex 経路を使え、Production とそれ以外の実行先では使えない", async () => {
   const policy = await load("src/lib/ai/vertex-policy.ts");
