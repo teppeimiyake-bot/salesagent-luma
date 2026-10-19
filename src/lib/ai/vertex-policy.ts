@@ -8,12 +8,13 @@ export const VERTEX_MODEL = "gemini-3.5-flash-lite";
 export const VERTEX_BUDGET_KEY = "verification/vertex-budget-20260923.json";
 export const VERTEX_MAX_INPUT_BYTES = 65536;
 export const VERTEX_MAX_OUTPUT = 8192;
-// Pessimistic reservation, never refunded: at most 25,000 JPY reserved.
+// Pessimistic reservation, never refunded: at most 45,000 JPY reserved.
 // Includes all previous allowances; historical attempts are carried forward.
-// The remaining 5,000 JPY of the user's 30,000 JPY envelope is for app infrastructure.
+// 2026-10-19 ユーザー承認で、Vercel の検証環境（Preview）での UAT のため上限を 2 万円上げた（25,000 → 45,000 JPY）。
+// The 5,000 JPY of the original 30,000 JPY envelope for app infrastructure is unchanged.
 // Actual token usage is recorded separately. This is not a Cloud Billing total.
 export const VERTEX_RESERVATION_JPY = 20;
-export const VERTEX_BUDGET_JPY = 25000;
+export const VERTEX_BUDGET_JPY = 45000;
 // 2026-09-28 ユーザー承認で延長（旧期限 2026-09-26 00:00 JST）。当時のモデル gemini-2.5-flash の終了予定（2026-10-20）の前日の終わり＝2026-10-20 00:00 JST まで。
 // モデル切替後も値は据え置き（さらに延ばす場合は別途の承認で変える）。
 // 2026-10-19 ユーザー承認で、Vercel の検証環境（Preview）での UAT のため 2026-10 末まで延長＝2026-11-01 00:00 JST まで（旧期限 2026-10-20 00:00 JST）。

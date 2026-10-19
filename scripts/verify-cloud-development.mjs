@@ -35,7 +35,7 @@ assert.equal(env.LUMA_CLOUD_AI_MODE, withVertex ? "vertex" : "off");
 if (withVertex) {
   assert.equal(env.AI_PROVIDER, "vertex"); assert.equal(env.AI_PROVIDER_HEAVY, "vertex");
   assert.equal(env.VERTEX_MODEL, "gemini-3.5-flash-lite"); assert.equal(env.VERTEX_LOCATION, "global");
-  assert.equal(env.LUMA_VERTEX_BUDGET_JPY, "25000");
+  assert.equal(env.LUMA_VERTEX_BUDGET_JPY, "45000");
 }
 assert.equal(env.LUMA_DEVELOPMENT_UPLOAD_BUCKET, bucket);
 const initialVertexCalls = withVertex ? JSON.parse(gcloud(["storage", "cat", `gs://${bucket}/verification/vertex-budget-20260923.json`])).attempts.length : 0;
@@ -219,7 +219,7 @@ try {
 
     const ledger = JSON.parse(gcloud(["storage", "cat", `gs://${bucket}/verification/vertex-budget-20260923.json`]));
     assert.ok(ledger.attempts.slice(initialVertexCalls).every(a => a.status === "success" && a.usage?.totalTokenCount > 0));
-    assert.equal(ledger.limitJpy, 25000);
+    assert.equal(ledger.limitJpy, 45000);
     assert.ok(ledger.attempts.reduce((n, a) => n + a.reservedJpy, 0) <= ledger.limitJpy);
     console.log(JSON.stringify({ vertexCalls: ledger.attempts.length, reservedJpy: ledger.attempts.reduce((n, a) => n + a.reservedJpy, 0), inputTokens: ledger.attempts.reduce((n, a) => n + (a.usage?.promptTokenCount ?? 0), 0), outputTokens: ledger.attempts.reduce((n, a) => n + (a.usage?.candidatesTokenCount ?? 0) + (a.usage?.thoughtsTokenCount ?? 0), 0) }));
   }

@@ -57,13 +57,13 @@ test("Anthropic tool continuation records every billable turn",async()=>{
 });
 test("Vertex records Google Search use and its query count so grounding fees can be counted",async()=>{
  const require=createRequire(import.meta.url),logs=[];
- const env={LUMA_DEPLOYMENT_ENV:"development",K_SERVICE:"luma-platform-development",GOOGLE_CLOUD_PROJECT:"lumaagentlist",LUMA_DEVELOPMENT_PROJECT_ID:"lumaagentlist",LUMA_CLOUD_AI_MODE:"vertex",AI_PROVIDER:"vertex",AI_PROVIDER_HEAVY:"vertex",VERTEX_LOCATION:"global",VERTEX_MODEL:"gemini-3.5-flash-lite",LUMA_VERTEX_BUDGET_JPY:"25000",LUMA_DEVELOPMENT_UPLOAD_BUCKET:"lumaagentlist-luma-dev-uploads"};
+ const env={LUMA_DEPLOYMENT_ENV:"development",K_SERVICE:"luma-platform-development",GOOGLE_CLOUD_PROJECT:"lumaagentlist",LUMA_DEVELOPMENT_PROJECT_ID:"lumaagentlist",LUMA_CLOUD_AI_MODE:"vertex",AI_PROVIDER:"vertex",AI_PROVIDER_HEAVY:"vertex",VERTEX_LOCATION:"global",VERTEX_MODEL:"gemini-3.5-flash-lite",LUMA_VERTEX_BUDGET_JPY:"45000",LUMA_DEVELOPMENT_UPLOAD_BUCKET:"lumaagentlist-luma-dev-uploads"};
  class PolicyDate extends Date{constructor(...a){super(...(a.length?a:["2026-09-23T00:00:00.000Z"]))}static now(){return Date.parse("2026-09-23T00:00:00.000Z")}}
  const bundle=await build({entryPoints:["src/lib/ai/vertex.ts"],bundle:true,write:false,platform:"node",format:"cjs",packages:"external",logLevel:"silent"});
  const loaded={exports:{}};
  vm.runInNewContext(bundle.outputFiles[0].text,{module:loaded,exports:loaded.exports,require,process:{env},Buffer,URL,Date:PolicyDate,setTimeout,clearTimeout,AbortSignal,
   console:{info:line=>logs.push(line),error(){}},fetch(){throw Error("External network forbidden")}});
- let generation=1,ledger={version:1,scope:"luma-platform-development",limitJpy:25000,attempts:[]};
+ let generation=1,ledger={version:1,scope:"luma-platform-development",limitJpy:45000,attempts:[]};
  const store={async read(){return {generation:String(generation),ledger:structuredClone(ledger)}},async write(expected,next){if(expected!==String(generation))return false;ledger=structuredClone(next);generation++;return true}};
  const request=async url=>url.endsWith(":countTokens")?Response.json({totalTokens:5}):Response.json({candidates:[{finishReason:"STOP",content:{parts:[{text:"fictional"}]},groundingMetadata:{webSearchQueries:["private","private"]}}],usageMetadata:{promptTokenCount:5,candidatesTokenCount:4,totalTokenCount:9}});
  await loaded.exports.vertexGenerate({system:"private",user:"private",feature:"brief",search:true},{request,store});

@@ -94,7 +94,7 @@ export function validateCloudDevelopmentEnvironment(env) {
     requireCondition(project === "lumaagentlist" && service === "luma-platform-development" && bucket === "lumaagentlist-luma-dev-uploads",
       "Vertex is limited to the explicitly authorized Luma verification resources.");
     requireCondition(env.AI_PROVIDER === "vertex" && env.AI_PROVIDER_HEAVY === "vertex" && env.VERTEX_LOCATION === "global"
-      && env.VERTEX_MODEL === "gemini-3.5-flash-lite" && env.LUMA_VERTEX_BUDGET_JPY === "25000",
+      && env.VERTEX_MODEL === "gemini-3.5-flash-lite" && env.LUMA_VERTEX_BUDGET_JPY === "45000",
       "Vertex provider, location, model and guarded verification budget must match the reviewed policy.");
     requireCondition(!entries.some(([name, value]) => configured(value) && /VERTEX/i.test(name)
       && !["VERTEX_LOCATION", "VERTEX_MODEL", "LUMA_VERTEX_BUDGET_JPY"].includes(name)), "Unexpected Vertex configuration is not allowed.");

@@ -258,7 +258,7 @@ test("CLI startup failures contain no secret values", () => {
 });
 
 test("Vertex mode only allows reviewed verification resources, model and budget", () => {
-  const vertex = environment({ GOOGLE_CLOUD_PROJECT: "lumaagentlist", LUMA_DEVELOPMENT_PROJECT_ID: "lumaagentlist", K_SERVICE: "luma-platform-development", LUMA_DEVELOPMENT_UPLOAD_BUCKET: "lumaagentlist-luma-dev-uploads", LUMA_CLOUD_AI_MODE: "vertex", AI_PROVIDER: "vertex", AI_PROVIDER_HEAVY: "vertex", VERTEX_MODEL: "gemini-3.5-flash-lite", VERTEX_LOCATION: "global", LUMA_VERTEX_BUDGET_JPY: "25000" });
+  const vertex = environment({ GOOGLE_CLOUD_PROJECT: "lumaagentlist", LUMA_DEVELOPMENT_PROJECT_ID: "lumaagentlist", K_SERVICE: "luma-platform-development", LUMA_DEVELOPMENT_UPLOAD_BUCKET: "lumaagentlist-luma-dev-uploads", LUMA_CLOUD_AI_MODE: "vertex", AI_PROVIDER: "vertex", AI_PROVIDER_HEAVY: "vertex", VERTEX_MODEL: "gemini-3.5-flash-lite", VERTEX_LOCATION: "global", LUMA_VERTEX_BUDGET_JPY: "45000" });
   assert.doesNotThrow(() => validateCloudDevelopmentEnvironment(vertex));
   for (const bad of [{ GOOGLE_CLOUD_PROJECT: "luma-test-dev", LUMA_DEVELOPMENT_PROJECT_ID: "luma-test-dev" }, { K_SERVICE: "sales-agent" }, { LUMA_DEVELOPMENT_UPLOAD_BUCKET: "luma-uploads-dev" }, { LUMA_CLOUD_AI_MODE: "off" }, { AI_PROVIDER_HEAVY: "gemini" }, { VERTEX_MODEL: "unpriced" }, { VERTEX_MODEL: "gemini-2.5-flash" }, { VERTEX_LOCATION: "asia-northeast1" }, ...["500", "1000", "2000", "25001", "30000"].map(LUMA_VERTEX_BUDGET_JPY => ({ LUMA_VERTEX_BUDGET_JPY })), { GOOGLE_APPLICATION_CREDENTIALS: "/secret.json" }, { VERTEX_API_KEY: "must-never-use" }]) {
     assert.throws(() => validateCloudDevelopmentEnvironment({ ...vertex, ...bad }), CloudDevelopmentConfigurationError);

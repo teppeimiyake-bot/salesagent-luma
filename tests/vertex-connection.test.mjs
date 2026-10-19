@@ -8,7 +8,7 @@ class VerificationDate extends Date {
   constructor(...args) { super(...(args.length ? args : ["2026-09-23T00:00:00.000Z"])); }
   static now() { return Date.parse("2026-09-23T00:00:00.000Z"); }
 }
-const env = { LUMA_DEPLOYMENT_ENV: "development", K_SERVICE: "luma-platform-development", GOOGLE_CLOUD_PROJECT: "lumaagentlist", LUMA_DEVELOPMENT_PROJECT_ID: "lumaagentlist", LUMA_CLOUD_AI_MODE: "vertex", AI_PROVIDER: "vertex", AI_PROVIDER_HEAVY: "vertex", VERTEX_LOCATION: "global", VERTEX_MODEL: "gemini-3.5-flash-lite", LUMA_VERTEX_BUDGET_JPY: "25000", LUMA_DEVELOPMENT_UPLOAD_BUCKET: "lumaagentlist-luma-dev-uploads" };
+const env = { LUMA_DEPLOYMENT_ENV: "development", K_SERVICE: "luma-platform-development", GOOGLE_CLOUD_PROJECT: "lumaagentlist", LUMA_DEVELOPMENT_PROJECT_ID: "lumaagentlist", LUMA_CLOUD_AI_MODE: "vertex", AI_PROVIDER: "vertex", AI_PROVIDER_HEAVY: "vertex", VERTEX_LOCATION: "global", VERTEX_MODEL: "gemini-3.5-flash-lite", LUMA_VERTEX_BUDGET_JPY: "45000", LUMA_DEVELOPMENT_UPLOAD_BUCKET: "lumaagentlist-luma-dev-uploads" };
 async function load(file, settings = env, globals = {}) {
   const result = await build({ entryPoints: [file], bundle: true, write: false, platform: "node", format: "cjs", packages: "external", logLevel: "silent" });
   const loaded = { exports: {} };
@@ -18,7 +18,7 @@ async function load(file, settings = env, globals = {}) {
 }
 const budget = await load("src/lib/ai/vertex-budget.ts");
 const vertex = await load("src/lib/ai/vertex.ts");
-function store(initialLedger = { version: 1, scope: "luma-platform-development", limitJpy: 25000, attempts: [] }) {
+function store(initialLedger = { version: 1, scope: "luma-platform-development", limitJpy: 45000, attempts: [] }) {
   let generation = 1;
   let ledger = structuredClone(initialLedger);
   return { async read() { return { generation: String(generation), ledger: structuredClone(ledger) }; },
@@ -48,21 +48,21 @@ test("configuration and input rejection make no network/ledger calls", async () 
   await assert.rejects(vertex.vertexGenerate({ ...opts, user: "x".repeat(65537) }), /長すぎ/);
 });
 test("concurrent reservations never exceed budget and persist after restart", async () => {
-  const prior = Array.from({ length: 1245 }, (_, index) => ({
+  const prior = Array.from({ length: 2245 }, (_, index) => ({
     id: `prior-${index}`, feature: "minutes", model: "gemini-2.5-flash", reservedJpy: 20,
     startedAt: "2026-09-23T00:00:00.000Z", status: ["reserved", "success", "error"][index % 3],
   }));
-  const s = store({ version: 1, scope: "luma-platform-development", limitJpy: 25000, attempts: prior });
+  const s = store({ version: 1, scope: "luma-platform-development", limitJpy: 45000, attempts: prior });
   const initial = (await s.read()).ledger;
   assert.doesNotThrow(() => budget.validateLedger(initial));
   const outcomes = await Promise.allSettled(Array.from({ length: 20 }, () => budget.reserveVertexAttempt(s, "minutes", "gemini-2.5-flash")));
   const full = (await s.read()).ledger;
   assert.equal(outcomes.filter(outcome => outcome.status === "fulfilled").length, 5);
   assert.equal(outcomes.filter(outcome => outcome.status === "rejected").length, 15);
-  assert.equal(full.attempts.length, 1250);
+  assert.equal(full.attempts.length, 2250);
   assert.deepEqual(full.attempts.slice(0, prior.length), prior);
   assert.doesNotThrow(() => budget.validateLedger(full));
-  assert.equal(full.attempts.reduce((total, attempt) => total + attempt.reservedJpy, 0), 25000);
+  assert.equal(full.attempts.reduce((total, attempt) => total + attempt.reservedJpy, 0), 45000);
   const restarted = await load("src/lib/ai/vertex-budget.ts");
   await assert.rejects(restarted.reserveVertexAttempt(s, "bant", "gemini-2.5-flash"), /利用枠/);
   const t = transport();
@@ -71,36 +71,36 @@ test("concurrent reservations never exceed budget and persist after restart", as
   assert.deepEqual((await s.read()).ledger, full);
 });
 test("search reserves its larger worst-case allowance", async () => {
-  const prior = Array.from({ length: 249 }, (_, index) => ({
+  const prior = Array.from({ length: 449 }, (_, index) => ({
     id: `prior-search-${index}`, feature: "brief", model: "gemini-2.5-flash", reservedJpy: 100,
     startedAt: "2026-09-23T00:00:00.000Z", status: "success",
   }));
-  const s = store({ version: 1, scope: "luma-platform-development", limitJpy: 25000, attempts: prior });
+  const s = store({ version: 1, scope: "luma-platform-development", limitJpy: 45000, attempts: prior });
   const initial = (await s.read()).ledger;
   assert.doesNotThrow(() => budget.validateLedger(initial));
   await budget.reserveVertexAttempt(s, "brief", "gemini-2.5-flash", true);
   const full = (await s.read()).ledger;
   assert.equal(full.attempts.at(-1).reservedJpy, 100);
-  assert.equal(full.attempts.reduce((total, attempt) => total + attempt.reservedJpy, 0), 25000);
+  assert.equal(full.attempts.reduce((total, attempt) => total + attempt.reservedJpy, 0), 45000);
   await assert.rejects(budget.reserveVertexAttempt(s, "brief", "gemini-2.5-flash"), /利用枠/);
   await assert.rejects(budget.reserveVertexAttempt(s, "brief", "gemini-2.5-flash", true), /利用枠/);
   assert.deepEqual((await s.read()).ledger, full);
 });
-test("expanded allowance retains all 21 historical reservations and only adds the remaining 24,500 JPY", async () => {
+test("expanded allowance retains all 21 historical reservations and only adds the remaining 44,500 JPY", async () => {
   const historical = Array.from({ length: 21 }, (_, index) => ({
     id: `historical-${index}`, feature: index === 0 ? "brief" : "context", model: "gemini-2.5-flash",
     reservedJpy: index === 0 ? 100 : 20, startedAt: "2026-09-23T00:00:00.000Z", status: "success",
     usage: { promptTokenCount: 5, candidatesTokenCount: 4, totalTokenCount: 9 },
   }));
   assert.equal(historical.reduce((total, attempt) => total + attempt.reservedJpy, 0), 500);
-  const s = store({ version: 1, scope: "luma-platform-development", limitJpy: 25000, attempts: historical });
-  for (let i = 0; i < 245; i++) await budget.reserveVertexAttempt(s, "brief", "gemini-2.5-flash", true);
+  const s = store({ version: 1, scope: "luma-platform-development", limitJpy: 45000, attempts: historical });
+  for (let i = 0; i < 445; i++) await budget.reserveVertexAttempt(s, "brief", "gemini-2.5-flash", true);
   const full = (await s.read()).ledger;
   assert.deepEqual(full.attempts.slice(0, historical.length), historical);
-  assert.equal(full.attempts.length, historical.length + 245);
-  assert.equal(full.attempts.reduce((total, attempt) => total + attempt.reservedJpy, 0), 25000);
+  assert.equal(full.attempts.length, historical.length + 445);
+  assert.equal(full.attempts.reduce((total, attempt) => total + attempt.reservedJpy, 0), 45000);
   await assert.rejects(budget.reserveVertexAttempt(s, "transcription", "gemini-2.5-flash"), /利用枠/);
-  for (const limitJpy of [500, 1000, 25001, 30000]) {
+  for (const limitJpy of [500, 1000, 25000, 45001]) {
     const stale = store({ ...full, limitJpy });
     await assert.rejects(budget.reserveVertexAttempt(stale, "transcription", "gemini-2.5-flash"), /利用記録/);
     assert.deepEqual((await stale.read()).ledger, { ...full, limitJpy });
@@ -214,20 +214,20 @@ test("maxAttempts 1 (an optional call) stops at the first 429 with a single rese
   }
 });
 test("a retry cannot generate when the prior attempt exhausts the allowance", async () => {
-  const prior = Array.from({ length: 1249 }, (_, index) => ({
+  const prior = Array.from({ length: 2249 }, (_, index) => ({
     id: `prior-retry-${index}`, feature: "minutes", model: "gemini-2.5-flash", reservedJpy: 20,
     startedAt: "2026-09-23T00:00:00.000Z", status: "success",
   }));
-  const s = store({ version: 1, scope: "luma-platform-development", limitJpy: 25000, attempts: prior });
+  const s = store({ version: 1, scope: "luma-platform-development", limitJpy: 45000, attempts: prior });
   const t = transport({ response: () => new Response("busy", { status: 429 }) });
   await assert.rejects(vertex.vertexGenerate(opts, { ...t, store: s, ...retryTiming() }), /利用枠/);
   assert.equal(t.calls.length, 2);
   const attempts = (await s.read()).ledger.attempts;
   assert.deepEqual(attempts.slice(0, prior.length), prior);
-  assert.equal(attempts.length, 1250);
+  assert.equal(attempts.length, 2250);
   assert.equal(attempts.at(-1).status, "error");
   assert.equal(attempts.at(-1).errorCode, "http_429");
-  assert.equal(attempts.reduce((sum, attempt) => sum + attempt.reservedJpy, 0), 25000);
+  assert.equal(attempts.reduce((sum, attempt) => sum + attempt.reservedJpy, 0), 45000);
 });
 test("429 honors numeric and HTTP-date Retry-After within the logical call deadline", async () => {
   for (const [retryAfter, expectedDelay] of [["7", 7000], ["Wed, 23 Sep 2026 00:00:09 GMT", 9000]]) {
@@ -703,7 +703,7 @@ test("missing GCS ledger fails closed, generation conflict is distinguishable", 
   assert.ok(urls[0].includes("ifGenerationMatch=123"));
 });
 test("QG26-03 a ledger read that loses its generation to a concurrent write waits and reads again (bounded)", async () => {
-  const ledger = { version: 1, scope: "luma-platform-development", limitJpy: 25000, attempts: [] };
+  const ledger = { version: 1, scope: "luma-platform-development", limitJpy: 45000, attempts: [] };
   for (const raceStatus of [404, 412]) {
     let generation = 5;
     const urls = [], waits = [];
@@ -795,7 +795,7 @@ test("finishing an attempt survives rate-limited and ambiguous ledger writes wit
   assert.equal(attempts[0].reservedJpy, 20);
 });
 test("back-to-back calls through the real ledger store succeed when GCS rate-limits each first write", async () => {
-  let generation = 1, ledger = { version: 1, scope: "luma-platform-development", limitJpy: 25000, attempts: [] }, limitNext = true;
+  let generation = 1, ledger = { version: 1, scope: "luma-platform-development", limitJpy: 45000, attempts: [] }, limitNext = true;
   const waits = [];
   const request = async (url, init = {}) => {
     if (url.includes(":countTokens")) return Response.json({ totalTokens: 5 });
