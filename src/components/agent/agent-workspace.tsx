@@ -39,6 +39,8 @@ import { cn } from "@/lib/utils";
 import { SendGuidePanel } from "@/components/agent/send-guide-panel";
 import { toReadableText } from "@/lib/text-format";
 
+const MAX_COMPANIES_PER_RUN = 1000;
+
 /* ---------------------------------- 型 ---------------------------------- */
 
 type Tab = "workspace" | "history" | "overview" | "candidates" | "guide";
@@ -1041,7 +1043,9 @@ function RunPanel({
               label="件数"
               value={limit}
               min={1}
-              onChange={(v) => setLimit(v ?? 1)}
+              max={MAX_COMPANIES_PER_RUN}
+              onChange={(v) => setLimit(Math.min(v ?? 1, MAX_COMPANIES_PER_RUN))}
+              hint="1本1,000社まで。超える分は分けて実行してください"
             />
             {selectedSource?.supports_seq_range ? (
               <>
@@ -1184,6 +1188,7 @@ function NumberField({
   value,
   onChange,
   min,
+  max,
   placeholder,
   hint,
 }: {
@@ -1191,6 +1196,7 @@ function NumberField({
   value: number | "";
   onChange: (v: number | null) => void;
   min?: number;
+  max?: number;
   placeholder?: string;
   hint?: string;
 }) {
@@ -1201,6 +1207,7 @@ function NumberField({
         type="number"
         value={value}
         min={min}
+        max={max}
         placeholder={placeholder}
         onChange={(e) => {
           const v = e.target.value;
