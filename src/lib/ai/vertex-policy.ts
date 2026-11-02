@@ -1,4 +1,4 @@
-/** Fixed, short-lived verification policy for this Luma service only. */
+/** Fixed verification policy for this Luma service only. */
 export const VERTEX_PROJECT = "lumaagentlist";
 export const VERTEX_SERVICE = "luma-platform-development";
 export const VERTEX_BUCKET = "lumaagentlist-luma-dev-uploads";
@@ -15,13 +15,7 @@ export const VERTEX_MAX_OUTPUT = 8192;
 // Actual token usage is recorded separately. This is not a Cloud Billing total.
 export const VERTEX_RESERVATION_JPY = 20;
 export const VERTEX_BUDGET_JPY = 45000;
-// 2026-09-28 ユーザー承認で延長（旧期限 2026-09-26 00:00 JST）。当時のモデル gemini-2.5-flash の終了予定（2026-10-20）の前日の終わり＝2026-10-20 00:00 JST まで。
-// モデル切替後も値は据え置き（さらに延ばす場合は別途の承認で変える）。
-// 2026-10-19 ユーザー承認で、Vercel の検証環境（Preview）での UAT のため 2026-10 末まで延長＝2026-11-01 00:00 JST まで（旧期限 2026-10-20 00:00 JST）。
-export const VERTEX_POLICY_EXPIRES = "2026-10-31T15:00:00.000Z";
-// 延長は LUMA_VERTEX_POLICY_EXPIRES（ISO 8601）で行う。設定する人が期間と費用の承認を取ってから入れる。
-// 読めない値は期限切れとして扱う（fail closed）。
-export const VERTEX_POLICY_EXPIRES_ENV = "LUMA_VERTEX_POLICY_EXPIRES";
+// 利用期間の期限は設けない（費用は上の予算で止める）。
 // Vercel の検証用 Preview でも同じ Vertex 経路を使う（Production では使わない）。
 export const VERTEX_VERCEL_ENV = "preview";
 
@@ -36,7 +30,7 @@ function onVerificationHost(env: NodeJS.ProcessEnv): boolean {
   if (env.K_SERVICE !== undefined) return env.K_SERVICE === VERTEX_SERVICE;
   return env.VERCEL === "1" && env.VERCEL_ENV === VERTEX_VERCEL_ENV;
 }
-export function vertexConfiguration(env: NodeJS.ProcessEnv = process.env, now = Date.now()) {
+export function vertexConfiguration(env: NodeJS.ProcessEnv = process.env) {
   if (env.LUMA_CLOUD_AI_MODE !== "vertex" || env.AI_PROVIDER !== "vertex" || env.AI_PROVIDER_HEAVY !== "vertex"
     || env.LUMA_DEPLOYMENT_ENV !== "development" || !onVerificationHost(env)
     || env.GOOGLE_CLOUD_PROJECT !== VERTEX_PROJECT || env.LUMA_DEVELOPMENT_PROJECT_ID !== VERTEX_PROJECT
@@ -44,8 +38,6 @@ export function vertexConfiguration(env: NodeJS.ProcessEnv = process.env, now = 
     || env.LUMA_DEVELOPMENT_UPLOAD_BUCKET !== VERTEX_BUCKET || env.LUMA_VERTEX_BUDGET_JPY !== String(VERTEX_BUDGET_JPY)) {
     throw new VertexError("configuration", "AI接続設定が未完了です。検証用の接続設定を確認してください。");
   }
-  const expires = Date.parse(env[VERTEX_POLICY_EXPIRES_ENV] ?? VERTEX_POLICY_EXPIRES);
-  if (!Number.isFinite(expires) || now >= expires) throw new VertexError("expired", "AI検証の利用期間が終了しました。費用と接続設定を確認してください。");
   return { project: VERTEX_PROJECT, location: "global", model: VERTEX_MODEL, bucket: VERTEX_BUCKET };
 }
 export function vertexConfigured() { try { vertexConfiguration(); return true; } catch { return false; } }

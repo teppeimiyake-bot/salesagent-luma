@@ -841,29 +841,19 @@ test("grounding accepts only cited metadata URLs and rejects invented source URL
   assert.equal(checked.pain_hypotheses[0].confidence, "low");
   assert.throws(() => grounding.extractVertexGrounding("本文", { groundingChunks: [{ web: { uri: "https://example.test" } }] }), /表示情報/);
 });
-test("expired verification policy is blocked before any AI request", async () => {
-  const policy = await load("src/lib/ai/vertex-policy.ts");
-  // Extended on 2026-09-28 until 2026-10-20 00:00 JST (then the day before gemini-2.5-flash was scheduled to retire);
-  // kept after the switch to gemini-3.5-flash-lite.
-  // Extended again on 2026-10-19 for the Vercel verification preview: until 2026-11-01 00:00 JST (end of October).
-  assert.ok(policy.vertexConfiguration(env, Date.parse("2026-10-31T14:59:59Z")));
-  assert.throws(() => policy.vertexConfiguration(env, Date.parse("2026-10-31T15:00:00Z")), /利用期間/);
-});
 test("Vercel の検証用 Preview でも同じ Vertex 経路を使え、Production とそれ以外の実行先では使えない", async () => {
   const policy = await load("src/lib/ai/vertex-policy.ts");
-  const at = Date.parse("2026-10-19T14:59:59Z");
   const { K_SERVICE: _cloudRun, ...vercelBase } = env;
   const preview = { ...vercelBase, VERCEL: "1", VERCEL_ENV: "preview" };
-  assert.deepEqual(policy.vertexConfiguration(preview, at), policy.vertexConfiguration(env, at));
+  assert.deepEqual(policy.vertexConfiguration(preview), policy.vertexConfiguration(env));
   for (const host of [{ ...vercelBase, VERCEL: "1", VERCEL_ENV: "production" }, { ...vercelBase, VERCEL: "1" }, vercelBase,
     { ...preview, K_SERVICE: "sales-agent" }, { ...preview, LUMA_DEPLOYMENT_ENV: "production" }]) {
-    assert.throws(() => policy.vertexConfiguration(host, at), /設定/);
+    assert.throws(() => policy.vertexConfiguration(host), /設定/);
   }
 });
-test("利用期間は LUMA_VERTEX_POLICY_EXPIRES で延長でき、読めない値は期限切れとして止める", async () => {
+test("利用期間の期限は無く、過去の日付の LUMA_VERTEX_POLICY_EXPIRES が残っていても止めない", async () => {
   const policy = await load("src/lib/ai/vertex-policy.ts");
-  const extended = { ...env, LUMA_VERTEX_POLICY_EXPIRES: "2026-11-30T15:00:00.000Z" };
-  assert.ok(policy.vertexConfiguration(extended, Date.parse("2026-11-30T14:59:59Z")));
-  assert.throws(() => policy.vertexConfiguration(extended, Date.parse("2026-11-30T15:00:00Z")), /利用期間/);
-  assert.throws(() => policy.vertexConfiguration({ ...env, LUMA_VERTEX_POLICY_EXPIRES: "not-a-date" }, Date.parse("2026-10-01T00:00:00Z")), /利用期間/);
+  assert.ok(policy.vertexConfiguration(env));
+  assert.ok(policy.vertexConfiguration({ ...env, LUMA_VERTEX_POLICY_EXPIRES: "2026-10-31T15:00:00.000Z" }));
+  assert.equal(policy.VERTEX_POLICY_EXPIRES, undefined);
 });
