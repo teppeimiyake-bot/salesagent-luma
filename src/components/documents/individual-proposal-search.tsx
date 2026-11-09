@@ -49,7 +49,7 @@ export function IndividualProposalSearch({
   /** プロダクト（企画提案）フィルターの選択肢 */
   products: string[];
 }) {
-  // 業界・プロダクトともに複数選択（配列）。同一カテゴリ内は OR、カテゴリ間は AND。
+  // 業界・プロダクトともに複数選択（配列）。選択した条件はすべて AND。
   const [selectedIndustries, setSelectedIndustries] = useState<string[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [keyword, setKeyword] = useState("");
@@ -70,17 +70,17 @@ export function IndividualProposalSearch({
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
     return proposals.filter((p) => {
-      // 業界条件：選択中の業界のうち「いずれか」に一致すればヒット（OR）。
+      // 業界条件：選択中の業界すべてに一致すればヒット（AND）。
       // industry は「,」区切りで複数業界を持ちうるので matchesIndustry で判定。
       if (
         selectedIndustries.length > 0 &&
-        !selectedIndustries.some((ind) => matchesIndustry(p.industry, ind))
+        !selectedIndustries.every((ind) => matchesIndustry(p.industry, ind))
       )
         return false;
-      // プロダクト条件：選択中のプロダクト/企画提案のうち「いずれか」に一致すればヒット（OR）。
+      // プロダクト条件：選択中のプロダクト/企画提案すべてに一致すればヒット（AND）。
       if (
         selectedProducts.length > 0 &&
-        !selectedProducts.some(
+        !selectedProducts.every(
           (prod) =>
             p.products.includes(prod) || p.planProposals.includes(prod),
         )
@@ -142,13 +142,13 @@ export function IndividualProposalSearch({
             />
           </div>
 
-          {/* 業界フィルター（複数選択可・選択業界のいずれかに一致でヒット） */}
+          {/* 業界フィルター（複数選択可・選択業界のすべてに一致でヒット） */}
           <div>
             <p className="flex items-center gap-1 text-xs text-zinc-500 mb-1.5">
               <Factory className="h-3 w-3" /> 業界
               {selectedIndustries.length > 0 && (
                 <span className="text-sky-600 font-medium">
-                  （{selectedIndustries.length}件選択中・いずれかに一致）
+                  （{selectedIndustries.length}件選択中・全て一致）
                 </span>
               )}
             </p>
@@ -180,7 +180,7 @@ export function IndividualProposalSearch({
               <Package className="h-3 w-3" /> プロダクト（企画提案）
               {selectedProducts.length > 0 && (
                 <span className="text-orange-600 font-medium">
-                  （{selectedProducts.length}件選択中・いずれかに一致）
+                  （{selectedProducts.length}件選択中・全て一致）
                 </span>
               )}
             </p>
