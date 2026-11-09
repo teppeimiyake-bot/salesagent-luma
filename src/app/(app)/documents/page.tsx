@@ -68,7 +68,12 @@ export default async function DocumentsPage({
       category: "proposal",
       deal: { is: { deletedAt: null } },
     },
-    orderBy: { createdAt: "desc" },
+    // 初回商談日が新しい案件を先に表示。未設定の案件は末尾に置く。
+    orderBy: [
+      { deal: { appointmentDate: { sort: "desc", nulls: "last" } } },
+      { createdAt: "desc" },
+      { id: "asc" },
+    ],
     include: {
       uploadedBy: { select: { name: true } },
       deal: {
